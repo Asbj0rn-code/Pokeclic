@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pokeclic</string>
+
+    <!-- Pantalla principal -->
+    <string name="poke_ball_desc">Poké Ball</string>
+    <string name="trainer_desc">Trainer</string>
+    <string name="tall_grass_desc">Hierba alta</string>
+
+    <!-- Bottom menu -->
+    <string name="nav_map">Mapa</string>
+    <string name="nav_pokedex">Pokédex</string>
+    <string name="pokedex_desc">Pokédex</string>
+
+    <!-- Mapa (placeholder) -->
+    <string name="map_placeholder">Mapa\n(placeholder)</string>
+
+    <!-- Menú de opciones (placeholder) -->
+    <string name="options_title">Opciones</string>
+    <string name="options_settings">Configuración</string>
+    <string name="options_about">Acerca de</string>
+
+    <!-- HUD de juego -->
+    <string name="hud_coins">Monedas: %d</string>
+    <string name="hud_owned">En posesión: %d</string>
+    <string name="hud_zone_progress">%1$d / %2$d</string>
+    <string name="hud_zone_power">Potencia: %d</string>
+    <string name="hud_searching">Buscando salvajes…</string>
+    <string name="action_reset">Reset</string>
+
+    <!-- Captura -->
+    <string name="catch_title">¡Ha aparecido %1$s!</string>
+    <string name="catch_hint">Toca la Pokéball para lanzarla (%d intentos)</string>
+    <string name="catch_type">Tipo: %s</string>
+
+    <!-- Starter y principal -->
+    <string name="starter_type">Tipo: %s</string>
+    <string name="lead_title">Pokémon principal</string>
+    <string name="lead_hint">Elige quién te representa en los gimnasios</string>
+    <string name="lead_change">Cambiar principal</string>
+    <string name="lead_close">Cerrar</string>
+
+    <!-- Gimnasio -->
+    <string name="gym_title">Gimnasio de %1$s</string>
+    <string name="gym_type">Líder de tipo %s</string>
+    <string name="gym_leader_hp">Líder: %1$d / %2$d</string>
+    <string name="gym_hp">Vida: %1$d / %2$d</string>
+    <string name="gym_projectile_hint">Aguanta la oleada: rompe las rocas antes de que impacten</string>
+    <string name="gym_enemy_hint">¡Está expuesto! Tócalo para atacar</string>
+    <string name="gym_stamina_time">Stamina del líder · %1$d s</string>
+    <string name="gym_rage">¡Enfurecido!</string>
+    <string name="gym_exposed">¡Expuesto!</string>
+    <string name="gym_lost">¡Te han debilitado!</string>
+    <string name="gym_retry">Reintentar</string>
+    <string name="gym_leave">Rendirse</string>
+
+    <!-- HUD -->
+    <string name="hud_medals">Medallas: %d</string>
+    <string name="hud_trainer">Entrenador: %s</string>
+    <string name="hud_lead">Principal: %s</string>
+    <string name="hud_lead_none">—</string>
+    <string name="action_gym">Gimnasio: %s</string>
+    <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
+    <string name="action_wipe">Borrar partida (test)</string>
+
+    <!-- Introducción (Profesor Oak) -->
+    <string name="intro_oak_desc">Profesor Oak</string>
+    <string name="intro_line_welcome">¡Hola! Soy el Profesor Oak.</string>
+    <string name="intro_line_world">¡Bienvenido al mundo Pokémon!</string>
+    <string name="intro_line_creatures">Este mundo está habitado por unas criaturas llamadas Pokémon.</string>
+    <string name="intro_ask_name">Antes de empezar, dime… ¿cómo te llamas?</string>
+    <string name="intro_greet">¡Encantado, %1$s! Estoy seguro de que seremos grandes amigos.</string>
+    <string name="intro_ask_starter">Ahora elige tu primer compañero Pokémon.</string>
+    <string name="intro_goodbye">¡%1$s será tu compañero! ¡Que comience la aventura!</string>
+    <string name="intro_name_label">Tu nombre</string>
+    <string name="intro_accept">Aceptar</string>
+</resources>
