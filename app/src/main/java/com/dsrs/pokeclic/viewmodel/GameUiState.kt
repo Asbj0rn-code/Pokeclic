@@ -1,12 +1,12 @@
-package com.example.myapplication.viewmodel
+package com.dsrs.pokeclic.viewmodel
 
-import com.example.myapplication.model.AppTab
-import com.example.myapplication.model.Encounter
-import com.example.myapplication.model.GymState
-import com.example.myapplication.model.LeadOption
-import com.example.myapplication.model.PokemonType
-import com.example.myapplication.model.StarterOption
-import com.example.myapplication.model.TrainerState
+import com.dsrs.pokeclic.model.AppTab
+import com.dsrs.pokeclic.model.Encounter
+import com.dsrs.pokeclic.model.GymState
+import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TrainerState
 
 /**
  * Estado completo de la aplicación: **única fuente de verdad** para la UI.

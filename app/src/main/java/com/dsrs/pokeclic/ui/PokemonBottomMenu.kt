@@ -6,7 +6,7 @@
  * animaciones, haptics y medidas en `BottomMenuDefaults`. No contiene lógica de
  * juego; los clics se reenvían al llamante como lambdas.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -71,7 +71,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
-import com.example.myapplication.R
+import com.dsrs.pokeclic.R
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import androidx.compose.foundation.shape.GenericShape

@@ -5,7 +5,7 @@
  * completarse) y los entrega juntos al ViewModel. Las opciones de starter llegan
  * ya resueltas como `StarterOption`, sin que la UI consulte catálogos.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -44,8 +44,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.R
-import com.example.myapplication.model.StarterOption
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.StarterOption
 import kotlinx.coroutines.delay
 import android.graphics.Color as AndroidColor
 import android.graphics.ImageDecoder

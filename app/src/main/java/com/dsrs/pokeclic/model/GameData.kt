@@ -1,4 +1,4 @@
-package com.example.myapplication.model
+package com.dsrs.pokeclic.model
 
 /**
  * Entidades y datos persistentes del juego.

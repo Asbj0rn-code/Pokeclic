@@ -5,7 +5,7 @@
  * Es **sin estado**: recibe `GameUiState` ya derivado y emite eventos por lambdas;
  * no conoce el ViewModel ni calcula nada de negocio.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -20,13 +20,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.myapplication.R
-import com.example.myapplication.model.AppTab
-import com.example.myapplication.model.GymState
-import com.example.myapplication.model.LeadOption
-import com.example.myapplication.model.PokemonType
-import com.example.myapplication.model.StarterOption
-import com.example.myapplication.viewmodel.GameUiState
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.AppTab
+import com.dsrs.pokeclic.model.GymState
+import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.viewmodel.GameUiState
 
 /**
  * Shell de la aplicación: contenedor de pantallas + bottom menu siempre visible.

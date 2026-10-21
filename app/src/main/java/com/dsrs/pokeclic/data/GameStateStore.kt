@@ -1,7 +1,7 @@
-package com.example.myapplication.data
+package com.dsrs.pokeclic.data
 
 import android.content.Context
-import com.example.myapplication.model.GameSnapshot
+import com.dsrs.pokeclic.model.GameSnapshot
 
 /**
  * Persistencia del estado de juego.

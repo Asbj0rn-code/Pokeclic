@@ -1,4 +1,4 @@
-package com.example.myapplication.model
+package com.dsrs.pokeclic.model
 
 /**
  * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles y las
