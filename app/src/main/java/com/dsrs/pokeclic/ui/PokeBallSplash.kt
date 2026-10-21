@@ -4,7 +4,7 @@
  * Es puramente visual: su temporización no afecta al juego y avisa al llamante
  * cuando termina. No conoce el ViewModel ni persiste nada.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import com.example.myapplication.R
+import com.dsrs.pokeclic.R
 import kotlinx.coroutines.delay
 
 

@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.dsrs.pokeclic
 
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -15,11 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.myapplication.data.SharedPreferencesGameStateStore
-import com.example.myapplication.model.DefaultSpriteRepository
-import com.example.myapplication.ui.AppRoot
-import com.example.myapplication.ui.PokeBallSplash
-import com.example.myapplication.viewmodel.MainViewModel
+import com.dsrs.pokeclic.data.SharedPreferencesGameStateStore
+import com.dsrs.pokeclic.model.DefaultSpriteRepository
+import com.dsrs.pokeclic.ui.AppRoot
+import com.dsrs.pokeclic.ui.PokeBallSplash
+import com.dsrs.pokeclic.viewmodel.MainViewModel
 
 /**
  * Única Activity de la aplicación. Solo hospeda la UI (Compose) y crea el

@@ -6,7 +6,7 @@
  * vida y stamina ya calculadas por el modelo. No hay lógica de combate aquí:
  * solo presentación y eventos hacia el ViewModel.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
@@ -65,11 +65,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.R
-import com.example.myapplication.model.GymOutcome
-import com.example.myapplication.model.GymPhase
-import com.example.myapplication.model.GymState
-import com.example.myapplication.model.PokemonType
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.GymOutcome
+import com.dsrs.pokeclic.model.GymPhase
+import com.dsrs.pokeclic.model.GymState
+import com.dsrs.pokeclic.model.PokemonType
 import kotlin.math.ceil
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.shape.CircleShape

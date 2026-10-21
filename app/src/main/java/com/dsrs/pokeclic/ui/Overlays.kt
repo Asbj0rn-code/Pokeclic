@@ -6,7 +6,7 @@
  * notifican acciones con lambdas. En particular, el selector de principal recibe
  * `LeadOption` con id y nombre, así que no necesita conocer el catálogo.
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,13 +24,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.R
-import com.example.myapplication.model.Encounter
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.Encounter
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
-import com.example.myapplication.model.LeadOption
+import com.dsrs.pokeclic.model.LeadOption
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons

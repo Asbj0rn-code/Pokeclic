@@ -1,4 +1,4 @@
-package com.example.myapplication.model
+package com.dsrs.pokeclic.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -5,7 +5,7 @@
  * La pantalla es **sin estado**: recibe `GameUiState` y lambdas. El HUD calcula
  * solo presentación (fracciones ya derivadas por el ViewModel).
  */
-package com.example.myapplication.ui
+package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -27,9 +27,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.R
-import com.example.myapplication.model.PokemonType
-import com.example.myapplication.viewmodel.GameUiState
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.viewmodel.GameUiState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button

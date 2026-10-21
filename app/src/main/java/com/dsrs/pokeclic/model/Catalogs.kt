@@ -1,6 +1,6 @@
-package com.example.myapplication.model
+package com.dsrs.pokeclic.model
 
-import com.example.myapplication.R
+import com.dsrs.pokeclic.R
 
 /**
  * Catálogos de contenido y acceso a sprites.
