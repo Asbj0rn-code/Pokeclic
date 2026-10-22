@@ -65,6 +65,8 @@ data class GameUiState(
     // --- derivados (los rellena el ViewModel) ---
     val zoneName: String = "",
     val zoneRequirement: Long = 0L,
+    /** Especies en posesión incluyendo al starter, igual que la potencia de clic. */
+    val ownedCount: Int = 0,
     val clickPower: Long = 1L,
     val clicksPerSecond: Long = 0L,
     val maxHp: Int = 1,
