@@ -162,10 +162,17 @@ class MainViewModel(
      * **Borrado total de la partida (provisional, solo para testear).** Elimina
      * todo lo persistido y devuelve el estado a una primera partida: la app vuelve
      * a la introducción del Profesor Oak. No forma parte del diseño final.
+     *
+     * `clear()` es síncrono (destructivo), y aquí se reinician los campos
+     * transitorios que sobreviven al estado (`lastWalkTapMs`,
+     * `nextProjectileId`) para que ningún temporizador del estado anterior
+     * "arrastre" el instante posterior al borrado.
      */
     fun onWipeGame() {
         gymJob?.cancel()
         resetJob?.cancel()
+        lastWalkTapMs = 0L
+        nextProjectileId = 0L
         store.clear()
         _uiState.value = derive(GameUiState(trainerFrameRes = sprites.frame(Direction.FRONT, 0)))
     }

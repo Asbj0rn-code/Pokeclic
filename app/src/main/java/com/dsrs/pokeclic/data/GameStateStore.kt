@@ -8,7 +8,8 @@ import com.dsrs.pokeclic.model.GameSnapshot
  *
  * La interfaz no depende de Android para que el ViewModel se pueda probar en la
  * JVM con un doble. La implementación usa `SharedPreferences`: el volumen es
- * mínimo y `apply()` no bloquea el hilo de UI.
+ * mínimo y `apply()` no bloquea el hilo de UI. La única excepción es
+ * [clear()], que usa `commit()` por ser destructiva.
  */
 interface GameStateStore {
     /** Estado guardado, o `null` si es la primera partida. */
@@ -16,8 +17,14 @@ interface GameStateStore {
 
     fun save(snapshot: GameSnapshot)
 
-    /** Borra todo lo persistido (partida nueva desde cero). */
-    fun clear()
+    /**
+     * Borra todo lo persistido (partida nueva desde cero).
+     *
+     * Al ser una operación destructiva se escribe de forma **síncrona**
+     * (`commit()`): devuelve `true` solo si el borrado quedó en disco, de modo
+     * que un cierre inmediato a continuación no conserve el guardado antiguo.
+     */
+    fun clear(): Boolean
 }
 
 /**
@@ -67,9 +74,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
             .apply()
     }
 
-    override fun clear() {
-        prefs.edit().clear().apply()
-    }
+    override fun clear(): Boolean = prefs.edit().clear().commit()
 
     private fun encodeNullable(value: String?): String = value.orEmpty()
 
