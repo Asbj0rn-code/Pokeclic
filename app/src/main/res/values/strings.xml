@@ -28,10 +28,13 @@
     <string name="hud_searching">Buscando salvajes…</string>
     <string name="action_reset">Reset</string>
 
-    <!-- Captura -->
+    <!-- Minijuego de pesca -->
     <string name="catch_title">¡Ha aparecido %1$s!</string>
-    <string name="catch_hint">Toca la Pokéball para lanzarla (%d intentos)</string>
     <string name="catch_type">Tipo: %s</string>
+    <string name="fishing_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
+    <string name="fishing_captured">¡Genial! ¡%1$s fue capturado!</string>
+    <string name="fishing_escaped">¡Oh, no! ¡%1$s se escapó!</string>
+    <string name="fishing_continue">Continuar</string>
 
     <!-- Starter y principal -->
     <string name="starter_type">Tipo: %s</string>

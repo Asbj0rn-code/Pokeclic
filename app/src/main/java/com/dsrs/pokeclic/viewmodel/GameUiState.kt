@@ -2,6 +2,7 @@ package com.dsrs.pokeclic.viewmodel
 
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
+import com.dsrs.pokeclic.model.FishingState
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
@@ -22,8 +23,8 @@ import com.dsrs.pokeclic.model.TrainerState
  *   [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [zoneIndex], [zoneClicks].
- * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [gym],
- *   [trainer] y los campos de navegación.
+ * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [fishing],
+ *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
  *
  * @param clicksPerSecond producción pasiva; hoy 0, pero el bucle del ViewModel ya
@@ -49,6 +50,9 @@ data class GameUiState(
     val isTallGrass: Boolean = false,
     val walkProgress: Float = 0f,
     val encounter: Encounter? = null,
+
+    // --- minijuego de pesca (activo con encounter, no se persiste) ---
+    val fishing: FishingState? = null,
 
     // --- gimnasio ---
     val gym: GymState? = null,
