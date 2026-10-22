@@ -1622,8 +1622,10 @@ persiste junto al starter en una sola operación:
 El HUD incluye bajo *Cambiar principal* un botón **«Borrar partida (test)»**
 (`OutlinedButton`, cadena `action_wipe`) que llama a `MainViewModel.onWipeGame()`:
 borra lo persistido (`GameStateStore.clear()`) y vuelve a una primera partida
-(la intro de Oak). Es **temporal**, solo para no depender de `adb shell pm clear`
-al probar; se eliminará cuando ya no haga falta.
+(la intro de Oak). Antes de ejecutarse muestra un `AlertDialog` de confirmación
+(cadenas `wipe_confirm_*`) para que un toque accidental no destruya la partida.
+Es **temporal**, solo para no depender de `adb shell pm clear` al probar; se
+eliminará cuando ya no haga falta, junto con su diálogo de confirmación.
 
 ---
 

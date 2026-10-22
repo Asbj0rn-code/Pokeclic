@@ -62,6 +62,10 @@
     <string name="action_gym">Gimnasio: %s</string>
     <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
     <string name="action_wipe">Borrar partida (test)</string>
+    <string name="wipe_confirm_title">¿Borrar partida?</string>
+    <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>
+    <string name="wipe_confirm_accept">Borrar</string>
+    <string name="wipe_confirm_cancel">Cancelar</string>
 
     <!-- Introducción (Profesor Oak) -->
     <string name="intro_oak_desc">Profesor Oak</string>
