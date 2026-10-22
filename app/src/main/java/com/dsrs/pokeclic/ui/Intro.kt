@@ -221,8 +221,10 @@ private fun NameEntry(
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val accept = {
-        keyboard?.hide()
-        onAccept()
+        if (name.isNotBlank()) {
+            keyboard?.hide()
+            onAccept()
+        }
     }
 
     Column(

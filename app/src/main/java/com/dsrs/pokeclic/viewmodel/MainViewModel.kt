@@ -185,6 +185,7 @@ class MainViewModel(
     fun onFinishIntro(playerName: String, starterSpeciesId: String) {
         if (SpeciesCatalog.starters.none { it.id == starterSpeciesId }) return
         val name = playerName.trim()
+        if (name.isBlank()) return
         mutate {
             it.copy(
                 playerName = name,
