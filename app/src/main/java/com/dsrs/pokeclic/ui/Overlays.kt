@@ -1,6 +1,6 @@
 /**
- * Capas modales y pantallas auxiliares del shell: encuentro salvaje, selector de
- * Pokémon principal, hoja de opciones y placeholder del mapa.
+ * Capas modales y pantallas auxiliares del shell: selector de Pokémon
+ * principal, hoja de opciones y placeholder del mapa.
  *
  * Todas son **sin estado**: reciben datos ya resueltos por el ViewModel y
  * notifican acciones con lambdas. En particular, el selector de principal recibe
@@ -25,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dsrs.pokeclic.R
-import com.dsrs.pokeclic.model.Encounter
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -44,53 +43,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
-
-
-
-/**
- * Overlay del encuentro salvaje. En la Etapa 1 la captura se resuelve tocando la
- * Pokéball del menú inferior, así que aquí solo se informa del salvaje y de los
- * intentos que quedan. La Etapa 3 lo sustituye por el minijuego de pesca.
- */
-@Composable
-fun CaptureOverlay(
-    encounter: Encounter,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 8.dp,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.catch_title, encounter.speciesName),
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = stringResource(R.string.catch_type, encounter.speciesType.name),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = stringResource(R.string.catch_hint, encounter.attemptsLeft),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-}
 
 
 
