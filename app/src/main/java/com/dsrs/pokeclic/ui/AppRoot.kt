@@ -207,6 +207,7 @@ private fun previewGameState(
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 10L,
+    ownedCount = if (needsStarter) 0 else 3,
     clickPower = 3L,
     maxHp = 5,
     leadName = if (needsStarter) null else "Bulbasaur",

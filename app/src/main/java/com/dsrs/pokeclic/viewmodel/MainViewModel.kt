@@ -612,6 +612,7 @@ class MainViewModel(
         return state.copy(
             zoneName = zone.name,
             zoneRequirement = zone.clickRequirement,
+            ownedCount = ownedCount,
             clickPower = clickPower,
             clicksPerSecond = 0L,
             maxHp = BASE_MAX_HP,

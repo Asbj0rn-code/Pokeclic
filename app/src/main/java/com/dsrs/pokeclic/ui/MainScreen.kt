@@ -252,6 +252,7 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 10L,
+    ownedCount = 3,
     clickPower = 3L,
     maxHp = 5,
     leadName = "Bulbasaur",
@@ -380,7 +381,7 @@ fun GameHud(
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = stringResource(R.string.hud_owned, state.ownedSpecies.size))
+            Text(text = stringResource(R.string.hud_owned, state.ownedCount))
             Text(text = stringResource(R.string.hud_zone_power, state.clickPower))
             Text(text = stringResource(R.string.hud_medals, state.medals.size))
         }
