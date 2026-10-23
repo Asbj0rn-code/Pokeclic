@@ -32,10 +32,16 @@ import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.viewmodel.GameUiState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 /**
  * Pantalla principal y su HUD.
@@ -331,6 +337,10 @@ fun GameHud(
     onWipeGame: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Provisional: diálogo de confirmación del borrado total. Desaparecerá junto
+    // con el botón cuando `action_wipe` se retire (ver `MainViewModel.onWipeGame`).
+    var showWipeConfirm by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -404,9 +414,31 @@ fun GameHud(
         }
 
         // Provisional: borra toda la partida (para testear la intro). Ver
-        // `MainViewModel.onWipeGame`.
-        OutlinedButton(onClick = onWipeGame) {
+        // `MainViewModel.onWipeGame`. Pide confirmación explícita: un toque
+        // accidental no debe poder destruir la partida directamente.
+        OutlinedButton(onClick = { showWipeConfirm = true }) {
             Text(text = stringResource(R.string.action_wipe))
         }
+    }
+
+    if (showWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirm = false },
+            title = { Text(text = stringResource(R.string.wipe_confirm_title)) },
+            text = { Text(text = stringResource(R.string.wipe_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWipeConfirm = false
+                    onWipeGame()
+                }) {
+                    Text(text = stringResource(R.string.wipe_confirm_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirm = false }) {
+                    Text(text = stringResource(R.string.wipe_confirm_cancel))
+                }
+            }
+        )
     }
 }
