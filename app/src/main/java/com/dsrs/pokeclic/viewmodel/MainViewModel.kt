@@ -58,12 +58,14 @@ import kotlin.random.Random
  *
  * @param zones catálogo ordenado de zonas (inyectable para tests).
  * @param random fuente de aleatoriedad (inyectable para tests).
+ * @param nowMs reloj en ms (inyectable para tests: se congelan los combates).
  */
 class MainViewModel(
     private val sprites: SpriteRepository,
     private val store: GameStateStore,
     private val zones: List<Zone> = ZoneCatalog.zones,
-    private val random: Random = Random.Default
+    private val random: Random = Random.Default,
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(derive(restoreState()))
@@ -230,6 +232,9 @@ class MainViewModel(
     /** Empieza el intento de gimnasio de la zona actual, si está disponible. */
     fun onEnterGym() {
         val state = _uiState.value
+        // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
+        // reintento explícito es onGymRetry, y salir es onLeaveGym).
+        if (state.gym != null) return
         if (!state.isGymReady) return
         val gymId = zoneAt(state.zoneIndex).gymId ?: return
         startGymCombat(GymCatalog.require(gymId))
@@ -642,8 +647,6 @@ class MainViewModel(
     )
 
     private fun zoneAt(index: Int): Zone = zones[index.coerceIn(0, zones.lastIndex)]
-
-    private fun nowMs(): Long = System.nanoTime() / 1_000_000L
 
     private companion object {
         const val FRAME_RESET_DELAY_MS = 1_000L
