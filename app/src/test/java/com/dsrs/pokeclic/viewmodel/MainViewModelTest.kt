@@ -7,11 +7,16 @@ import com.dsrs.pokeclic.model.SpriteRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -19,6 +24,7 @@ import org.junit.Test
 class MainViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(dispatcher)
 
     @Before
     fun setUp() {
@@ -34,7 +40,7 @@ class MainViewModelTest {
         var saved: GameSnapshot? = null
         override fun load(): GameSnapshot? = saved
         override fun save(snapshot: GameSnapshot) { saved = snapshot }
-        override fun clear() { saved = null }
+        override fun clear(): Boolean { saved = null; return true }
     }
 
     private class FakeSprites : SpriteRepository {
@@ -42,7 +48,8 @@ class MainViewModelTest {
         override fun frame(direction: Direction, index: Int): Int = 0
     }
 
-    private fun viewModel() = MainViewModel(FakeSprites(), FakeStore())
+    private fun viewModel(nowMs: () -> Long = { System.nanoTime() / 1_000_000L }) =
+        MainViewModel(FakeSprites(), FakeStore(), nowMs = nowMs)
 
     @Test
     fun blankName_doesNotFinishIntro() {
@@ -62,5 +69,35 @@ class MainViewModelTest {
 
         assertEquals("Ash", vm.uiState.value.playerName)
         assertEquals("charmander", vm.uiState.value.starterSpeciesId)
+    }
+
+    /**
+     * FUN-14 (issue #3): entrar al gimnasio con un combate ya en curso no debe
+     * reiniciarlo; el reintento explícito es `onGymRetry`.
+     */
+    @Test
+    fun onEnterGym_doesNotRestartActiveCombat() {
+        var now = 0L
+        val vm = viewModel(nowMs = { now })
+        vm.onFinishIntro("Ash", "charmander")
+        repeat(40) { vm.onPokeBallTouch(0.5f, 0.9f, 1f) }
+
+        assertTrue(vm.uiState.value.isGymReady)
+        vm.onEnterGym()
+        val started = vm.uiState.value.gym
+        assertNotNull(started)
+
+        testScope.advanceTimeBy(400L)
+        testScope.runCurrent()
+        val ticked = vm.uiState.value.gym
+        assertNotNull(ticked)
+        assertTrue(ticked!!.waveRemainingMs < started!!.waveDurationMs)
+
+        vm.onEnterGym()
+
+        val same = vm.uiState.value.gym
+        assertNotNull(same)
+        assertEquals(ticked!!.waveRemainingMs, same!!.waveRemainingMs)
+        assertEquals(ticked.leaderHp, same.leaderHp)
     }
 }
