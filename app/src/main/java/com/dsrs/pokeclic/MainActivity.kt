@@ -66,6 +66,7 @@ class MainActivity : AppCompatActivity() {
                         onWipeGame = mainViewModel::onWipeGame,
                         onEnterGym = mainViewModel::onEnterGym,
                         onLeaveGym = mainViewModel::onLeaveGym,
+                        onAdvanceZone = mainViewModel::onAdvanceZone,
                         onGymRetry = mainViewModel::onGymRetry,
                         onGymProjectileHit = mainViewModel::onGymProjectileHit,
                         onGymEnemyHit = mainViewModel::onGymEnemyHit,

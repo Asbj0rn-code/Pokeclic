@@ -48,8 +48,8 @@ import androidx.compose.runtime.setValue
  *
  * `MainScreen` coloca al entrenador, la hierba alta y el botón de modo; `GameHud`
  * pinta los datos derivados del estado (monedas, zona, principal, medallas y
- * accesos a gimnasio/reset/cambio de principal). Ambos son **sin estado**: no
- * conocen el ViewModel y solo reenvían eventos como lambdas.
+ * accesos a gimnasio/avanzar/reset/cambio de principal). Ambos son **sin estado**:
+ * no conocen el ViewModel y solo reenvían eventos como lambdas.
  */
 
 
@@ -106,6 +106,7 @@ fun MainScreen(
     onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
     onEnterGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
     onOpenLead: () -> Unit,
     onWipeGame: () -> Unit,
     modifier: Modifier = Modifier
@@ -115,6 +116,7 @@ fun MainScreen(
             state = state,
             onReset = onReset,
             onEnterGym = onEnterGym,
+            onAdvanceZone = onAdvanceZone,
             onOpenLead = onOpenLead,
             onWipeGame = onWipeGame,
             modifier = Modifier
@@ -264,6 +266,7 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     leadName = "Bulbasaur",
     leadType = PokemonType.GRASS,
     isGymReady = false,
+    canAdvanceZone = false,
     needsStarter = false
 )
 
@@ -284,6 +287,7 @@ private fun MainScreenStage(state: GameUiState) {
             onTallGrassToggle = {},
             onReset = {},
             onEnterGym = {},
+            onAdvanceZone = {},
             onOpenLead = {},
             onWipeGame = {},
             modifier = Modifier.padding(innerPadding)
@@ -319,8 +323,8 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
 
 /**
  * HUD de juego de la pantalla principal: nombre, monedas, zona y progreso, estado
- * de la hierba alta, principal, medallas y los botones de gimnasio, reset y
- * cambio de principal.
+ * de la hierba alta, principal, medallas y los botones de gimnasio, avanzar, reset
+ * y cambio de principal.
  *
  * Las mejoras comprables (`Mejorar` / `Vida`) se retiraron por no tener UI ni
  * forma de adquirirse; volverán en su propio menú en una etapa futura.
@@ -333,6 +337,7 @@ fun GameHud(
     state: GameUiState,
     onReset: () -> Unit,
     onEnterGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
     onOpenLead: () -> Unit,
     onWipeGame: () -> Unit,
     modifier: Modifier = Modifier
@@ -399,6 +404,15 @@ fun GameHud(
         if (state.isGymReady) {
             Button(onClick = onEnterGym) {
                 Text(text = stringResource(R.string.action_gym, state.gymLeaderName.orEmpty()))
+            }
+        }
+
+        // Avance manual: aparece solo con la barra al 100 % (y, en zonas con
+        // gimnasio, tras ganarlo en la run); nunca en la última zona. Es
+        // complementario al botón de gimnasio: ambos exigen la barra llena.
+        if (state.canAdvanceZone) {
+            Button(onClick = onAdvanceZone) {
+                Text(text = stringResource(R.string.action_advance))
             }
         }
 

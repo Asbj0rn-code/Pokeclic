@@ -21,7 +21,7 @@ import com.dsrs.pokeclic.model.TrainerState
  * - **meta permanente**: [playerName], [coins], [seenSpecies], [rewardedSpecies],
  *   [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
- *   [zoneIndex], [zoneClicks].
+ *   [gymClearedRun], [zoneIndex], [zoneClicks].
  * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [gym],
  *   [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
@@ -42,6 +42,8 @@ data class GameUiState(
     // --- run ---
     val ownedSpecies: Set<String> = emptySet(),
     val leadSpeciesId: String? = null,
+    /** Gimnasios ganados durante la run actual (se vacía al resetear). */
+    val gymClearedRun: Set<String> = emptySet(),
     val zoneIndex: Int = 0,
     val zoneClicks: Long = 0L,
 
@@ -74,6 +76,11 @@ data class GameUiState(
     val leadType: PokemonType? = null,
     val isGymReady: Boolean = false,
     val gymLeaderName: String? = null,
+    /**
+     * Puede pulsarse el botón **Avanzar**: barra al 100 % y, en zonas con
+     * gimnasio, gimnasio ganado durante la run. Siempre `false` en la última zona.
+     */
+    val canAdvanceZone: Boolean = false,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
     val starterOptions: List<StarterOption> = emptyList()
