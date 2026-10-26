@@ -69,6 +69,8 @@ class MainActivity : AppCompatActivity() {
                         onGymRetry = mainViewModel::onGymRetry,
                         onGymProjectileHit = mainViewModel::onGymProjectileHit,
                         onGymEnemyHit = mainViewModel::onGymEnemyHit,
+                        onFishingHold = mainViewModel::onFishingHold,
+                        onFishingResultContinue = mainViewModel::onFishingResultContinue,
                         onFinishIntro = mainViewModel::onFinishIntro,
                         onSelectLead = mainViewModel::onSelectLead,
                         onSelectTab = mainViewModel::onSelectTab,

@@ -22,11 +22,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.AppTab
+import com.dsrs.pokeclic.model.Encounter
+import com.dsrs.pokeclic.model.FishingDefaults
+import com.dsrs.pokeclic.model.FishingGame
+import com.dsrs.pokeclic.model.FishingState
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.viewmodel.GameUiState
+import kotlin.random.Random
 
 /**
  * Shell de la aplicación: contenedor de pantallas + bottom menu siempre visible.
@@ -38,13 +43,15 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
  * Capas, de abajo a arriba:
  * 1. En combate, el fondo del gimnasio a pantalla completa; si no, el contenido
  *    de la pestaña ([AppTab.Home] o [AppTab.Map]).
- * 2. Sobre el contenido: el [GymOverlay] y el [CaptureOverlay].
+ * 2. Sobre el contenido: el [GymOverlay] y el [FishingOverlay] (partida de
+ *    pesca del encuentro actual).
  * 3. Sobre todo: la introducción (onboarding), el [LeadOverlay] y la
  *    [OptionsSheet].
  *
- * Mientras hay combate ([GameUiState.gym] no es nulo) se ocultan la pantalla de
- * contenido **y el bottom menu al completo** (barra y Pokéball): todo el espacio
- * es para la escena, que ya trae sus propios controles.
+ * Mientras hay combate ([GameUiState.gym] no es nulo) o partida de pesca
+ * ([GameUiState.fishing] no es nulo) se ocultan la pantalla de contenido **y el
+ * bottom menu al completo** (barra y Pokéball): todo el espacio es para la
+ * escena, que ya trae sus propios controles.
  *
  * @param state estado completo: juego, pokéball y navegación.
  * @param onPokeBallTouch evento de toque sobre la pokéball (x, y y diámetro en px).
@@ -54,6 +61,9 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
  * @param onEnterGym / @param onLeaveGym entran o abandonan el gimnasio.
  * @param onGymRetry reintenta el combate; @param onGymProjectileHit rompe un
  *   proyectil; @param onGymEnemyHit golpea al líder expuesto.
+ * @param onFishingHold notifica si el jugador mantiene pulsada la pantalla
+ *   durante la partida de pesca (true: pulsado; false: soltado).
+ * @param onFishingResultContinue cierra el resultado de la partida de pesca.
  * @param onFinishIntro cierra la introducción con el nombre y el starter elegidos.
  * @param onSelectLead equipa un principal.
  * @param onSelectTab cambia de pantalla de contenido.
@@ -73,6 +83,8 @@ fun AppRoot(
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
     onGymEnemyHit: () -> Unit,
+    onFishingHold: (Boolean) -> Unit,
+    onFishingResultContinue: () -> Unit,
     onFinishIntro: (playerName: String, starterSpeciesId: String) -> Unit,
     onSelectLead: (String) -> Unit,
     onSelectTab: (AppTab) -> Unit,
@@ -86,6 +98,10 @@ fun AppRoot(
 
     val gym = state.gym
     val gymActive = gym != null
+    val fishing = state.fishing
+    val fishingActive = fishing != null && state.encounter != null && !gymActive
+    // Takeover de escena: combate y pesca ocultan HUD y menú por completo.
+    val sceneActive = gymActive || fishingActive
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo exclusivo del combate: se dibuja a pantalla completa detrás de
@@ -102,9 +118,9 @@ fun AppRoot(
         Scaffold(
             containerColor = if (gymActive) Color.Transparent else MaterialTheme.colorScheme.background,
             bottomBar = {
-                // En combate no se dibuja el menú: la escena del gimnasio ocupa
-                // toda la altura y ya tiene sus propios controles.
-                if (!gymActive) {
+                // En combate o pesca no se dibuja el menú: la escena ocupa toda
+                // la altura y ya trae sus propios controles.
+                if (!sceneActive) {
                     PokemonBottomMenu(
                         isMapSelected = !state.isOptionsOpen && state.contentTab == AppTab.Map,
                         isPokedexSelected = state.isOptionsOpen,
@@ -121,9 +137,9 @@ fun AppRoot(
             }
         ) { innerPadding ->
             Box(Modifier.fillMaxSize().padding(innerPadding)) {
-                // En combate no se dibuja la pantalla de fondo (entrenador,
-                // hierba, HUD...); queda solo la escena sobre el gimnasio.
-                if (!gymActive) {
+                // En combate o pesca no se dibuja la pantalla de fondo
+                // (entrenador, hierba, HUD...); queda solo la escena encima.
+                if (!sceneActive) {
                     when (state.contentTab) {
                         AppTab.Home -> MainScreen(
                             state = state,
@@ -147,9 +163,16 @@ fun AppRoot(
                     )
                 }
 
-                if (!gymActive) {
+                fishing?.let { activeFishing ->
                     state.encounter?.let { encounter ->
-                        CaptureOverlay(encounter = encounter)
+                        if (!gymActive) {
+                            FishingOverlay(
+                                encounter = encounter,
+                                fishing = activeFishing,
+                                onHoldChanged = onFishingHold,
+                                onContinue = onFishingResultContinue
+                            )
+                        }
                     }
                 }
             }
@@ -190,7 +213,9 @@ private const val PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 private fun previewGameState(
     isTallGrass: Boolean = false,
     gym: GymState? = null,
-    needsStarter: Boolean = false
+    needsStarter: Boolean = false,
+    encounter: Encounter? = null,
+    fishing: FishingState? = null
 ) = GameUiState(
     playerName = if (needsStarter) null else "Sergio",
     coins = if (needsStarter) 0L else 40L,
@@ -204,6 +229,8 @@ private fun previewGameState(
     zoneClicks = 4L,
     isTallGrass = isTallGrass,
     gym = gym,
+    encounter = encounter,
+    fishing = fishing,
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 10L,
@@ -242,6 +269,8 @@ private fun AppRootStage(state: GameUiState) {
         onGymRetry = {},
         onGymProjectileHit = {},
         onGymEnemyHit = {},
+        onFishingHold = {},
+        onFishingResultContinue = {},
         onFinishIntro = { _, _ -> },
         onSelectLead = {},
         onSelectTab = {},
@@ -318,4 +347,27 @@ private fun AppRootGymPreview() = MaterialTheme {
 @Composable
 private fun AppRootIntroPreview() = MaterialTheme {
     AppRootStage(state = previewGameState(needsStarter = true))
+}
+
+/** Partida de pesca (Etapa 3): escena a pantalla completa sobre el encuentro. */
+@Preview(
+    name = "5 · Pesca",
+    device = PREVIEW_DEVICE,
+    showSystemUi = true,
+    showBackground = true
+)
+@Composable
+private fun AppRootFishingPreview() = MaterialTheme {
+    val config = FishingDefaults.configFor(captureDifficulty = 0.15f)
+    val encounter = Encounter(
+        speciesId = "rattata",
+        speciesName = "Rattata",
+        speciesType = PokemonType.NORMAL
+    )
+    AppRootStage(
+        state = previewGameState(
+            encounter = encounter,
+            fishing = FishingGame.initialState(config, Random(42))
+        )
+    )
 }
