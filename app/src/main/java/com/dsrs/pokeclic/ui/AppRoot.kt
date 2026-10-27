@@ -53,7 +53,20 @@ import kotlin.random.Random
  * bottom menu al completo** (barra y Pokéball): todo el espacio es para la
  * escena, que ya trae sus propios controles.
  *
+ * Aislamiento de capas modales (issue #21): mientras la intro
+ * ([GameUiState.needsStarter], opaca) esté activa no se compone tampoco el
+ * contenido del juego; con el selector de principal ([GameUiState.isLeadOpen])
+ * o la cortinilla de arranque ([isSplashShowing]) el juego queda visible pero
+ * sin menú. En todos los casos el menú no se compone porque la Pokéball usa un
+ * detector que **ignora el consumo de toques** (`requireUnconsumed = false`), así
+ * que la única forma de aislarla es no dibujarla; el resto de controles del
+ * juego (clicables normales) los bloquea el `Modifier.modalBlocking()` de la
+ * propia capa.
+ *
  * @param state estado completo: juego, pokéball y navegación.
+ * @param isSplashShowing si la cortinilla de arranque ([PokeBallSplash], compuesta
+ *   por la Activity) está cubriendo la pantalla; mientras tanto no se compone el
+ *   menú.
  * @param onPokeBallTouch evento de toque sobre la pokéball (x, y y diámetro en px).
  * @param onTallGrassToggle entra o sale del modo hierba alta.
  * @param onReset reinicia la run conservando la meta.
@@ -74,6 +87,7 @@ import kotlin.random.Random
 @Composable
 fun AppRoot(
     state: GameUiState,
+    isSplashShowing: Boolean = false,
     onPokeBallTouch: (touchX: Float, touchY: Float, sizePx: Float) -> Unit,
     onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
@@ -102,6 +116,11 @@ fun AppRoot(
     val fishingActive = fishing != null && state.encounter != null && !gymActive
     // Takeover de escena: combate y pesca ocultan HUD y menú por completo.
     val sceneActive = gymActive || fishingActive
+    // Aislamiento de capas modales (issue #21): con la intro, el selector de
+    // principal o la cortinilla de arranque activos, el menú no se compone: su
+    // Pokéball ignora el consumo de toques y solo su ausencia la aísla. El
+    // contenido del juego solo desaparece bajo capas opacas (escena e intro).
+    val menuHidden = sceneActive || state.needsStarter || state.isLeadOpen || isSplashShowing
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo exclusivo del combate: se dibuja a pantalla completa detrás de
@@ -119,8 +138,9 @@ fun AppRoot(
             containerColor = if (gymActive) Color.Transparent else MaterialTheme.colorScheme.background,
             bottomBar = {
                 // En combate o pesca no se dibuja el menú: la escena ocupa toda
-                // la altura y ya trae sus propios controles.
-                if (!sceneActive) {
+                // la altura y ya trae sus propios controles. Tampoco bajo las
+                // capas modales (intro, principal, splash): issue #21.
+                if (!menuHidden) {
                     PokemonBottomMenu(
                         isMapSelected = !state.isOptionsOpen && state.contentTab == AppTab.Map,
                         isPokedexSelected = state.isOptionsOpen,
@@ -139,7 +159,8 @@ fun AppRoot(
             Box(Modifier.fillMaxSize().padding(innerPadding)) {
                 // En combate o pesca no se dibuja la pantalla de fondo
                 // (entrenador, hierba, HUD...); queda solo la escena encima.
-                if (!sceneActive) {
+                // La intro es opaca, así que debajo tampoco se compone nada.
+                if (!sceneActive && !state.needsStarter) {
                     when (state.contentTab) {
                         AppTab.Home -> MainScreen(
                             state = state,

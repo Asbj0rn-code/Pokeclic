@@ -3,6 +3,10 @@
  *
  * Es puramente visual: su temporización no afecta al juego y avisa al llamante
  * cuando termina. No conoce el ViewModel ni persiste nada.
+ *
+ * El nodo raíz aplica `Modifier.modalBlocking()` (issue #21): durante la
+ * cortinilla ningún toque llega al juego que se está revelando; en `AppRoot`,
+ * además, no se compone el menú mientras la cortinilla está visible.
  */
 package com.dsrs.pokeclic.ui
 
@@ -63,7 +67,7 @@ fun PokeBallSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
 
     if (!visible) return
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().modalBlocking()) {
         // Recorrido en px: la altura de la pantalla basta para sacar la imagen
         // (que ocupa toda la pantalla) por completo.
         val travel = constraints.maxHeight.toFloat()
