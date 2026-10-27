@@ -52,6 +52,11 @@ import androidx.compose.ui.unit.sp
  *
  * Es **sin estado**: recibe los candidatos y la selección como datos, y avisa por
  * lambda.
+ *
+ * El nodo raíz aplica `Modifier.modalBlocking()` (issue #21): los toques fuera
+ * de sus controles se consumen en la capa y no llegan al juego dimado de debajo
+ * (la Pokéball del menú, además, no se compone mientras esta capa esté abierta,
+ * ver `AppRoot`).
  */
 @Composable
 fun LeadOverlay(
@@ -64,7 +69,8 @@ fun LeadOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f)),
+            .background(Color.Black.copy(alpha = 0.6f))
+            .modalBlocking(),
         contentAlignment = Alignment.Center
     ) {
         Surface(

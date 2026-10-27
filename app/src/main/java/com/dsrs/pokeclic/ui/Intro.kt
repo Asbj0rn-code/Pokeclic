@@ -73,6 +73,10 @@ private const val MAX_NAME_LENGTH = 12
  * entrega juntos al terminar con [onFinish], de modo que nada se persiste hasta
  * que la intro se completa (si se cierra a medias, vuelve a empezar).
  *
+ * El nodo raíz aplica `Modifier.modalBlocking()` (issue #21): la intro es opaca
+ * y debe aislar por completo el juego, de modo que ningún toque fuera de sus
+ * controles llegue a la UI oculta de debajo.
+ *
  * @param starters opciones de starter ya resueltas por el ViewModel.
  * @param onFinish nombre recortado y id del starter elegido.
  */
@@ -131,7 +135,8 @@ fun IntroOverlay(
         modifier = modifier
             .fillMaxSize()
             .background(Color.White)
-            .imePadding(),
+            .imePadding()
+            .modalBlocking(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Retrato de Oak, centrado arriba.
