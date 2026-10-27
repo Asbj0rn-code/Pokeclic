@@ -146,8 +146,7 @@ fun AppRoot(
                             onTallGrassToggle = onTallGrassToggle,
                             onReset = onReset,
                             onEnterGym = onEnterGym,
-                            onOpenLead = onOpenLead,
-                            onWipeGame = onWipeGame
+                            onOpenLead = onOpenLead
                         )
                         AppTab.Map -> MapScreen()
                     }
@@ -193,7 +192,10 @@ fun AppRoot(
     }
 
     if (state.isOptionsOpen) {
-        OptionsSheet(onDismiss = onCloseOptions)
+        OptionsSheet(
+            onDismiss = onCloseOptions,
+            onWipeGame = onWipeGame
+        )
     }
 }
 
