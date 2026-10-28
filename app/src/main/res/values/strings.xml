@@ -57,6 +57,23 @@
     <string name="gym_retry">Reintentar</string>
     <string name="gym_leave">Rendirse</string>
 
+    <!-- Entrada al gimnasio: bienvenida, tutorial y cartel de arranque -->
+    <string name="gym_welcome_title">¡Bienvenido al gimnasio de %1$s!</string>
+    <string name="gym_welcome_body">El líder te espera dentro. ¿Quieres que te explique rápido cómo funciona el combate?</string>
+    <string name="gym_intro_watch">Ver tutorial</string>
+    <string name="gym_intro_skip">Omitir</string>
+    <string name="gym_tutorial_title">Cómo funciona el combate</string>
+    <string name="gym_tutorial_step1_title">Aguanta la oleada</string>
+    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance.</string>
+    <string name="gym_tutorial_step2_title">Ataca al líder expuesto</string>
+    <string name="gym_tutorial_step2_text">La stamina del líder baja sola; al llegar a cero queda expuesto y sin rocas: tócalo para restarle vida con ventaja de tipo.</string>
+    <string name="gym_tutorial_step3_title">Ojo con la furia</string>
+    <string name="gym_tutorial_step3_text">Si su vida baja a un cuarto o menos se enfurece: las rocas caen más rápido y más apretadas. Aguanta y repite hasta vencerle.</string>
+    <string name="gym_tutorial_step_number">Paso %1$d · %2$s</string>
+    <string name="gym_tutorial_accept">Entendido</string>
+    <string name="gym_tutorial_repeat">Repetir tutorial</string>
+    <string name="gym_countdown">¡Que comience el combate!</string>
+
     <!-- HUD -->
     <string name="hud_medals">Medallas: %d</string>
     <string name="hud_trainer">Entrenador: %s</string>

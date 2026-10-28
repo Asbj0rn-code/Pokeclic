@@ -18,6 +18,17 @@ enum class AppTab {
     Home
 }
 
+/**
+ * Capa modal de **entrada al gimnasio**: bienvenida, tutorial y cartel de
+ * arranque del combate ("que comience el combate"). Transitoria: nunca se
+ * persiste y convive con `gym == null` salvo en [Countdown].
+ */
+enum class GymIntroPhase {
+    WELCOME,
+    TUTORIAL,
+    COUNTDOWN
+}
+
 /** Dirección a la que mira el entrenador (y en la que anima). */
 enum class Direction {
     FRONT,

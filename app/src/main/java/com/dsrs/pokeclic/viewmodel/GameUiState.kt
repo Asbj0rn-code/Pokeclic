@@ -3,6 +3,7 @@ package com.dsrs.pokeclic.viewmodel
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
@@ -58,6 +59,8 @@ data class GameUiState(
 
     // --- gimnasio ---
     val gym: GymState? = null,
+    /** Capa de entrada al gimnasio (bienvenida/tutorial/cartel); no se persiste. */
+    val gymIntro: GymIntroPhase? = null,
 
     // --- entrenador (visual) ---
     val trainer: TrainerState = TrainerState(),
