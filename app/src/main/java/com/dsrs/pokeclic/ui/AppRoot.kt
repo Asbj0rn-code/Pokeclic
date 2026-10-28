@@ -72,6 +72,7 @@ import kotlin.random.Random
  * @param onReset reinicia la run conservando la meta.
  * @param onWipeGame borra toda la partida (provisional, para testear la intro).
  * @param onEnterGym / @param onLeaveGym entran o abandonan el gimnasio.
+ * @param onAdvanceZone pulsa el botón Avanzar al llenarse la barra de la zona.
  * @param onGymRetry reintenta el combate; @param onGymProjectileHit rompe un
  *   proyectil; @param onGymEnemyHit golpea al líder expuesto.
  * @param onFishingHold notifica si el jugador mantiene pulsada la pantalla
@@ -94,6 +95,7 @@ fun AppRoot(
     onWipeGame: () -> Unit,
     onEnterGym: () -> Unit,
     onLeaveGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
     onGymEnemyHit: () -> Unit,
@@ -167,6 +169,7 @@ fun AppRoot(
                             onTallGrassToggle = onTallGrassToggle,
                             onReset = onReset,
                             onEnterGym = onEnterGym,
+                            onAdvanceZone = onAdvanceZone,
                             onOpenLead = onOpenLead
                         )
                         AppTab.Map -> MapScreen()
@@ -289,6 +292,7 @@ private fun AppRootStage(state: GameUiState) {
         onWipeGame = {},
         onEnterGym = {},
         onLeaveGym = {},
+        onAdvanceZone = {},
         onGymRetry = {},
         onGymProjectileHit = {},
         onGymEnemyHit = {},

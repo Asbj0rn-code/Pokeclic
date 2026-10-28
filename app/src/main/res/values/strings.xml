@@ -63,6 +63,7 @@
     <string name="hud_lead">Principal: %s</string>
     <string name="hud_lead_none">—</string>
     <string name="action_gym">Gimnasio: %s</string>
+    <string name="action_advance">Avanzar</string>
     <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
     <string name="action_wipe">Borrar partida (test)</string>
     <string name="wipe_confirm_title">¿Borrar partida?</string>

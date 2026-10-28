@@ -65,36 +65,45 @@ class ModelTest {
         assertEquals(true, projectile.hasLanded(3_000L))
     }
 
-    @Test
-    fun zoneWithPendingGymCapsAtThreshold() {
-        val zone = Zone("z", "Z", 100L, listOf("pidgey"), gymId = "brock")
-        val advance = advanceZone(zone, 0, 90L, 20L, medals = emptySet(), lastIndex = 2)
-        assertEquals(0, advance.zoneIndex)
-        assertEquals(100L, advance.zoneClicks)
-    }
+    // --- Zonas: avance manual -------------------------------------------------
 
     @Test
-    fun medaledGymZoneIsSkipped() {
-        val zone = Zone("z", "Z", 100L, listOf("pidgey"), gymId = "brock")
-        val advance = advanceZone(zone, 0, 90L, 20L, medals = setOf("brock"), lastIndex = 2)
-        assertEquals(1, advance.zoneIndex)
-        assertEquals(0L, advance.zoneClicks)
-    }
-
-    @Test
-    fun normalZoneAdvancesAtThreshold() {
+    fun zoneClicksAccumulateBeforeThreshold() {
         val zone = Zone("z", "Z", 100L, listOf("pidgey"))
-        val advance = advanceZone(zone, 0, 50L, 60L, medals = emptySet(), lastIndex = 2)
-        assertEquals(1, advance.zoneIndex)
-        assertEquals(0L, advance.zoneClicks)
+        assertEquals(60L, advanceZone(zone, 50L, 10L))
+    }
+
+    @Test
+    fun normalZoneCapsAtThreshold() {
+        val zone = Zone("z", "Z", 100L, listOf("pidgey"))
+        assertEquals(100L, advanceZone(zone, 50L, 60L))
+    }
+
+    @Test
+    fun gymZoneCapsAtThreshold() {
+        val zone = Zone("z", "Z", 100L, listOf("pidgey"), gymId = "brock")
+        assertEquals(100L, advanceZone(zone, 90L, 20L))
     }
 
     @Test
     fun lastZoneCapsProgress() {
         val zone = Zone("z", "Z", 100L, listOf("pidgey"), gymId = "brock")
-        val advance = advanceZone(zone, 2, 90L, 20L, medals = setOf("brock"), lastIndex = 2)
-        assertEquals(2, advance.zoneIndex)
-        assertEquals(100L, advance.zoneClicks)
+        assertEquals(100L, advanceZone(zone, 90L, 20L))
+    }
+
+    @Test
+    fun gymIsPendingUntilClearedThisRun() {
+        val zone = Zone("z", "Z", 100L, listOf("pidgey"), gymId = "brock")
+        assertTrue(isGymPending(zone, emptySet()))
+        // Solo cuenta haber ganado ESTE gimnasio en la run: otra medalla no exime.
+        assertFalse(isGymPending(zone, setOf("brock")))
+        assertTrue(isGymPending(zone, setOf("misty")))
+    }
+
+    @Test
+    fun zoneWithoutGym_isNeverPending() {
+        val zone = Zone("z", "Z", 100L, listOf("pidgey"))
+        assertFalse(isGymPending(zone, emptySet()))
     }
 
     // --- Combate de gimnasio --------------------------------------------------

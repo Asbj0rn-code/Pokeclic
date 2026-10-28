@@ -523,6 +523,7 @@ fun MainScreen(
     onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
     onEnterGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
     onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -557,6 +558,7 @@ fun MainScreen(
             state = state,
             onReset = onReset,
             onEnterGym = onEnterGym,
+            onAdvanceZone = onAdvanceZone,
             onOpenLead = onOpenLead,
             modifier = Modifier
                 .fillMaxWidth()
@@ -768,6 +770,7 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     leadName = "Bulbasaur",
     leadType = PokemonType.GRASS,
     isGymReady = false,
+    canAdvanceZone = false,
     needsStarter = false
 )
 
@@ -788,6 +791,7 @@ private fun MainScreenStage(state: GameUiState) {
             onTallGrassToggle = {},
             onReset = {},
             onEnterGym = {},
+            onAdvanceZone = {},
             onOpenLead = {},
             modifier = Modifier.padding(innerPadding)
         )
@@ -825,8 +829,9 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
  * chasis de acero biselado con sombra dura, cabecera a la roja Pokédex con
  * LEDs, placas de diálogo crema para entrenador/monedas/zona/principal,
  * lecturas LCD para estadísticas rápidas, barra EXP cuadrada con contador
- * superpuesto y barra HP para la búsqueda en hierba alta. Los botones se
- * hunden físicamente al pulsarlos.
+ * superpuesto y barra HP para la búsqueda en hierba alta. Los botones de
+ * gimnasio, avanzar, reset y cambio de principal se hunden físicamente al
+ * pulsarlos.
  *
  * Cada vez que ganan monedas (p. ej. tras una captura), un número dorado
  * flotante aparece junto a la placa de monedas y se desvanece.
@@ -839,6 +844,7 @@ fun GameHud(
     state: GameUiState,
     onReset: () -> Unit,
     onEnterGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
     onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -987,6 +993,17 @@ fun GameHud(
                         base = RetroColors.PokedexRed,
                         edge = RetroColors.PokedexDarkRed,
                         onClick = onEnterGym,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Avance manual: aparece solo con la barra al 100 % (y, en zonas
+                // con gimnasio, tras ganarlo en la run); nunca en la última zona.
+                // Es complementario al botón de gimnasio: ambos exigen la barra.
+                if (state.canAdvanceZone) {
+                    RetroButton(
+                        label = stringResource(R.string.action_advance),
+                        onClick = onAdvanceZone,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

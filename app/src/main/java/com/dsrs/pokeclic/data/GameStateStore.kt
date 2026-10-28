@@ -53,6 +53,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
             starterBond = prefs.getInt(KEY_BOND, 0),
             ownedSpecies = decodeSet(prefs.getString(KEY_OWNED, null)),
             leadSpeciesId = decodeNullable(prefs.getString(KEY_LEAD, null)),
+            gymClearedRun = decodeSet(prefs.getString(KEY_GYM_CLEARED_RUN, null)),
             zoneIndex = prefs.getInt(KEY_ZONE_INDEX, 0),
             zoneClicks = prefs.getLong(KEY_ZONE_CLICKS, 0L)
         )
@@ -69,6 +70,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
             .putInt(KEY_BOND, snapshot.starterBond)
             .putString(KEY_OWNED, encodeSet(snapshot.ownedSpecies))
             .putString(KEY_LEAD, encodeNullable(snapshot.leadSpeciesId))
+            .putString(KEY_GYM_CLEARED_RUN, encodeSet(snapshot.gymClearedRun))
             .putInt(KEY_ZONE_INDEX, snapshot.zoneIndex)
             .putLong(KEY_ZONE_CLICKS, snapshot.zoneClicks)
             .apply()
@@ -100,6 +102,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
         const val KEY_BOND = "starter_bond"
         const val KEY_OWNED = "owned"
         const val KEY_LEAD = "lead"
+        const val KEY_GYM_CLEARED_RUN = "gym_cleared_run"
         const val KEY_ZONE_INDEX = "zone_index"
         const val KEY_ZONE_CLICKS = "zone_clicks"
         const val ITEM_SEPARATOR = ","

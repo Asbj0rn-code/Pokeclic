@@ -25,6 +25,7 @@ import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advanceZone
+import com.dsrs.pokeclic.model.isGymPending
 import com.dsrs.pokeclic.model.typeDamageMultiplier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -46,8 +47,10 @@ import kotlin.random.Random
  * el único [uiState] y le envía eventos.
  *
  * Reglas clave:
- * - En una zona, cada toque suma [GameUiState.clickPower] clics de avance; una
- *   zona con gimnasio no se supera hasta ganar su medalla.
+ * - En una zona, cada toque suma [GameUiState.clickPower] clics de avance; el
+ *   progreso **se capa en el umbral**: el avance a la siguiente zona es manual,
+ *   vía `onAdvanceZone`. En zonas con gimnasio, el requisito extra es haberlo
+ *   ganado dentro de la run actual (`gymClearedRun`).
  * - En hierba alta, los toques **no** cuentan para el avance: marcan actividad de
  *   caminar (temporizador que solo corre con toques recientes).
  * - Con un encuentro activo se juega el minijuego de pesca (`FishingGame`): la
@@ -154,8 +157,9 @@ class MainViewModel(
 
     /**
      * Reset manual: conserva la meta (monedas, visto, recompensadas, medallas,
-     * starter y su vínculo) y vacía lo de la run (en posesión, principal, zona y
-     * progreso). El principal vuelve al starter.
+     * starter y su vínculo) y vacía lo de la run (en posesión, principal,
+     * gimnasios ganados en la run, zona y progreso). El principal vuelve al
+     * starter.
      */
     fun onReset() {
         gymJob?.cancel()
@@ -164,6 +168,7 @@ class MainViewModel(
             state.copy(
                 ownedSpecies = emptySet(),
                 leadSpeciesId = state.starterSpeciesId,
+                gymClearedRun = emptySet(),
                 zoneIndex = 0,
                 zoneClicks = 0L,
                 isTallGrass = false,
@@ -427,16 +432,21 @@ class MainViewModel(
         }
     }
 
+    /**
+     * Victoria del gimnasio: cierra el combate y da sus recompensas, pero **no
+     * autoavanza** la zona: la medalla entra en la meta permanente y el gimnasio
+     * en `gymClearedRun` (requisito del botón «Avanzar» en esta run). Si la
+     * barra ya estaba al 100 %, el botón queda disponible inmediatamente.
+     */
     private fun winGym(config: Gym) {
         gymJob?.cancel()
         mutate { state ->
             state.copy(
                 gym = null,
                 medals = state.medals + config.id,
+                gymClearedRun = state.gymClearedRun + config.id,
                 coins = state.coins + config.coinReward,
-                starterBond = if (state.starterSpeciesId != null) state.starterBond + 1 else state.starterBond,
-                zoneIndex = (state.zoneIndex + 1).coerceAtMost(zones.lastIndex),
-                zoneClicks = 0L
+                starterBond = if (state.starterSpeciesId != null) state.starterBond + 1 else state.starterBond
             )
         }
     }
@@ -529,21 +539,27 @@ class MainViewModel(
     }
 
     /**
-     * Suma [amount] clics de avance a la zona actual. Una zona que **termina en
-     * gimnasio** no medallado se queda en el umbral (queda `isGymReady`); el
-     * resto avanza a la siguiente zona al alcanzarlo.
+     * Suma [amount] clics de avance a la zona actual. El resultado se **capa en
+     * el umbral** en todo caso: la zona queda a tope (barra al 100 %) y es el
+     * botón Avanzar el que mueve al jugador en lugar del umbral. La llamada
+     * también la usa la producción pasiva del bucle de CPS.
      */
     private fun addZoneClicks(state: GameUiState, amount: Long = state.clickPower): GameUiState {
         val zone = zoneAt(state.zoneIndex)
-        val advance = advanceZone(
-            zone = zone,
-            currentIndex = state.zoneIndex,
-            currentClicks = state.zoneClicks,
-            amount = amount,
-            medals = state.medals,
-            lastIndex = zones.lastIndex
-        )
-        return state.copy(zoneIndex = advance.zoneIndex, zoneClicks = advance.zoneClicks)
+        return state.copy(zoneClicks = advanceZone(zone, state.zoneClicks, amount))
+    }
+
+    /**
+     * Botón **Avanzar**: si `canAdvanceZone` (barra al 100 % y, en zonas con
+     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0;
+     * en caso contrario es un no-op. En la última zona nunca sufre cambios.
+     */
+    fun onAdvanceZone() = mutate { state ->
+        if (state.canAdvanceZone) {
+            state.copy(zoneIndex = state.zoneIndex + 1, zoneClicks = 0L)
+        } else {
+            state
+        }
     }
 
     /**
@@ -654,6 +670,7 @@ class MainViewModel(
             starterBond = saved.starterBond,
             ownedSpecies = saved.ownedSpecies,
             leadSpeciesId = saved.leadSpeciesId,
+            gymClearedRun = saved.gymClearedRun,
             zoneIndex = saved.zoneIndex,
             zoneClicks = saved.zoneClicks,
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
@@ -699,8 +716,14 @@ class MainViewModel(
             StarterOption(id = it.id, name = it.name, type = it.type)
         }
 
-        val gymPending = zone.gymId != null && zone.gymId !in state.medals
+        val gymPending = isGymPending(zone, state.gymClearedRun)
         val isGymReady = gymPending && state.zoneClicks >= zone.clickRequirement
+
+        // Botón Avanzar: barra llena y, en zonas con gimnasio, ganado en la run
+        // (lo excluye `gymPending`). En la última zona no hay botón.
+        val canAdvanceZone = state.zoneIndex < zones.lastIndex &&
+            state.zoneClicks >= zone.clickRequirement &&
+            !gymPending
 
         return state.copy(
             zoneName = zone.name,
@@ -713,6 +736,7 @@ class MainViewModel(
             leadType = lead?.type,
             isGymReady = isGymReady,
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
+            canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,
             leadOptions = leadOptions,
             starterOptions = starterOptions
@@ -729,6 +753,7 @@ class MainViewModel(
         starterBond = starterBond,
         ownedSpecies = ownedSpecies,
         leadSpeciesId = leadSpeciesId,
+        gymClearedRun = gymClearedRun,
         zoneIndex = zoneIndex,
         zoneClicks = zoneClicks
     )

@@ -95,8 +95,8 @@ data class StarterOption(
  * @param name nombre mostrado.
  * @param clickRequirement clics de zona necesarios para desbloquear el avance.
  * @param wildSpeciesIds especies que pueden aparecer en su hierba alta.
- * @param gymId si no es `null`, la zona **termina** en ese gimnasio: al alcanzar
- *   el umbral no se avanza hasta que se gane su medalla.
+ * @param gymId si no es `null`, la zona **termina** en ese gimnasio: el botón de
+ *   avance no aparece hasta ganarlo dentro de la run actual.
  */
 data class Zone(
     val id: String,
@@ -106,43 +106,29 @@ data class Zone(
     val gymId: String? = null
 )
 
-/** Resultado de aplicar clics a una zona: nueva posición y nuevo progreso. */
-data class ZoneAdvance(
-    val zoneIndex: Int,
-    val zoneClicks: Long
-)
-
 /**
- * Calcula a qué zona y con qué progreso se queda el jugador tras sumar [amount]
- * clics en la zona [zone].
+ * Calcula el progreso que queda en la zona [zone] tras sumar [amount] clics.
  *
  * Reglas:
- * - Si la zona **termina en un gimnasio no medallado**, el progreso se capa en el
- *   umbral y no se avanza: hay que ganarlo primero.
- * - Si ya está medallado (p. ej. tras un reset), se avanza como una zona normal.
- * - En la última zona no se puede avanzar: se capa el progreso.
+ * - El avance de zona ya **no es automático**: al alcanzar el umbral el
+ *   progreso se capa (barra al 100 %) y es el jugador quien pulsa el botón
+ *   «Avanzar», cuyo requisito se calcula aparte (ver `canAdvanceZone`).
+ * - En ninguna zona (normal, de gimnasio o última) hay overshoot del umbral.
  *
  * Es una función pura para poder testearla en la JVM sin el ViewModel.
  */
-fun advanceZone(
-    zone: Zone,
-    currentIndex: Int,
-    currentClicks: Long,
-    amount: Long,
-    medals: Set<String>,
-    lastIndex: Int
-): ZoneAdvance {
-    val total = currentClicks + amount
-    val reached = total >= zone.clickRequirement
-    val gymPending = zone.gymId != null && zone.gymId !in medals
+fun advanceZone(zone: Zone, currentClicks: Long, amount: Long): Long =
+    (currentClicks + amount).coerceAtMost(zone.clickRequirement)
 
-    return when {
-        reached && gymPending -> ZoneAdvance(currentIndex, zone.clickRequirement)
-        reached && currentIndex < lastIndex -> ZoneAdvance(currentIndex + 1, 0L)
-        currentIndex >= lastIndex -> ZoneAdvance(currentIndex, total.coerceAtMost(zone.clickRequirement))
-        else -> ZoneAdvance(currentIndex, total)
-    }
-}
+/**
+ * ¿Está pendiente de ganar el gimnasio de [zone] durante la run actual?
+ *
+ * A diferencia de las medallas (meta permanente que sobrevive al reset), solo
+ * cuentan los gimnasios ganados **en esta run**: una medalla vieja no exime de
+ * repetir el combate tras resetear.
+ */
+fun isGymPending(zone: Zone, gymClearedRun: Set<String>): Boolean =
+    zone.gymId != null && zone.gymId !in gymClearedRun
 
 /**
  * Subconjunto persistible del estado de juego: solo lo que debe sobrevivir a
@@ -151,8 +137,8 @@ fun advanceZone(
  *
  * **Permanentes**: `playerName`, `seenSpecies`, `rewardedSpecies`, `medals`,
  * `starterSpeciesId` y `starterBond`. **De la run**: `ownedSpecies`,
- * `leadSpeciesId` y el progreso de zona; se vacían (o vuelven al starter) al
- * resetear.
+ * `leadSpeciesId`, `gymClearedRun` y el progreso de zona; se vacían (o vuelven
+ * al starter) al resetear.
  *
  * Las mejoras comprables (potencia de clic y vida) se retiraron por no tener UI
  * ni forma de adquirirse; volverán como sistema de progresión en una etapa
@@ -168,6 +154,7 @@ data class GameSnapshot(
     val starterBond: Int = 0,
     val ownedSpecies: Set<String> = emptySet(),
     val leadSpeciesId: String? = null,
+    val gymClearedRun: Set<String> = emptySet(),
     val zoneIndex: Int = 0,
     val zoneClicks: Long = 0L
 )
