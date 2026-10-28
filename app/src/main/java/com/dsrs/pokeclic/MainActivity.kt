@@ -60,6 +60,10 @@ class MainActivity : AppCompatActivity() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     AppRoot(
                         state = state,
+                        // Aislamiento de la cortinilla (issue #21): mientras se
+                        // muestre, AppRoot no compone el menú y la propia
+                        // cortinilla consume los toques.
+                        isSplashShowing = showSplash,
                         onPokeBallTouch = mainViewModel::onPokeBallTouch,
                         onTallGrassToggle = mainViewModel::onTallGrassToggle,
                         onReset = mainViewModel::onReset,
@@ -70,6 +74,8 @@ class MainActivity : AppCompatActivity() {
                         onGymRetry = mainViewModel::onGymRetry,
                         onGymProjectileHit = mainViewModel::onGymProjectileHit,
                         onGymEnemyHit = mainViewModel::onGymEnemyHit,
+                        onFishingHold = mainViewModel::onFishingHold,
+                        onFishingResultContinue = mainViewModel::onFishingResultContinue,
                         onFinishIntro = mainViewModel::onFinishIntro,
                         onSelectLead = mainViewModel::onSelectLead,
                         onSelectTab = mainViewModel::onSelectTab,

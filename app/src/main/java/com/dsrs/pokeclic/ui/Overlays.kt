@@ -1,6 +1,6 @@
 /**
- * Capas modales y pantallas auxiliares del shell: encuentro salvaje, selector de
- * Pokémon principal, hoja de opciones y placeholder del mapa.
+ * Capas modales y pantallas auxiliares del shell: selector de Pokémon
+ * principal, hoja de opciones y placeholder del mapa.
  *
  * Todas son **sin estado**: reciben datos ya resueltos por el ViewModel y
  * notifican acciones con lambdas. En particular, el selector de principal recibe
@@ -9,6 +9,7 @@
 package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dsrs.pokeclic.R
-import com.dsrs.pokeclic.model.Encounter
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -34,63 +34,28 @@ import com.dsrs.pokeclic.model.LeadOption
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.unit.sp
-
-
-
-/**
- * Overlay del encuentro salvaje. En la Etapa 1 la captura se resuelve tocando la
- * Pokéball del menú inferior, así que aquí solo se informa del salvaje y de los
- * intentos que quedan. La Etapa 3 lo sustituye por el minijuego de pesca.
- */
-@Composable
-fun CaptureOverlay(
-    encounter: Encounter,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 8.dp,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.catch_title, encounter.speciesName),
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = stringResource(R.string.catch_type, encounter.speciesType.name),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = stringResource(R.string.catch_hint, encounter.attemptsLeft),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-}
 
 
 
@@ -100,6 +65,11 @@ fun CaptureOverlay(
  *
  * Es **sin estado**: recibe los candidatos y la selección como datos, y avisa por
  * lambda.
+ *
+ * El nodo raíz aplica `Modifier.modalBlocking()` (issue #21): los toques fuera
+ * de sus controles se consumen en la capa y no llegan al juego dimado de debajo
+ * (la Pokéball del menú, además, no se compone mientras esta capa esté abierta,
+ * ver `AppRoot`).
  */
 @Composable
 fun LeadOverlay(
@@ -112,7 +82,8 @@ fun LeadOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f)),
+            .background(Color.Black.copy(alpha = 0.6f))
+            .modalBlocking(),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -174,10 +145,15 @@ private fun LeadRow(option: LeadOption, selected: Boolean, onClick: () -> Unit) 
  *
  * @param onDismiss se invoca al cerrar (arrastre hacia abajo, toque fuera o
  *   botón atrás). El estado lo actualiza el `MainViewModel`.
+ * @param onWipeGame borra toda la partida (provisional: fila de test que vive
+ *   aquí de momento, ver `MainViewModel.onWipeGame`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OptionsSheet(onDismiss: () -> Unit) {
+fun OptionsSheet(
+    onDismiss: () -> Unit,
+    onWipeGame: () -> Unit
+) {
     // Sin estado intermedio: se abre directamente al contenido, como hacía el
     // fragment con STATE_EXPANDED.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -186,16 +162,55 @@ fun OptionsSheet(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         sheetState = sheetState
     ) {
-        OptionsContent()
+        ImmersiveModalWindow()
+        OptionsContent(onWipeGame = onWipeGame)
     }
 }
 
 /**
- * Contenido de la hoja de opciones. Placeholder: título, separador y dos filas
- * decorativas sin acción asociada.
+ * Reproduce el modo inmersivo del tema (`windowFullscreen`) dentro de las
+ * ventanas modales de Compose (`ModalBottomSheet`, `AlertDialog`).
+ *
+ * Esas capas abren una **ventana propia** que no hereda el flag del Activity,
+ * así que al mostrar la hoja de opciones reaparecía la barra de estado del
+ * teléfono (no el contenido: la propia ventana modal). Este composable busca la
+ * ventana dueña de la composición y la vuelve a poner a pantalla completa.
+ * El usuario siempre puede revelar la barra con un deslizamiento.
  */
 @Composable
-fun OptionsContent() {
+private fun ImmersiveModalWindow() {
+    val view = LocalView.current
+    val window = remember(view) {
+        var current: Any? = view
+        while (current is android.view.View) {
+            val provider = current as? DialogWindowProvider
+            if (provider != null) return@remember provider.window
+            current = current.parent
+        }
+        null
+    }
+
+    DisposableEffect(window) {
+        val window = window ?: return@DisposableEffect onDispose { }
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        onDispose { }
+    }
+}
+
+/**
+ * Contenido de la hoja de opciones: título, separador y dos filas decorativas
+ * sin acción asociada, más la fila provisional de borrado de partida (test),
+ * que pide confirmación explícita antes de destruir la partida.
+ */
+@Composable
+fun OptionsContent(onWipeGame: () -> Unit = {}) {
+    // Confirmación del borrado: un toque accidental no debe poder destruir la
+    // partida directamente.
+    var showWipeConfirm by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
         Text(
             text = stringResource(R.string.options_title),
@@ -215,6 +230,36 @@ fun OptionsContent() {
             headlineContent = { Text(stringResource(R.string.options_about)) },
             leadingContent = { Icon(Icons.Filled.Info, contentDescription = null) },
             modifier = Modifier.fillMaxWidth()
+        )
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.action_wipe)) },
+            leadingContent = { Icon(Icons.Filled.Delete, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().clickable(onClick = { showWipeConfirm = true })
+        )
+    }
+
+    if (showWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirm = false },
+            title = {
+                ImmersiveModalWindow()
+                Text(text = stringResource(R.string.wipe_confirm_title))
+            },
+            text = { Text(text = stringResource(R.string.wipe_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWipeConfirm = false
+                    onWipeGame()
+                }) {
+                    Text(text = stringResource(R.string.wipe_confirm_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirm = false }) {
+                    Text(text = stringResource(R.string.wipe_confirm_cancel))
+                }
+            }
         )
     }
 }

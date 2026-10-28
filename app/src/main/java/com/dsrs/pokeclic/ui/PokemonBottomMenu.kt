@@ -12,9 +12,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -22,19 +20,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,8 +48,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -58,12 +61,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
@@ -85,7 +88,7 @@ import androidx.compose.ui.graphics.Shape
  */
 object BottomMenuDefaults {
 
-    /** Altura de la barra blanca. */
+    /** Altura de la barra de chasis de acero. */
     val BAR_HEIGHT: Dp = 96.dp
 
     // ───────────────────────── Pokéball en reposo ─────────────────────────
@@ -151,8 +154,8 @@ object BottomMenuDefaults {
      * gesto, así que la Pokéball no llega a invadir la barra.
      *
      * Igual de libre que [NOTCH_WIDTH]: ponle `POKEBALL_EXPANDED_SIZE` para que
-     * el hueco mida lo mismo que la bola, o menos si quieres que quede barra
-     * blanca a los lados. Ponlo igual que [NOTCH_WIDTH] si prefieres que el hueco
+     * el hueco mida lo mismo que la bola, o menos si quieres que quede chasis a
+     * los lados. Ponlo igual que [NOTCH_WIDTH] si prefieres que el hueco
      * no cambie de tamaño durante el gesto.
      *
      * Con un valor muy grande la barra se queda partida en dos tramos, porque el
@@ -173,8 +176,8 @@ object BottomMenuDefaults {
      * ```
      *
      * Con un valor **menor** que esa cuenta la bola queda medio enterrada en la
-     * barra blanca: se ve maciza, no flotando. Con uno bastante mayor, la barra
-     * se queda sin apenas franja blanca en el centro.
+     * barra de acero: se ve maciza, no flotando. Con uno bastante mayor, la barra
+     * se queda sin apenas franja de chasis en el centro.
      */
     val NOTCH_DEPTH: Dp = 60.dp
 
@@ -259,8 +262,8 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
 }
 
 /**
- * Bottom menu de la aplicación: barra blanca con hendidura central y Pokéball
- * interactiva.
+ * Bottom menu de la aplicación: barra de chasis de acero con hendidura central
+ * y Pokéball interactiva.
  *
  * La Pokéball es el control principal y tiene tres comportamientos:
  *
@@ -347,44 +350,85 @@ fun PokemonBottomMenu(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .height(BottomMenuDefaults.CONTAINER_HEIGHT),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        MenuBar(
-            progress = progress,
-            isMapSelected = isMapSelected,
-            isPokedexSelected = isPokedexSelected,
-            // Pulsar un destino del menú pliega la Pokéball si estaba expandida.
-            onMapClick = {
-                if (isExpanded.value) settleTo(false)
-                onMapClick()
-            },
-            onPokedexClick = {
-                if (isExpanded.value) settleTo(false)
-                onPokedexClick()
-            }
+    // El chasis baja hasta el borde físico de la pantalla: la franja que ocupa
+    // la barra de navegación del sistema se pinta de acero, así que el menú
+    // nunca flota sobre un hueco del fondo. La altura de la franja la marca
+    // `WindowInsets` en cada dispositivo (gesto, 3 botones o nada): sin barra
+    // de sistema mide 0 y la barra toca el fondo por sí sola.
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+        // Prolongación de acero bajo la barra, de canto a canto y hasta abajo.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .windowInsetsBottomHeight(WindowInsets.navigationBars)
+                .drawBehind {
+                    val stroke = 2.dp.toPx()
+                    // Cuerpo igual que la barra y rieles duros: lados y borde
+                    // inferior en `SteelEdge`, continuando el contorno del
+                    // chasis. Arriba no se repite la línea: la sella el borde
+                    // inferior de la propia barra.
+                    drawRect(color = RetroColors.SteelPanel)
+                    drawRect(
+                        color = RetroColors.SteelEdge,
+                        topLeft = Offset(0f, 0f),
+                        size = Size(stroke, size.height)
+                    )
+                    drawRect(
+                        color = RetroColors.SteelEdge,
+                        topLeft = Offset(size.width - stroke, 0f),
+                        size = Size(stroke, size.height)
+                    )
+                    drawRect(
+                        color = RetroColors.SteelEdge,
+                        topLeft = Offset(0f, size.height - stroke),
+                        size = Size(size.width, stroke)
+                    )
+                }
         )
 
-        MenuPokeBall(
-            progress = progress,
-            transform = transform,
-            sensitivityPx = sensitivityPx,
-            isExpanded = isExpanded,
-            selected = isHomeSelected,
-            onTap = { position ->
-                if (isExpanded.value) currentGameClick(position) else currentHomeClick()
-            },
-            onDragFinished = { target -> settleTo(target) }
-        )
+        // El menú en sí sigue por encima del inset para que la barra de
+        // navegación del sistema no tape la Pokéball ni las vitrinas.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(BottomMenuDefaults.CONTAINER_HEIGHT),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            MenuBar(
+                progress = progress,
+                isMapSelected = isMapSelected,
+                isPokedexSelected = isPokedexSelected,
+                // Pulsar un destino del menú pliega la Pokéball si estaba expandida.
+                onMapClick = {
+                    if (isExpanded.value) settleTo(false)
+                    onMapClick()
+                },
+                onPokedexClick = {
+                    if (isExpanded.value) settleTo(false)
+                    onPokedexClick()
+                }
+            )
+
+            MenuPokeBall(
+                progress = progress,
+                transform = transform,
+                sensitivityPx = sensitivityPx,
+                isExpanded = isExpanded,
+                selected = isHomeSelected,
+                onTap = { position ->
+                    if (isExpanded.value) currentGameClick(position) else currentHomeClick()
+                },
+                onDragFinished = { target -> settleTo(target) }
+            )
+        }
     }
 }
 
 /**
- * Barra blanca con la hendidura central y los dos botones laterales.
+ * Barra de chasis de acero con la hendidura central y los dos vitrinas LCD a
+ * los lados, al estilo del HUD del chasis de Pokédex.
  *
  * La hendidura se abre a la vez que la Pokéball: ambos leen el mismo `progress`
  * del gesto, así que crecen juntos y la bola no llega a invadir la barra.
@@ -418,20 +462,21 @@ private fun MenuBar(
     // dentro de la silueta: al desenfocarse sangra hacia el interior del hueco,
     // y como la hendidura es justo donde vive la Pokéball, aparecía un halo
     // oscuro alrededor y debajo de ella. La separación con el contenido la hace
-    // el `border` de 1 dp, que sí sigue el contorno de la hendidura.
+    // el `border` de 2 dp, que sí sigue el contorno de la hendidura.
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .height(BottomMenuDefaults.BAR_HEIGHT),
         shape = shape,
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0x14000000))
+        color = RetroColors.SteelPanel,
+        border = BorderStroke(2.dp, RetroColors.SteelEdge)
     ) {
+        // La mitad izquierda del menú es el Mapa y la mitad derecha la
+        // Pokédex: cada botón reclama la mitad del ancho con `weight`, de modo
+        // que pulsar cualquier punto de media barra abre su pantalla, y su
+        // vitrina LCD llena esa misma mitad de canto a canto.
         Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 32.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MenuIconItem(
@@ -439,27 +484,35 @@ private fun MenuBar(
                 contentDescription = stringResource(R.string.nav_map),
                 icon = MenuIcons.Map,
                 selected = isMapSelected,
-                onClick = onMapClick
+                onClick = onMapClick,
+                modifier = Modifier.weight(1f)
             )
-
-            // Hueco central: debe superar el ancho de la hendidura para que los
-            // botones laterales no se metan debajo de la Pokéball.
-            Spacer(modifier = Modifier.width(BottomMenuDefaults.BAR_HEIGHT))
 
             MenuIconItem(
                 label = stringResource(R.string.nav_pokedex),
                 contentDescription = stringResource(R.string.pokedex_desc),
                 icon = MenuIcons.Pokedex,
                 selected = isPokedexSelected,
-                onClick = onPokedexClick
+                alignEnd = true,
+                onClick = onPokedexClick,
+                modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
 /**
- * Botón del menú: icono dentro de un círculo y etiqueta debajo. Al seleccionarse
- * se tiñe con el color de acento del tema.
+ * Botón del menú como vitrina LCD del HUD: pantalla oscura con barrido,
+ * borde profundo y etiqueta monoespaciada. Al seleccionarse, la cinta roja del
+ * chasis de Pokédex se enciende.
+ *
+ * La zona táctil es [modifier] entero (la mitad de la barra que le pase el
+ * `MenuBar`) y la vitrina cubre esa mitad completa con `fillMaxSize` y `fill`.
+ * Icono y etiqueta se apoyan en el borde exterior de su mitad —Mapa a la
+ * izquierda, Pokédex a la derecha—, lejos de la hendidura central.
+ *
+ * @param alignEnd `true` clava el contenido al borde derecho de la vitrina
+ *   (Pokédex); `false` lo clava a la izquierda (Mapa).
  */
 @Composable
 private fun MenuIconItem(
@@ -467,42 +520,51 @@ private fun MenuIconItem(
     contentDescription: String,
     icon: ImageVector,
     selected: Boolean,
-    onClick: () -> Unit
+    alignEnd: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val accent = MaterialTheme.colorScheme.primary
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(top = 8.dp)
+    Box(
+        modifier = modifier
+            .bouncyClickable(onClick = onClick)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            }
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .background(
-                    color = if (selected) accent.copy(alpha = 0.16f) else Color(0xFFEEEEEE),
-                    shape = CircleShape
-                )
-                .clickable(onClick = onClick)
-                .semantics {
-                    this.contentDescription = contentDescription
-                    role = Role.Button
-                },
-            contentAlignment = Alignment.Center
+        RetroLcdPanel(
+            modifier = Modifier.fillMaxSize(),
+            selected = selected,
+            fill = true,
+            shadowOffset = 0.dp,
+            contentPadding = PaddingValues(5.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (selected) accent else Color(0xFF4A4A4A),
-                modifier = Modifier.size(24.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp),
+                horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(modifier = Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (selected) RetroColors.DialogCream else RetroColors.LcdText,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = label,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.5.sp,
+                    fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                    color = if (selected) RetroColors.HpYellow else RetroColors.LcdText
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) accent else Color(0xFF4A4A4A)
-        )
     }
 }
 
@@ -636,8 +698,8 @@ private fun MenuPokeBall(
             },
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(R.drawable.pokeball_menu),
+        PixelImage(
+            res = R.drawable.pokeball_menu,
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
@@ -736,15 +798,15 @@ private fun NotchPreview() {
     ) {
         Surface(
             shape = rememberBottomMenuNotchShape(),
-            color = Color.White,
+            color = RetroColors.SteelPanel,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(BottomMenuDefaults.BAR_HEIGHT)
                 .align(Alignment.BottomCenter)
         ) {}
 
-        Image(
-            painter = painterResource(R.drawable.pokeball_menu),
+        PixelImage(
+            res = R.drawable.pokeball_menu,
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier

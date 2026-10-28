@@ -26,11 +26,12 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ## 1. Bugs y flujos funcionales
 
 ### FUN-01 · Los overlays no bloquean los toques fuera de su panel
-- **Prioridad:** P0 · **Estado:** Confirmado
+- **Prioridad:** P0 · **Estado:** Resuelto (issue #21, rama `feature-7`)
 - **Evidencia:** `ui/Overlays.kt:60-92` (captura), `ui/Overlays.kt:112-155` (principal), `ui/Intro.kt:130-179`, `ui/PokeBallSplash.kt:66-88`, `ui/AppRoot.kt:159-174`.
 - **Qué pasa:** las capas de captura y selector de principal usan un `Box` con fondo semitransparente pero sin `clickable`/`pointerInput`. Solo el `Surface` central bloquea los toques dentro de su área. La intro y el splash no tienen ningún consumidor de toques. Los toques en el resto de la pantalla atraviesan la capa visual.
 - **Impacto:** durante una captura o el selector de principal se puede pulsar sin verlo el HUD de debajo: **Reset**, **Cambiar principal**, la hierba alta o **Borrar partida**. Durante la intro y el splash ocurre lo mismo con la UI oculta. Es una vía directa a perder la partida sin querer.
 - **Propuesta:** añadir un scrim de pantalla completa que consuma los toques (`pointerInput(Unit) { detectTapGestures { ... } }` o `clickable`), decidir si el toque fuera cierra o no, y cubrir con test de UI que ningún botón de debajo recibe eventos. En intro y splash, consumir siempre.
+- **Solución aplicada (issue #21):** modificador reutilizable `Modifier.modalBlocking()` (`ui/ModalBlocking.kt`) que consume todos los eventos de puntero de la capa sin afectar a sus controles hijos; aplicado en la raíz de `IntroOverlay`, `LeadOverlay` y `PokeBallSplash`. Además, mientras haya capa modal (`needsStarter`, `isLeadOpen` o splash) `AppRoot` no compone el menú, porque la Pokéball usa un detector que ignora el consumo (`requireUnconsumed = false`); con la intro (opaca) tampoco se compone el contenido. Gimnasio y pesca ya aislaban por sí solos (escena a pantalla completa con `detectTapGestures` + menú oculto) y `OptionsSheet` es una `ModalBottomSheet` en ventana propia, impenetrable para el juego. Verificación manual documentada por capa en la issue #21; pendiente test de UI automatizado.
 
 ### FUN-02 · “Borrar partida (test)” está en producción, sin confirmación
 - **Prioridad:** P0 · **Estado:** Confirmado

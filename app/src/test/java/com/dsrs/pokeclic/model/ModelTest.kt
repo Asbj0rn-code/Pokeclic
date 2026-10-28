@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class ModelTest {
 
@@ -180,6 +181,124 @@ class ModelTest {
         assertFalse(GymCombat.isRaging(60, 60))
         assertFalse(GymCombat.isRaging(15, 60))
         assertTrue(GymCombat.isRaging(14, 60))
+    }
+
+    // --- Minijuego de pesca ---------------------------------------------------
+
+    /**
+     * Configuración de laboratorio: suavizado enorme (para que el sprite apenas
+     * se mueva en un tick corto) y sin dardos, así los tests de barra y
+     * progreso son deterministas.
+     */
+    private fun testConfig() = FishingConfig(smoothingSeconds = 10f, dartChancePerSecond = 0f)
+
+    private fun fishingState(
+        config: FishingConfig = testConfig(),
+        barPos: Float = 0.5f,
+        spritePos: Float = 0.5f,
+        progress: Float = 0f,
+        elapsed: Float = 0f
+    ) = FishingState(
+        config = config,
+        barPos = barPos,
+        barVel = 0f,
+        spritePos = spritePos,
+        spriteTarget = spritePos,
+        progress = progress,
+        elapsed = elapsed
+    )
+
+    @Test
+    fun barFallsGroundsWhenReleased() {
+        val next = FishingGame.step(fishingState(barPos = 0.6f), held = false, dt = 0.5f, random = Random(0))
+        assertEquals(FishingDefaults.BAR_SIZE / 2f, next.barPos)
+        assertEquals(0f, next.barVel)
+    }
+
+    @Test
+    fun barTopsOutWhenHeld() {
+        val next = FishingGame.step(fishingState(barPos = 0.5f), held = true, dt = 0.5f, random = Random(0))
+        assertEquals(1f - FishingDefaults.BAR_SIZE / 2f, next.barPos)
+        assertEquals(0f, next.barVel)
+    }
+
+    @Test
+    fun barSpeedIsCapped() {
+        val next = FishingGame.step(fishingState(barPos = FishingDefaults.BAR_SIZE / 2f), held = true, dt = 0.5f, random = Random(0))
+        assertEquals(FishingDefaults.MAX_BAR_SPEED, next.barVel)
+    }
+
+    @Test
+    fun progressFillsWhileOverlapping() {
+        val next = FishingGame.step(fishingState(), held = true, dt = 0.05f, random = Random(0))
+        assertEquals(FishingDefaults.FILL_RATE * 0.05f, next.progress)
+    }
+
+    @Test
+    fun progressDrainsWithoutOverlap() {
+        val state = fishingState(barPos = 0.89f, spritePos = 0.2f, progress = 0.2f)
+        val next = FishingGame.step(state, held = true, dt = 0.05f, random = Random(0))
+        assertEquals(0.19f, next.progress)
+    }
+
+    @Test
+    fun progressNeverDrainsBelowZero() {
+        val next = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f), held = true, dt = 0.05f, random = Random(0))
+        assertEquals(0f, next.progress)
+        assertEquals(FishingPhase.PLAYING, next.phase)
+    }
+
+    @Test
+    fun escapeOnlyHappensAfterGrace() {
+        val early = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0f), held = true, dt = 0.9f, random = Random(0))
+        assertEquals(FishingPhase.PLAYING, early.phase)
+
+        val late = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0.9f), held = true, dt = 0.2f, random = Random(0))
+        assertEquals(FishingPhase.ESCAPED, late.phase)
+    }
+
+    @Test
+    fun captureWhenProgressReachesOne() {
+        val next = FishingGame.step(fishingState(progress = 0.98f), held = true, dt = 0.1f, random = Random(0))
+        assertEquals(FishingPhase.CAPTURED, next.phase)
+        assertEquals(1f, next.progress)
+    }
+
+    @Test
+    fun finishedGameIsFrozen() {
+        val state = fishingState().copy(phase = FishingPhase.CAPTURED)
+        assertEquals(state, FishingGame.step(state, held = true, dt = 0.5f, random = Random(0)))
+    }
+
+    @Test
+    fun configMapsDifficultyAcrossItsRange() {
+        val easy = FishingDefaults.configFor(0f)
+        assertEquals(FishingDefaults.SMOOTHING_EASY, easy.smoothingSeconds)
+        assertEquals(FishingDefaults.DART_EASY, easy.dartChancePerSecond)
+
+        val hard = FishingDefaults.configFor(1f)
+        assertEquals(FishingDefaults.SMOOTHING_HARD, hard.smoothingSeconds)
+        assertEquals(FishingDefaults.DART_HARD, hard.dartChancePerSecond)
+    }
+
+    @Test
+    fun configClampsOutOfRangeDifficulty() {
+        val below = FishingDefaults.configFor(-5f)
+        assertEquals(FishingDefaults.SMOOTHING_EASY, below.smoothingSeconds)
+        val above = FishingDefaults.configFor(9f)
+        assertEquals(FishingDefaults.DART_HARD, above.dartChancePerSecond)
+    }
+
+    @Test
+    fun initialFishingStateIsNeutral() {
+        val state = FishingGame.initialState(FishingDefaults.configFor(0.15f), Random(42))
+        assertEquals(0.5f, state.barPos)
+        assertEquals(0f, state.barVel)
+        assertEquals(0f, state.progress)
+        assertEquals(0f, state.elapsed)
+        assertEquals(FishingPhase.PLAYING, state.phase)
+        assertTrue(state.spritePos >= FishingDefaults.SPRITE_MARGIN)
+        assertTrue(state.spritePos <= 1f - FishingDefaults.SPRITE_MARGIN)
     }
 
     private fun combatState(

@@ -63,10 +63,14 @@ class MainViewModelTest {
         Zone("z3", "Z3", 4L, listOf("caterpie"))
     )
 
-    private fun viewModel(saved: GameSnapshot? = null) = MainViewModel(
+    private fun viewModel(
+        saved: GameSnapshot? = null,
+        nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
+    ) = MainViewModel(
         FakeSprites(),
         FakeStore().apply { this.saved = saved },
-        zones = testZones
+        zones = testZones,
+        nowMs = nowMs
     )
 
     /** Toques sobre la pokéball (usados aquí solo como clics de zona). */
@@ -254,5 +258,38 @@ class MainViewModelTest {
         vm.onAdvanceZone()
         assertEquals(2, vm.uiState.value.zoneIndex)
         assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    /**
+     * FUN-14 (issue #3): entrar al gimnasio con un combate ya en curso no debe
+     * reiniciarlo; el reintento explícito es `onGymRetry`. Se entra con un
+     * guardado ya en la zona del gimnasio (con la mecánica de avance manual ya
+     * no hay encadenado de zonas que deje ahí a 40 toques).
+     */
+    @Test
+    fun onEnterGym_doesNotRestartActiveCombat() {
+        var now = 0L
+        val vm = viewModel(
+            saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L),
+            nowMs = { now }
+        )
+
+        assertTrue(vm.uiState.value.isGymReady)
+        vm.onEnterGym()
+        val started = vm.uiState.value.gym
+        assertNotNull(started)
+
+        testScope.advanceTimeBy(400L)
+        testScope.runCurrent()
+        val ticked = vm.uiState.value.gym
+        assertNotNull(ticked)
+        assertTrue(ticked!!.waveRemainingMs < started!!.waveDurationMs)
+
+        vm.onEnterGym()
+
+        val same = vm.uiState.value.gym
+        assertNotNull(same)
+        assertEquals(ticked!!.waveRemainingMs, same!!.waveRemainingMs)
+        assertEquals(ticked.leaderHp, same.leaderHp)
     }
 }
