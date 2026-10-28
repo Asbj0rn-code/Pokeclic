@@ -34,7 +34,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Solución aplicada (issue #21):** modificador reutilizable `Modifier.modalBlocking()` (`ui/ModalBlocking.kt`) que consume todos los eventos de puntero de la capa sin afectar a sus controles hijos; aplicado en la raíz de `IntroOverlay`, `LeadOverlay` y `PokeBallSplash`. Además, mientras haya capa modal (`needsStarter`, `isLeadOpen` o splash) `AppRoot` no compone el menú, porque la Pokéball usa un detector que ignora el consumo (`requireUnconsumed = false`); con la intro (opaca) tampoco se compone el contenido. Gimnasio y pesca ya aislaban por sí solos (escena a pantalla completa con `detectTapGestures` + menú oculto) y `OptionsSheet` es una `ModalBottomSheet` en ventana propia, impenetrable para el juego. Verificación manual documentada por capa en la issue #21; pendiente test de UI automatizado.
 
 ### FUN-02 · “Borrar partida (test)” está en producción, sin confirmación
-- **Prioridad:** P0 · **Estado:** Confirmado
+- **Prioridad:** P0 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** el borrado se movió a la hoja de Opciones con `AlertDialog` de confirmación (`ui/Overlays.kt:235-263`, strings `wipe_confirm_*`, commit `a7b4323`).
 - **Evidencia:** `ui/MainScreen.kt:405-409`, `res/values/strings.xml:63-64`, `viewmodel/MainViewModel.kt:166-171`.
 - **Qué pasa:** el botón de borrado total es visible siempre en el HUD y ejecuta `store.clear()` inmediatamente. No hay diálogo, deshacer ni copia de seguridad.
 - **Impacto:** un toque accidental destruye toda la partida. Combinado con FUN-01, puede ocurrir mientras el jugador cree estar en otra capa.
@@ -55,7 +56,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** fijar `nextSpawnMs = now + interval`, limitar el número de salvas recuperables y usar el tiempo real transcurrido de forma controlada.
 
 ### FUN-05 · El nombre del entrenador puede quedar vacío desde el teclado
-- **Prioridad:** P1 · **Estado:** Confirmado
+- **Prioridad:** P1 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `onFinishIntro` rechaza nombres en blanco (`viewmodel/MainViewModel.kt:205-206`) y la acción de teclado/`accept` valida `name.isNotBlank()` (`ui/Intro.kt:229,247`).
 - **Evidencia:** `ui/Intro.kt:223-241` (`KeyboardActions(onDone = { accept() })`), `ui/Intro.kt:240` (solo el botón está deshabilitado si está en blanco), `viewmodel/MainViewModel.kt:178-189`.
 - **Qué pasa:** el botón “Aceptar” está deshabilitado con `name.isNotBlank()`, pero la acción `Done` del teclado llama a `accept()` sin comprobar nada. El ViewModel tampoco rechaza un nombre vacío: solo hace `trim()`.
 - **Impacto:** se puede completar la intro con nombre vacío; la UI muestra “Entrenador: ” y el saludo “¡Encantado, !”. El guardado queda con un nombre vacío.
@@ -118,7 +120,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** contabilizar los impactos pendientes antes de limpiar la lista o documentar explícitamente la indulgencia.
 
 ### FUN-14 · `onEnterGym` no comprueba que ya haya un gimnasio activo
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** guard `if (state.gym != null) return` en `onEnterGym` (`viewmodel/MainViewModel.kt:253`, commit `710c5f2`, issue #3).
 - **Evidencia:** `viewmodel/MainViewModel.kt:223-228`, `278-309`.
 - **Qué pasa:** si se invoca con un gimnasio ya activo, `startGymCombat` cancela el anterior y empieza de cero sin penalización.
 - **Impacto:** hoy la UI oculta la entrada, pero cualquier cambio de UI o test puede reiniciar el combate a voluntad.
@@ -139,7 +142,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** guardar el `Job` de animación y cancelarlo antes de lanzar otro, o usar un único `Animatable` reutilizable.
 
 ### FUN-17 · El HUD “En posesión” no cuenta al starter
-- **Prioridad:** P2 · **Estado:** Confirmado
+- **Prioridad:** P2 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `ownedCount = ownedSpecies.size + (starter != null ? 1 : 0)` en `derive` (`viewmodel/MainViewModel.kt:682`) y el HUD muestra ese campo (`ui/MainScreen.kt:979`).
 - **Evidencia:** `ui/MainScreen.kt:382-386`, `viewmodel/MainViewModel.kt:581-589`.
 - **Qué pasa:** la potencia de clic y las opciones de principal incluyen al starter, pero el HUD muestra solo `ownedSpecies.size`. Tras la intro, el jugador tiene un Pokémon y ve “En posesión: 0”.
 - **Impacto:** información contradictoria y confusa sobre el progreso.
@@ -197,7 +201,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** decidir conscientemente si el guardado debe respaldarse; si sí, incluir solo `sharedpref` y documentarlo; si no, excluirlo.
 
 ### DAT-07 · El borrado total usa `apply()` y no reinicia todo el estado transitorio
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `clear()` persiste con `commit()` (`data/GameStateStore.kt:77`) y `onWipeGame` reinicia `lastWalkTapMs` y `nextProjectileId` (`viewmodel/MainViewModel.kt:192-193`).
 - **Evidencia:** `data/GameStateStore.kt:70-72`, `viewmodel/MainViewModel.kt:166-171`.
 - **Qué pasa:** `clear()` usa `apply()` asíncrono y el ViewModel no reinicia `lastWalkTapMs`; tampoco hay confirmación de que el borrado se haya persistido.
 - **Impacto:** un cierre inmediato tras borrar podría dejar el guardado antiguo; el temporizador de caminar puede arrastrar un instante del estado anterior.
@@ -282,7 +287,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** `require(zones.isNotEmpty())` al construir y evitar catálogos mutables vacíos.
 
 ### VAL-04 · La probabilidad de captura no se recorta
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** la captura se sustituyó por el minijuego de pesca y el análogo (`captureDifficulty`) se recorta con `coerceIn(0f, 1f)` en `FishingDefaults.configFor` (`model/FishingGame.kt:160`); ya no existe `captureChance`.
 - **Evidencia:** `viewmodel/MainViewModel.kt:470-472`.
 - **Qué pasa:** `captureChance = (1f - species.captureDifficulty) * BASE_CAPTURE_FACTOR` no se limita a `0f..1f`.
 - **Impacto:** una dificultad fuera de rango produce probabilidades negativas o mayores que 1; el resultado sigue funcionando por comparación, pero la UI y el diseño pierden sentido.
@@ -363,7 +369,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** añadir un scrim local o una superficie semitransparente detrás de cada barra/etiqueta; verificar con herramienta de contraste.
 
 ### UX-08 · Objetivos táctiles de 44 dp en el menú
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** cada botón ocupa media barra (~96 dp) con el área clicable en el `Box` completo (`ui/PokemonBottomMenu.kt:527-529`) y la Pokébola mide 100 dp (`ui/PokemonBottomMenu.kt:97`); todos los targets ≥ 48 dp.
 - **Evidencia:** `ui/PokemonBottomMenu.kt:478-489`.
 - **Qué pasa:** el área clicable de Mapa/Pokédex es de 44 dp, por debajo de los 48 dp recomendados; la etiqueta queda fuera del área.
 - **Impacto:** toques fallidos, especialmente con movilidad reducida.
@@ -412,7 +419,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** decidir si el fullscreen es requisito; si no, edge-to-edge normal; añadir insets horizontales (`displayCutout`) al layout.
 
 ### UX-15 · Las etiquetas del menú inferior no son clicables
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** el `clickable` está en el `Box` completo de cada mitad de barra, incluyendo la etiqueta (`ui/PokemonBottomMenu.kt:527-533,558-565`).
 - **Evidencia:** `ui/PokemonBottomMenu.kt:474-506`.
 - **Qué pasa:** el `clickable` está solo en el `Box` del icono; la etiqueta “Mapa/Pokédex” queda fuera.
 - **Impacto:** tocar el texto no hace nada, aunque visualmente forma parte del botón.
@@ -433,7 +441,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** crear `PokeclicTheme` con `lightColorScheme`/`darkColorScheme`, tipografía y colores propios; sustituir los colores fijos por tokens del tema.
 
 ### UX-18 · La captura no tiene animación ni feedback de lanzamiento
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** la captura es ahora el minijuego de pesca a pantalla completa, con sprite del salvaje (`WildSpriteBox`), fases `CAPTURED`/`ESCAPED` y panel de resultado (`ui/FishingOverlay.kt:130-171,211-263`).
 - **Evidencia:** `ui/Overlays.kt:55-93`, `viewmodel/MainViewModel.kt:416-431`.
 - **Qué pasa:** el overlay muestra texto y el resultado se aplica al tocar la Pokébola; no hay sprite del salvaje, animación de lanzamiento, éxito o huida.
 - **Impacto:** la mecánica principal de colección se siente plana y no comunica bien el resultado.
@@ -550,7 +559,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ## 8. Tests y calidad
 
 ### TEST-01 · No hay tests del ViewModel
-- **Prioridad:** P1 · **Estado:** Confirmado
+- **Prioridad:** P1 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** nuevo `app/src/test/java/com/dsrs/pokeclic/viewmodel/MainViewModelTest.kt` que instancia `MainViewModel` con dobles `FakeStore`/`FakeSprites` y cubre toque, intro y gimnasio.
 - **Evidencia:** único archivo de test: `app/src/test/java/com/example/myapplication/model/ModelTest.kt`; el constructor de `MainViewModel` es inyectable (`MainViewModel.kt:62-67`), pero no se usa en tests.
 - **Qué pasa:** no se cubren toque, captura, caminar, intro, reset, gimnasio, persistencia ni navegación.
 - **Impacto:** regresiones como las de esta auditoría pasan desapercibidas; el diseño testeable no se aprovecha.
@@ -564,7 +574,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** tests de ida y vuelta y de saneado/migración; valorar Robolectric para `SharedPreferences` o extraer un códec puro.
 
 ### TEST-03 · No hay tests de tiempo ni del bucle de combate
-- **Prioridad:** P2 · **Estado:** Confirmado
+- **Prioridad:** P2 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `MainViewModel` acepta reloj inyectable (`nowMs`) y los tests usan `StandardTestDispatcher`/`advanceTimeBy` (`MainViewModelTest.kt:26-52`); `kotlinx-coroutines-test` añadido al build.
 - **Evidencia:** `ModelTest` solo prueba reglas puras (`breakProjectile`, `advanceWave`, etc.), no el bucle de `MainViewModel` ni el comportamiento en background.
 - **Qué pasa:** los problemas de reloj, recuperación de ráfagas y daño acumulado no están cubiertos.
 - **Impacto:** son justo los fallos más difíciles de detectar manualmente.
@@ -596,7 +607,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ## 9. Build, publicación y legal
 
 ### REL-01 · `applicationId` y `namespace` son `com.example.myapplication`
-- **Prioridad:** P1 · **Estado:** Confirmado
+- **Prioridad:** P1 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `applicationId` y `namespace` son ahora `com.dsrs.pokeclic` (`app/build.gradle.kts:13`).
 - **Evidencia:** `app/build.gradle.kts:7,13`, `MainActivity.kt:1`, todos los paquetes.
 - **Qué pasa:** el identificador es de ejemplo y el paquete no coincide con “Pokeclic”. Se mantuvo a propósito para conservar la partida y el archivo `kanto_clicker.xml`.
 - **Impacto:** no se puede publicar con ese ID; cambiarlo ahora invalida las preferencias existentes salvo migración.
@@ -638,7 +650,8 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** derivar de CI o de un archivo de versión; generar APK/AAB y notas de release.
 
 ### REL-07 · Sin licencia ni avisos de terceros
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** `LICENSE` MIT presente en la raíz del repositorio (Copyright 2026).
 - **Evidencia:** no hay `LICENSE`, `NOTICE` ni avisos en el repositorio del proyecto.
 - **Qué pasa:** no se declara la licencia del código ni de los assets.
 - **Impacto:** incertidumbre para colaboradores y para la distribución.
@@ -727,14 +740,16 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** regenerar las tablas de dependencias/estructura y revisar las guías de layout contra el código.
 
 ### DOC-02 · El repositorio Git está en la carpeta personal y el proyecto no tiene commits
-- **Prioridad:** P1 (entorno) · **Estado:** Confirmado
+- **Prioridad:** P1 (entorno) · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** el repositorio vive en el proyecto con historial de commits y PRs fusionados (#13, #22, #24…) y remoto en `github.com/Asbj0rn-code/Pokeclic`.
 - **Evidencia:** `git rev-parse --show-toplevel` devuelve `C:/Users/Saiciton`; `git log` no tiene commits; el proyecto aparece como `?? ./` desde su carpeta.
 - **Qué pasa:** el control de versiones cubre todo el perfil del usuario, no el proyecto; no hay historial del código.
 - **Impacto:** riesgo de perder trabajo, commits accidentales de archivos personales y dificultad para revisar cambios.
 - **Propuesta:** inicializar un repositorio dentro de `MyApplication2` (o mover el `.git`), asegurar `.gitignore` para build/local.properties y hacer un primer commit del proyecto.
 
 ### DOC-03 · Hay assets duplicados en la raíz del proyecto
-- **Prioridad:** P3 · **Estado:** Confirmado
+- **Prioridad:** P3 · **Estado:** Resuelto (verificado 27/10/2026)
+- **Solución aplicada:** la raíz ya no contiene imágenes; los assets viven únicamente en `app/src/main/res/drawable/`.
 - **Evidencia:** `bulbasaur.gif`, `charmander.gif`, `golem.gif`, `GymArena.jpg`, `rockGym.jpg`, `Profesor_Oak.png`, etc. en la raíz; los mismos recursos están en `app/src/main/res/drawable/`.
 - **Impacto:** ruido, confusión sobre la fuente de verdad y peso innecesario si se versionan.
 - **Propuesta:** mover los originales a una carpeta de diseño fuera del repo o eliminarlos; documentar el pipeline de assets.
