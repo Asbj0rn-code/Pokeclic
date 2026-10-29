@@ -17,6 +17,7 @@ import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.GymCatalog
+import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.Projectile
 import com.dsrs.pokeclic.model.SpeciesCatalog
@@ -84,6 +85,9 @@ class MainViewModel(
 
     /** Job del bucle de combate del gimnasio. */
     private var gymJob: Job? = null
+
+    /** Job del cartel de arranque del combate del gimnasio. */
+    private var gymIntroJob: Job? = null
 
     /** Job del bucle del minijuego de pesca. */
     private var fishingJob: Job? = null
@@ -162,6 +166,7 @@ class MainViewModel(
      * starter.
      */
     fun onReset() {
+        gymIntroJob?.cancel()
         gymJob?.cancel()
         cancelFishing()
         mutate { state ->
@@ -175,7 +180,8 @@ class MainViewModel(
                 walkProgress = 0f,
                 encounter = null,
                 fishing = null,
-                gym = null
+                gym = null,
+                gymIntro = null
             )
         }
     }
@@ -191,6 +197,7 @@ class MainViewModel(
      * "arrastre" el instante posterior al borrado.
      */
     fun onWipeGame() {
+        gymIntroJob?.cancel()
         gymJob?.cancel()
         cancelFishing()
         resetJob?.cancel()
@@ -254,23 +261,72 @@ class MainViewModel(
     fun onEnterGym() {
         val state = _uiState.value
         // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
-        // reintento explícito es onGymRetry, y salir es onLeaveGym).
+        // reintento explícito es onGymRetry, y salir es onLeaveGym), una capa de
+        // intro abierta o un gimnasio no disponible.
         if (state.gym != null) return
+        if (state.gymIntro != null) return
         if (!state.isGymReady) return
         val gymId = zoneAt(state.zoneIndex).gymId ?: return
-        startGymCombat(GymCatalog.require(gymId))
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.WELCOME) }
     }
 
-    /** Reintenta el gimnasio actual desde cero (tras una derrota). */
+    /** Desde la bienvenida, abre la explicación del minijuego. */
+    fun onGymIntroWatchTutorial() {
+        if (_uiState.value.gymIntro != GymIntroPhase.WELCOME) return
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.TUTORIAL) }
+    }
+
+    /** "Omitir" (bienvenida): salta el tutorial y arma el cartel de arranque. */
+    fun onGymIntroSkip() = beginGymCombatCountdown()
+
+    /** "Entendido" (tutorial): cierra la explicación y arma el cartel de arranque. */
+    fun onGymIntroAccepted() = beginGymCombatCountdown()
+
+    /**
+     * Reintenta el gimnasio actual desde cero (tras una derrota), pasando por
+     * el cartel de arranque para que el jugador se prepare.
+     */
     fun onGymRetry() {
-        val gymState = _uiState.value.gym ?: return
-        startGymCombat(GymCatalog.require(gymState.gymId))
+        if (_uiState.value.gym == null) return
+        beginGymCombatCountdown()
     }
 
-    /** Abandona el intento sin penalización; se puede reintentar. */
+    /**
+     * **Abandona el intento sin penalización**; se puede reintentar. También
+     * limpia la capa de intro: si el combate estaba arrancando con el cartel,
+     * dejarlo a medias replicaría un arranque fantasma.
+     */
     fun onLeaveGym() {
+        gymIntroJob?.cancel()
+        gymIntroJob = null
         gymJob?.cancel()
-        _uiState.update { derive(it.copy(gym = null)) }
+        _uiState.update { derive(it.copy(gym = null, gymIntro = null)) }
+    }
+
+    /**
+     * Pasa a fase **countdown**: muestra el cartel "que comience el combate"
+     * durante [GYM_COUNTDOWN_MS] y solo entonces arranca el combate real, para
+     * que el jugador no entre por sorpresa.
+     */
+    private fun beginGymCombatCountdown() {
+        val phase = _uiState.value.gymIntro
+        // Desde una derrota no se exige fase: llega con el combate perdido ya
+        // detenido (`onGymRetry` llega sin la capa de intro compuesta).
+        val fromIntro = phase == GymIntroPhase.WELCOME || phase == GymIntroPhase.TUTORIAL
+        val fromRetry = _uiState.value.gym != null
+        if (!fromIntro && !fromRetry) return
+        if (fromIntro && fromRetry) return
+
+        gymIntroJob?.cancel()
+        gymIntroJob = viewModelScope.launch {
+            delay(GYM_COUNTDOWN_MS)
+            val state = _uiState.value
+            if (state.gymIntro != GymIntroPhase.COUNTDOWN) return@launch
+            val gymId = zoneAt(state.zoneIndex).gymId
+                ?: return@launch _uiState.update { it.copy(gymIntro = null) }
+            startGymCombat(GymCatalog.require(gymId))
+        }
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
     }
 
     /**
@@ -320,6 +376,7 @@ class MainViewModel(
                     walkProgress = 0f,
                     encounter = null,
                     fishing = null,
+                    gymIntro = null,
                     gym = GymState(
                         gymId = config.id,
                         leaderName = config.leaderName,
@@ -788,5 +845,8 @@ class MainViewModel(
 
         /** Respiro antes del primer proyectil del combate. */
         const val COMBAT_FIRST_SPAWN_MS = 800L
+
+        /** Duración del cartel "que comience el combate" antes del combate. */
+        const val GYM_COUNTDOWN_MS = 1_000L
     }
 }

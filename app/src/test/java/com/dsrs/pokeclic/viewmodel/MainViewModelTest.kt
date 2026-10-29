@@ -3,6 +3,7 @@ package com.dsrs.pokeclic.viewmodel
 import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.Zone
@@ -233,11 +234,22 @@ class MainViewModelTest {
 
         assertTrue(vm.uiState.value.isGymReady)
         vm.onEnterGym()
+        val intro = vm.uiState.value
+        assertNull(intro.gym)
+        assertEquals(GymIntroPhase.WELCOME, intro.gymIntro)
+
+        // "Omitir": no arranca el combate de golpe, muestra el cartel del
+        // arranque un segundo y solo entonces se crea el estado de combate.
+        vm.onGymIntroSkip()
+        assertEquals(GymIntroPhase.COUNTDOWN, vm.uiState.value.gymIntro)
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+        assertNull(vm.uiState.value.gymIntro)
         assertNotNull(vm.uiState.value.gym)
 
         // Se consume la oleada completa con el reloj virtual: como el tiempo
         // real apenas avanza, ningún proyectil impacta y el líder queda expuesto.
-        testScope.advanceTimeBy(11_000L)
+        testScope.advanceTimeBy(10_000L)
         testScope.runCurrent()
         assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
 
@@ -276,6 +288,12 @@ class MainViewModelTest {
 
         assertTrue(vm.uiState.value.isGymReady)
         vm.onEnterGym()
+        assertEquals(GymIntroPhase.WELCOME, vm.uiState.value.gymIntro)
+
+        // El combate arranca al caducar el cartel ("Omitir" + 1 s).
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
         val started = vm.uiState.value.gym
         assertNotNull(started)
 
@@ -291,5 +309,118 @@ class MainViewModelTest {
         assertNotNull(same)
         assertEquals(ticked!!.waveRemainingMs, same!!.waveRemainingMs)
         assertEquals(ticked.leaderHp, same.leaderHp)
+    }
+
+    // --- Entrada al gimnasio: bienvenida, tutorial y cartel ------------------
+
+    /** Parte de una zona con gimnasio listo y abre la capa de entrada. */
+    private fun enterGymReady(): MainViewModel {
+        val vm = viewModel(
+            saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L),
+            nowMs = { 0L }
+        )
+        assertTrue(vm.uiState.value.isGymReady)
+        vm.onEnterGym()
+        assertEquals(GymIntroPhase.WELCOME, vm.uiState.value.gymIntro)
+        assertNull(vm.uiState.value.gym)
+        return vm
+    }
+
+    @Test
+    fun onEnterGym_repeatedWhileWelcome_doesNotChangePhase() {
+        val vm = enterGymReady()
+
+        vm.onEnterGym()
+
+        assertEquals(GymIntroPhase.WELCOME, vm.uiState.value.gymIntro)
+        assertNull(vm.uiState.value.gym)
+    }
+
+    @Test
+    fun onGymIntroWatchTutorial_advancesWelcomeToTutorial() {
+        val vm = enterGymReady()
+
+        vm.onGymIntroWatchTutorial()
+
+        assertEquals(GymIntroPhase.TUTORIAL, vm.uiState.value.gymIntro)
+        assertNull(vm.uiState.value.gym)
+    }
+
+    @Test
+    fun onGymIntroAccepted_startsCombatAfterCountdown() {
+        val vm = enterGymReady()
+        vm.onGymIntroWatchTutorial()
+
+        vm.onGymIntroAccepted()
+        assertEquals(GymIntroPhase.COUNTDOWN, vm.uiState.value.gymIntro)
+
+        // El cartel dura un segundo: vista, no hay combate ni por la mitad.
+        testScope.advanceTimeBy(500L)
+        testScope.runCurrent()
+        assertNull(vm.uiState.value.gym)
+
+        testScope.advanceTimeBy(500L)
+        testScope.runCurrent()
+        assertNull(vm.uiState.value.gymIntro)
+        assertNotNull(vm.uiState.value.gym)
+    }
+
+    /**
+     * "Repetir tutorial" es interno de la pantalla del tutorial; aquí solo se
+     * cubre que la ruta del cartel ("Omitir") arranca el combate tras 1 s.
+     */
+    @Test
+    fun onGymIntroSkip_arrancaElCombateTrasElCartel() {
+        val vm = enterGymReady()
+
+        vm.onGymIntroSkip()
+        assertEquals(GymIntroPhase.COUNTDOWN, vm.uiState.value.gymIntro)
+
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        assertNull(vm.uiState.value.gymIntro)
+        assertNotNull(vm.uiState.value.gym)
+    }
+
+    @Test
+    fun onLeaveGym_duringCountdown_cancelsThePendingStart() {
+        val vm = enterGymReady()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(500L)
+
+        vm.onLeaveGym()
+
+        assertNull(vm.uiState.value.gymIntro)
+        assertNull(vm.uiState.value.gym)
+        // El job del cartel ya está cancelado: caducar el tiempo no arranca nada.
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+        assertNull(vm.uiState.value.gym)
+    }
+
+    @Test
+    fun onGymRetry_restartsAfterTheCountdownBanner() {
+        val vm = enterGymReady()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+        assertNotNull(vm.uiState.value.gym)
+
+        // El retry pasa por el cartel aunque no exista capa de intro pendiente.
+        vm.onGymRetry()
+        assertEquals(GymIntroPhase.COUNTDOWN, vm.uiState.value.gymIntro)
+        // El estado perdido queda en pantalla hasta que caduca el cartel.
+        val warmed = vm.uiState.value.gym
+        assertNotNull(warmed)
+
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+        assertNull(vm.uiState.value.gymIntro)
+        val fresh = vm.uiState.value.gym
+        assertNotNull(fresh)
+        // Combate nuevo: la oleada vuelve a su duración completa y sin rocas.
+        assertEquals(fresh!!.waveDurationMs, fresh.waveRemainingMs)
+        assertTrue(fresh.projectiles.isEmpty())
     }
 }
