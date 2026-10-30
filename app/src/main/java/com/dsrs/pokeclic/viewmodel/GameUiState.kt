@@ -88,6 +88,8 @@ data class GameUiState(
      * gimnasio, gimnasio ganado durante la run. Siempre `false` en la última zona.
      */
     val canAdvanceZone: Boolean = false,
+    /** La zona tiene hierba alta con fauna; en ciudades la hierba no se ofrece. */
+    val hasWilds: Boolean = true,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
     val starterOptions: List<StarterOption> = emptyList()

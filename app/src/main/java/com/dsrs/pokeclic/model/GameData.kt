@@ -105,7 +105,9 @@ data class StarterOption(
  * @param id clave estable para la persistencia.
  * @param name nombre mostrado.
  * @param clickRequirement clics de zona necesarios para desbloquear el avance.
- * @param wildSpeciesIds especies que pueden aparecer en su hierba alta.
+ * @param wildSpeciesIds especies que pueden aparecer en su hierba alta; una
+ *   lista vacía marca zonas sin hierba (las ciudades): caminar en ellas nunca
+ *   abre un encuentro.
  * @param gymId si no es `null`, la zona **termina** en ese gimnasio: el botón de
  *   avance no aparece hasta ganarlo dentro de la run actual.
  */

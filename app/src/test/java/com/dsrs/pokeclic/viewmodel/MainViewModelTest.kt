@@ -66,11 +66,12 @@ class MainViewModelTest {
 
     private fun viewModel(
         saved: GameSnapshot? = null,
-        nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
+        nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+        zones: List<Zone> = testZones
     ) = MainViewModel(
         FakeSprites(),
         FakeStore().apply { this.saved = saved },
-        zones = testZones,
+        zones = zones,
         nowMs = nowMs
     )
 
@@ -78,6 +79,17 @@ class MainViewModelTest {
     private fun tapZone(vm: MainViewModel, times: Int) {
         repeat(times) { vm.onPokeBallTouch(0f, 0f, 100f) }
     }
+
+    /**
+     * Recorrido de laboratorio ciudad + prado: la ciudad no tiene fauna (como
+     * Pueblo Paleta, Ciudad Verde y Ciudad Plateada) y a la salida sí hay hierba
+     * con encuentros. Sirve para probar que una zona sin especies salvajes no
+     * rompe el bucle de caminar de las zonas siguientes.
+     */
+    private val cityThenMeadowZones = listOf(
+        Zone("z_ciudad", "Ciudad", 100L, emptyList()),
+        Zone("z_prado", "Prado", 100L, listOf("pidgey"))
+    )
 
     @Test
     fun blankName_doesNotFinishIntro() {
@@ -422,5 +434,50 @@ class MainViewModelTest {
         // Combate nuevo: la oleada vuelve a su duración completa y sin rocas.
         assertEquals(fresh!!.waveDurationMs, fresh.waveRemainingMs)
         assertTrue(fresh.projectiles.isEmpty())
+    }
+
+    /**
+     * Zonas sin fauna (Pueblo Paleta, Ciudad Verde, Ciudad Plateada): caminar en
+     * hierba alta no abre encuentros (sin crash de `random()` sobre una lista
+     * vacía), y el bucle de caminar sigue vivo en la zona siguiente, donde la
+     * hierba sí genera encuentros.
+     */
+    @Test
+    fun zoneWithoutWilds_neverSpawnsEncounter() {
+        var now = 0L
+        val vm = viewModel(nowMs = { now }, zones = cityThenMeadowZones)
+        vm.onFinishIntro("Ash", "charmander")
+
+        // 1 · Ciudad: no aparece nada aunque el temporizador de caminar cruce
+        //     el umbral del encuentro.
+        vm.onTallGrassToggle()
+        vm.onPokeBallTouch(0.5f, 0.9f, 1f) // activa el temporizador de caminar
+
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        with(vm.uiState.value) {
+            assertNull(encounter)
+            assertNull(fishing)
+            assertEquals(0, zoneIndex)
+        }
+
+        // 2 · Prado: con el avance manual, llena la barra y pulsa **Avanzar**;
+        //     la hierba vuelve a funcionar en la zona de prado.
+        vm.onTallGrassToggle() // sale de la hierba (resetea el caminar)
+        tapZone(vm, 100) // llena la barra de avance de la ciudad
+        assertTrue(vm.uiState.value.canAdvanceZone)
+        vm.onAdvanceZone() // botón Avanzar: cruza a la zona siguiente
+        assertEquals(1, vm.uiState.value.zoneIndex)
+
+        vm.onTallGrassToggle()
+        vm.onPokeBallTouch(0.5f, 0.9f, 1f)
+
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        val afterMeadow = vm.uiState.value
+        assertNotNull(afterMeadow.encounter)
+        assertNotNull(afterMeadow.fishing)
     }
 }
