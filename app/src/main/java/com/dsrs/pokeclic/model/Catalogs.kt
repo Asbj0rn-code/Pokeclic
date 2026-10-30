@@ -24,7 +24,11 @@ object SpeciesCatalog {
         Species("pidgey", "Pidgey", PokemonType.FLYING, 0.2f, 5),
         Species("rattata", "Rattata", PokemonType.NORMAL, 0.15f, 4),
         Species("caterpie", "Caterpie", PokemonType.GRASS, 0.3f, 6),
-        Species("weedle", "Weedle", PokemonType.POISON, 0.35f, 7)
+        Species("weedle", "Weedle", PokemonType.POISON, 0.35f, 7),
+        Species("spearow", "Spearow", PokemonType.FLYING, 0.25f, 6),
+        Species("jigglypuff", "Jigglypuff", PokemonType.NORMAL, 0.45f, 10),
+        Species("zubat", "Zubat", PokemonType.POISON, 0.5f, 10),
+        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12)
     ).associateBy { it.id }
 
     /** Starters de Kanto entre los que se elige al empezar. En orden de pantalla. */
@@ -40,32 +44,83 @@ object SpeciesCatalog {
  * Catálogo ordenado de zonas. El índice en la lista es la posición en el mapa,
  * así que el orden importa.
  *
- * Los umbrales son **provisionales y bajos** para poder probar el bucle (y el
- * gimnasio) en un puñado de clics durante el desarrollo; se subirán al
- * equilibrar.
+ * Recorrido de Kanto tras la presentación y la elección del starter
+ * (feature-29): Pueblo Paleta → Ruta 1 → Ciudad Verde → Ruta 2 → Bosque Verde →
+ * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4. El test `CatalogTest` bloquea ese
+ * orden exacto y la regla de progresión: **cada zona pide más clics que la
+ * anterior**.
+ *
+ * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
+ * avanzan con clics.
+ *
+ * Los umbrales siguen siendo **provisionales y bajos** para poder probar el
+ * bucle (y el gimnasio) durante el desarrollo; se subirán al equilibrar.
  */
 object ZoneCatalog {
 
     val zones: List<Zone> = listOf(
         Zone(
+            id = "pueblo_paleta",
+            name = "Pueblo Paleta",
+            clickRequirement = 10L,
+            wildSpeciesIds = emptyList()
+        ),
+        Zone(
             id = "ruta1",
             name = "Ruta 1",
-            clickRequirement = 10L,
+            clickRequirement = 20L,
             wildSpeciesIds = listOf("pidgey", "rattata")
+        ),
+        Zone(
+            id = "ciudad_verde",
+            name = "Ciudad Verde",
+            clickRequirement = 30L,
+            wildSpeciesIds = emptyList()
+        ),
+        Zone(
+            id = "ruta2",
+            name = "Ruta 2",
+            clickRequirement = 45L,
+            wildSpeciesIds = listOf("pidgey", "rattata", "caterpie", "weedle")
         ),
         Zone(
             id = "bosque_verde",
             name = "Bosque Verde",
-            clickRequirement = 15L,
-            wildSpeciesIds = listOf("caterpie", "weedle"),
+            clickRequirement = 65L,
+            wildSpeciesIds = listOf("caterpie", "weedle")
+        ),
+        Zone(
+            id = "ciudad_plateada",
+            name = "Ciudad Plateada",
+            clickRequirement = 90L,
+            wildSpeciesIds = emptyList(),
             gymId = "brock"
+        ),
+        Zone(
+            id = "ruta3",
+            name = "Ruta 3",
+            clickRequirement = 120L,
+            wildSpeciesIds = listOf("spearow", "jigglypuff")
+        ),
+        Zone(
+            id = "mt_moon",
+            name = "Mt.Moon",
+            clickRequirement = 160L,
+            wildSpeciesIds = listOf("zubat", "geodude")
+        ),
+        Zone(
+            id = "ruta4",
+            name = "Ruta 4",
+            clickRequirement = 210L,
+            wildSpeciesIds = listOf("spearow", "rattata")
         )
     )
 }
 
 /**
- * Catálogo de gimnasios. En la Etapa 2 solo existe Brock; los siete restantes
- * llegarán con el contenido de Kanto.
+ * Catálogo de gimnasios. En la Etapa 2 solo existe Brock, alojado en
+ * Ciudad Plateada (feature-29, el gimnasio de piedra del recorrido canónico);
+ * los siete restantes llegarán con el contenido de Kanto.
  */
 object GymCatalog {
 

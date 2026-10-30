@@ -623,10 +623,14 @@ class MainViewModel(
      * Revierte un salvaje a la zona actual y abre su partida de pesca: el
      * encuentro muestra la especie y `GameUiState.fishing` guarda el estado del
      * minijuego con los parámetros según su dificultad de captura.
+     *
+     * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
+     * encuentros: caminar ahí no genera spawns ni toca el catálogo.
      */
     private fun spawnEncounter() {
         val state = _uiState.value
         val zone = zoneAt(state.zoneIndex)
+        if (zone.wildSpeciesIds.isEmpty()) return
         val species = SpeciesCatalog.require(zone.wildSpeciesIds.random(random))
         val config = FishingDefaults.configFor(species.captureDifficulty)
         mutate {
@@ -792,6 +796,7 @@ class MainViewModel(
             leadName = lead?.name,
             leadType = lead?.type,
             isGymReady = isGymReady,
+            hasWilds = zone.wildSpeciesIds.isNotEmpty(),
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
             canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,

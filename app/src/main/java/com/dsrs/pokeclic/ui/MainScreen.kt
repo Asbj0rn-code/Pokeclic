@@ -601,15 +601,19 @@ fun MainScreen(
                         .anchorVertically(MainLayout.TRAINER_BIAS)
                 )
 
-                TallGrassButton(
-                    onClick = onTallGrassToggle,
-                    modifier = Modifier
-                        .size(MainLayout.TALL_GRASS_SIZE)
-                        .anchor(
-                            verticalBias = MainLayout.TALL_GRASS_BIAS,
-                            horizontalBias = MainLayout.TALL_GRASS_H_BIAS
-                        )
-                )
+                // Solo las zonas con hierba alta (rutas, bosque, cueva) pueden
+                // entrar: las ciudades no tienen fauna y la hierba se oculta.
+                if (state.hasWilds) {
+                    TallGrassButton(
+                        onClick = onTallGrassToggle,
+                        modifier = Modifier
+                            .size(MainLayout.TALL_GRASS_SIZE)
+                            .anchor(
+                                verticalBias = MainLayout.TALL_GRASS_BIAS,
+                                horizontalBias = MainLayout.TALL_GRASS_H_BIAS
+                            )
+                    )
+                }
             }
 
             // Flash blanco de impacto (cada clic de zona avanza la ruta).
@@ -757,13 +761,13 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     starterBond = 1,
     ownedSpecies = setOf("rattata", "pidgey"),
     leadSpeciesId = "bulbasaur",
-    zoneIndex = 0,
+    zoneIndex = 1,
     zoneClicks = 4L,
     isTallGrass = isTallGrass,
     walkProgress = if (isTallGrass) 0.4f else 0f,
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
-    zoneRequirement = 10L,
+    zoneRequirement = 20L,
     ownedCount = 3,
     clickPower = 3L,
     maxHp = 5,
