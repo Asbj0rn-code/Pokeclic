@@ -67,9 +67,10 @@ class MainViewModelTest {
     private fun viewModel(
         saved: GameSnapshot? = null,
         nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
-        zones: List<Zone> = testZones
+        zones: List<Zone> = testZones,
+        sprites: SpriteRepository = FakeSprites()
     ) = MainViewModel(
-        FakeSprites(),
+        sprites,
         FakeStore().apply { this.saved = saved },
         zones = zones,
         nowMs = nowMs
@@ -77,7 +78,7 @@ class MainViewModelTest {
 
     /** Toques sobre la pokéball (usados aquí solo como clics de zona). */
     private fun tapZone(vm: MainViewModel, times: Int) {
-        repeat(times) { vm.onPokeBallTouch(0f, 0f, 100f) }
+        repeat(times) { vm.onPokeBallTouch(Direction.BACK) }
     }
 
     /**
@@ -451,7 +452,7 @@ class MainViewModelTest {
         // 1 · Ciudad: no aparece nada aunque el temporizador de caminar cruce
         //     el umbral del encuentro.
         vm.onTallGrassToggle()
-        vm.onPokeBallTouch(0.5f, 0.9f, 1f) // activa el temporizador de caminar
+        vm.onPokeBallTouch(Direction.BACK) // activa el temporizador de caminar
 
         testScope.advanceTimeBy(4_000L)
         testScope.runCurrent()
@@ -471,7 +472,7 @@ class MainViewModelTest {
         assertEquals(1, vm.uiState.value.zoneIndex)
 
         vm.onTallGrassToggle()
-        vm.onPokeBallTouch(0.5f, 0.9f, 1f)
+        vm.onPokeBallTouch(Direction.BACK)
 
         testScope.advanceTimeBy(4_000L)
         testScope.runCurrent()
@@ -480,4 +481,135 @@ class MainViewModelTest {
         assertNotNull(afterMeadow.encounter)
         assertNotNull(afterMeadow.fishing)
     }
+
+    // --- Animación del entrenador -----------------------------------------
+
+    /** Repositorio con cuatro fotogramas por dirección y un res distinto por frame. */
+    private class CyclingSprites : SpriteRepository {
+        override fun frameCount(direction: Direction): Int = 4
+        override fun frame(direction: Direction, index: Int): Int = spriteRes(direction, index)
+    }
+
+    /**
+     * La dirección ya no sale del lado de la Pokébola que se toca: la resuelve la
+     * UI a partir del movimiento del fondo y el ViewModel solo encadena fotogramas.
+     * Un segundo sin pulsar devuelve al reposo: front en su primer fotograma.
+     */
+    @Test
+    fun pokeBallTouch_adoptsTheDirectionItReceives() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.RIGHT)
+
+        assertEquals(Direction.RIGHT, vm.uiState.value.trainer.currentDirection)
+        assertEquals(spriteRes(Direction.RIGHT, 1), vm.uiState.value.trainerFrameRes)
+    }
+
+    @Test
+    fun lateralDirections_startOnTheSecondFrame() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.RIGHT)
+        assertEquals(1, vm.uiState.value.trainer.currentFrame)
+
+        vm.onPokeBallTouch(Direction.LEFT)
+        assertEquals(1, vm.uiState.value.trainer.currentFrame)
+        assertEquals(spriteRes(Direction.LEFT, 1), vm.uiState.value.trainerFrameRes)
+    }
+
+    @Test
+    fun lateralStep_reachesTheSecondFrameDuringTheMovement() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.RIGHT)
+        // En el instante del clic se ve el arranque del ciclo.
+        assertEquals(1, vm.uiState.value.trainer.currentFrame)
+
+        // Con el desplazamiento ya en marcha entra el segundo.
+        testScope.advanceTimeBy(61L)
+        testScope.runCurrent()
+
+        assertEquals(2, vm.uiState.value.trainer.currentFrame)
+        assertEquals(spriteRes(Direction.RIGHT, 2), vm.uiState.value.trainerFrameRes)
+    }
+
+    @Test
+    fun aNewClickCancelsThePendingLateralFrame() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.RIGHT)
+        vm.onPokeBallTouch(Direction.BACK) // el siguiente clic cambia de eje
+
+        testScope.advanceTimeBy(200L)
+        testScope.runCurrent()
+
+        assertEquals(Direction.BACK, vm.uiState.value.trainer.currentDirection)
+        assertEquals(0, vm.uiState.value.trainer.currentFrame)
+    }
+
+    @Test
+    fun verticalDirection_startsOnTheFirstFrame() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.BACK)
+
+        assertEquals(0, vm.uiState.value.trainer.currentFrame)
+        assertEquals(spriteRes(Direction.BACK, 0), vm.uiState.value.trainerFrameRes)
+    }
+
+    @Test
+    fun state_exposesTheCurrentZoneId() {
+        val vm = viewModel()
+
+        assertEquals(testZones.first().id, vm.uiState.value.zoneId)
+    }
+
+    @Test
+    fun everyTap_advancesOneFrame() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        repeat(3) { vm.onPokeBallTouch(Direction.BACK) }
+
+        // El primero estrena dirección (frame 0); los siguientes avanzan.
+        assertEquals(2, vm.uiState.value.trainer.currentFrame)
+        assertEquals(spriteRes(Direction.BACK, 2), vm.uiState.value.trainerFrameRes)
+    }
+
+    @Test
+    fun oneSecondWithoutTaps_returnsToFrontFirstFrame() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.LEFT)
+        assertEquals(Direction.LEFT, vm.uiState.value.trainer.currentDirection)
+
+        testScope.advanceTimeBy(1_001L)
+        testScope.runCurrent()
+
+        with(vm.uiState.value) {
+            assertEquals(Direction.FRONT, trainer.currentDirection)
+            assertEquals(0, trainer.currentFrame)
+            assertEquals(spriteRes(Direction.FRONT, 0), trainerFrameRes)
+        }
+    }
+
+    @Test
+    fun tapping_reschedulesTheRestTimer() {
+        val vm = viewModel(sprites = CyclingSprites())
+
+        vm.onPokeBallTouch(Direction.BACK)
+        testScope.advanceTimeBy(900L)
+        vm.onPokeBallTouch(Direction.BACK)
+        testScope.advanceTimeBy(900L)
+        testScope.runCurrent()
+
+        // 1,8 s desde el primero, pero solo 0,9 s desde el último toque.
+        assertEquals(Direction.BACK, vm.uiState.value.trainer.currentDirection)
+
+        testScope.advanceTimeBy(200L)
+        testScope.runCurrent()
+        assertEquals(Direction.FRONT, vm.uiState.value.trainer.currentDirection)
+    }
 }
+
+/** Res que devuelve el repositorio de sprites de prueba para (direcci�n, fotograma). */
+private fun spriteRes(direction: Direction, index: Int): Int = direction.ordinal * 100 + index

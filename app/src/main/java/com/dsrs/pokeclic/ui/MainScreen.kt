@@ -479,7 +479,7 @@ private fun LedDot(color: Color) {
  * La Pokéball **no** se posiciona aquí: vive en el bottom menu.
  */
 object MainLayout {
-    val TRAINER_SIZE = 100.dp
+    val TRAINER_SIZE = 90.dp
 
     /** Trainer pegado a la parte alta de la zona de contenido. */
     const val TRAINER_BIAS = -0.0f
@@ -554,8 +554,6 @@ fun MainScreen(
         GameHud(
             state = state,
             onReset = onReset,
-            onEnterGym = onEnterGym,
-            onAdvanceZone = onAdvanceZone,
             onOpenLead = onOpenLead,
             modifier = Modifier
                 .fillMaxWidth()
@@ -610,7 +608,59 @@ fun MainScreen(
                 onRemove = removeLcdPop,
                 modifier = Modifier.matchParentSize()
             )
+
+            // CTA de progresión, flotando sobre el fondo junto a la Pokéball.
+            // Vive fuera del HUD a propósito: dentro del panel, su aparición
+            // cambiaba la altura del HUD y desplazaba al entrenador hacia abajo.
+            // Aquí no toca el layout, así que el sprite queda siempre quieto.
+            ProgressionAction(
+                isGymReady = state.isGymReady,
+                canAdvanceZone = state.canAdvanceZone,
+                gymLeaderName = state.gymLeaderName.orEmpty(),
+                onEnterGym = onEnterGym,
+                onAdvanceZone = onAdvanceZone,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(MainLayout.HUD_PADDING)
+            )
         }
+    }
+}
+
+/**
+ * CTA de progresión de la run: entrar al gimnasio o avanzar de zona.
+ *
+ * Es **un solo hueco** porque las dos acciones son excluyentes: el avance exige,
+ * en zonas con gimnasio, haberlo ganado en la run. Se compone fuera del HUD para
+ * que aparecer o desaparecer no cambie la altura del panel: si viviera dentro,
+ * empujaría al entrenador hacia abajo (está anclado arriba de la zona de
+ * contenido). Como bonus queda a mano sobre la Pokéball, que es donde está el
+ * pulgar.
+ */
+@Composable
+private fun ProgressionAction(
+    isGymReady: Boolean,
+    canAdvanceZone: Boolean,
+    gymLeaderName: String,
+    onEnterGym: () -> Unit,
+    onAdvanceZone: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when {
+        isGymReady -> RetroButton(
+            label = stringResource(R.string.action_gym, gymLeaderName),
+            base = RetroColors.PokedexRed,
+            edge = RetroColors.PokedexDarkRed,
+            onClick = onEnterGym,
+            modifier = modifier
+        )
+
+        canAdvanceZone -> RetroButton(
+            label = stringResource(R.string.action_advance),
+            onClick = onAdvanceZone,
+            modifier = modifier
+        )
     }
 }
 
@@ -815,9 +865,10 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
  * chasis de acero biselado con sombra dura, cabecera a la roja Pokédex con
  * LEDs, placas de diálogo crema para entrenador/monedas/zona/principal,
  * lecturas LCD para estadísticas rápidas, barra EXP cuadrada con contador
- * superpuesto y barra HP para la búsqueda en hierba alta. Los botones de
- * gimnasio, avanzar, reset y cambio de principal se hunden físicamente al
- * pulsarlos.
+ * superpuesto y barra HP para la búsqueda en hierba alta. Los botones de reset y
+ * cambio de principal se hunden físicamente al pulsarlos; los CTA de gimnasio y
+ * avance **no** viven aquí (ver `ProgressionAction`), para que su aparición no
+ * cambie la altura del panel ni mueva al entrenador.
  *
  * Cada vez que ganan monedas (p. ej. tras una captura), un número dorado
  * flotante aparece junto a la placa de monedas y se desvanece.
@@ -829,8 +880,6 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
 fun GameHud(
     state: GameUiState,
     onReset: () -> Unit,
-    onEnterGym: () -> Unit,
-    onAdvanceZone: () -> Unit,
     onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -973,26 +1022,9 @@ fun GameHud(
                     LcdCell(text = stringResource(R.string.hud_medals, state.medals.size))
                 }
 
-                if (state.isGymReady) {
-                    RetroButton(
-                        label = stringResource(R.string.action_gym, state.gymLeaderName.orEmpty()),
-                        base = RetroColors.PokedexRed,
-                        edge = RetroColors.PokedexDarkRed,
-                        onClick = onEnterGym,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                // Avance manual: aparece solo con la barra al 100 % (y, en zonas
-                // con gimnasio, tras ganarlo en la run); nunca en la última zona.
-                // Es complementario al botón de gimnasio: ambos exigen la barra.
-                if (state.canAdvanceZone) {
-                    RetroButton(
-                        label = stringResource(R.string.action_advance),
-                        onClick = onAdvanceZone,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                // El CTA de progresión (gimnasio / avanzar) **no** vive aquí: ver
+                // `ProgressionAction`. Si estuviera en esta columna, su aparición
+                // cambiaría la altura del HUD y empujaría al entrenador.
 
                 // Reset y cambio de principal comparten fila: encajan juntos y dejan la
                 // mitad inferior del HUD más despejada.

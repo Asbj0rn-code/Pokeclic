@@ -19,11 +19,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.AppTab
+import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.FishingDefaults
 import com.dsrs.pokeclic.model.FishingGame
@@ -46,9 +46,15 @@ import kotlin.random.Random
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
  *    fondo de la cueva a pantalla completa; si no, en zonas con fauna el
- *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
- *    la Pokéball) y, por encima, el contenido de la pestaña
+ *    [RouteScrollingBackground] (bucle vertical con trayectoria serpenteante,
+ *    movido por las pulsaciones de la Pokéball) y, por encima, el contenido de
+ *    la pestaña
  *    ([AppTab.Home] o [AppTab.Map]).
+ *
+ *    Ese mismo movimiento decide **hacia dónde camina el entrenador**: cada clic
+ *    se anima en la dirección del eje que le toca (recto → de espaldas, lateral →
+ *    derecha o izquierda). La Pokébola ya no elige dirección según el lado que se
+ *    toca; tras un segundo sin pulsar, el sprite vuelve a `front` quieto.
  * 2. Sobre el contenido: el [GymOverlay] y el [FishingOverlay] (partida de
  *    pesca del encuentro actual).
  * 3. Sobre todo: la introducción (onboarding), el selector de **entrada al
@@ -73,7 +79,9 @@ import kotlin.random.Random
  * @param isSplashShowing si la cortinilla de arranque ([PokeBallSplash], compuesta
  *   por la Activity) está cubriendo la pantalla; mientras tanto no se compone el
  *   menú.
- * @param onPokeBallTouch evento de toque sobre la pokéball (x, y y diámetro en px).
+ * @param onPokeBallTouch evento de pulsación sobre la Pokébola: recibe la
+ *   dirección en la que debe animarse el entrenador, que la marca el eje por el
+ *   que se mueve el fondo.
  * @param onTallGrassToggle entra o sale del modo hierba alta.
  * @param onReset reinicia la run conservando la meta.
  * @param onWipeGame borra toda la partida (provisional, para testear la intro).
@@ -98,7 +106,7 @@ import kotlin.random.Random
 fun AppRoot(
     state: GameUiState,
     isSplashShowing: Boolean = false,
-    onPokeBallTouch: (touchX: Float, touchY: Float, sizePx: Float) -> Unit,
+    onPokeBallTouch: (direction: Direction) -> Unit,
     onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
     onWipeGame: () -> Unit,
@@ -122,11 +130,14 @@ fun AppRoot(
     onCloseLead: () -> Unit,
     onPokeBallExpanded: (Boolean) -> Unit
 ) {
-    val pokeBallSizePx = with(LocalDensity.current) { BottomMenuDefaults.POKEBALL_SIZE.toPx() }
-
-    // Contador de pulsaciones sobre la Pokéball: es lo único que mueve el fondo
-    // de ruta. Estado efímero de UI, sin relación con la lógica de negocio.
+    // Contador de pulsaciones sobre la Pokébola: es lo único que mueve el fondo
+    // de ruta y, con él, la dirección en la que camina el entrenador. Estado
+    // efímero de UI, sin relación con la lógica de negocio.
     val pokePulses = remember { mutableLongStateOf(0L) }
+
+    // Fondo de la zona actual: arte + trayectoria. La **misma** instancia mueve el
+    // dibujo y decide la dirección del entrenador, así que no pueden desincronizarse.
+    val routeBackground = RouteBackgrounds.forZone(state.zoneId)
 
     val gym = state.gym
     val gymActive = gym != null
@@ -164,12 +175,16 @@ fun AppRoot(
                 modifier = Modifier.fillMaxSize()
             )
         } else if (showRouteBackground) {
-            // Fondo de ruta: bucle vertical que se mueve con las pulsaciones de
-            // la Pokéball. Va detrás del `Scaffold`, que también se vuelve
-            // transparente para que se vea en el hueco de la barra.
+            // Fondo de ruta: bucle vertical con deriva lateral por tramos, movido
+            // con las pulsaciones de la Pokéball. Va detrás del `Scaffold`, que
+            // también se vuelve transparente para que se vea en el hueco de la
+            // barra.
             RouteScrollingBackground(
                 pulseCount = pokePulses.longValue,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                motion = routeBackground.motion,
+                imageRes = routeBackground.imageRes,
+                seamCutRow = routeBackground.seamCutRow
             )
         }
 
@@ -191,9 +206,15 @@ fun AppRoot(
                         onMapClick = { onSelectTab(AppTab.Map) },
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
-                        onPokeBallGameClick = { offset ->
+                        onPokeBallGameClick = {
                             pokePulses.longValue++
-                            onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)
+                            // El sprite sigue el eje por el que se acaba de mover el
+                            // fondo: recto → back, lateral derecho → right, izquierdo
+                            // → left. La Pokébola ya no elige dirección por el lado
+                            // que se toca.
+                            onPokeBallTouch(
+                                routeBackground.motion.directionForStep(pokePulses.longValue)
+                            )
                         },
                         onExpandedChange = onPokeBallExpanded
                     )
@@ -342,7 +363,7 @@ private fun previewGameState(
 private fun AppRootStage(state: GameUiState) {
     AppRoot(
         state = state,
-        onPokeBallTouch = { _, _, _ -> },
+        onPokeBallTouch = { _ -> },
         onTallGrassToggle = {},
         onReset = {},
         onWipeGame = {},
