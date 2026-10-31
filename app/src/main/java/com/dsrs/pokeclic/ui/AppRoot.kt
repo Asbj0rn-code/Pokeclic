@@ -46,9 +46,9 @@ import kotlin.random.Random
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
  *    fondo de la cueva a pantalla completa; si no, en zonas con fauna el
- *    [RouteScrollingBackground] (bucle vertical con trayectoria serpenteante,
- *    movido por las pulsaciones de la Pokéball) y, por encima, el contenido de
- *    la pestaña
+ *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
+ *    la Pokéball) y, si la pestaña de contenido es el mapa, el [MapOceanBackdrop]
+ *    (color del océano del mapa). Encima, el contenido de la pestaña
  *    ([AppTab.Home] o [AppTab.Map]).
  *
  *    Ese mismo movimiento decide **hacia dónde camina el entrenador**: cada clic
@@ -155,6 +155,11 @@ fun AppRoot(
     // el fondo liso de siempre.
     val showRouteBackground = state.contentTab == AppTab.Home &&
         state.hasWilds && !sceneActive && !state.needsStarter
+    // Fondo de océano del mapa: misma técnica que el fondo de ruta (capa detrás
+    // del Scaffold transparente) para que el océano llegue hasta la zona flotante
+    // de la Pokéball sin franja blanca. Solo con la pestaña Mapa visible.
+    val showMapOceanBackdrop = state.contentTab == AppTab.Map &&
+        !sceneActive && !state.needsStarter
     // Aislamiento de capas modales (issue #21): con la entrada al gimnasio (ya
     // cubierta por `sceneActive`), la intro, el selector de principal o la
     // cortinilla de arranque activos, el menú no se compone: su Pokéball ignora
@@ -186,12 +191,17 @@ fun AppRoot(
                 imageRes = routeBackground.imageRes,
                 seamCutRow = routeBackground.seamCutRow
             )
+        } else if (showMapOceanBackdrop) {
+            // Océano del mapa: rellena también el hueco inferior del menú (la
+            // zona flotante de la Pokéball), como hiciera el fondo de ruta.
+            MapOceanBackdrop(modifier = Modifier.fillMaxSize())
         }
 
         Scaffold(
             containerColor = when {
                 gymScene -> Color.Transparent
                 showRouteBackground -> Color.Transparent
+                showMapOceanBackdrop -> Color.Transparent
                 else -> MaterialTheme.colorScheme.background
             },
             bottomBar = {
