@@ -12,8 +12,9 @@
     <string name="nav_pokedex">Pokédex</string>
     <string name="pokedex_desc">Pokédex</string>
 
-    <!-- Mapa (placeholder) -->
-    <string name="map_placeholder">Mapa\n(placeholder)</string>
+    <!-- Mapa -->
+    <string name="map_kanto_desc">Mapa de Kanto</string>
+    <string name="map_reset_view">Restaurar vista</string>
 
     <!-- Menú de opciones (placeholder) -->
     <string name="options_title">Opciones</string>
