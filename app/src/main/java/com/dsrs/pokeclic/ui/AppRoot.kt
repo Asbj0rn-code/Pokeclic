@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -43,7 +45,9 @@ import kotlin.random.Random
  *
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
- *    fondo de la cueva a pantalla completa; si no, el contenido de la pestaña
+ *    fondo de la cueva a pantalla completa; si no, en zonas con fauna el
+ *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
+ *    la Pokéball) y, por encima, el contenido de la pestaña
  *    ([AppTab.Home] o [AppTab.Map]).
  * 2. Sobre el contenido: el [GymOverlay] y el [FishingOverlay] (partida de
  *    pesca del encuentro actual).
@@ -120,6 +124,10 @@ fun AppRoot(
 ) {
     val pokeBallSizePx = with(LocalDensity.current) { BottomMenuDefaults.POKEBALL_SIZE.toPx() }
 
+    // Contador de pulsaciones sobre la Pokéball: es lo único que mueve el fondo
+    // de ruta. Estado efímero de UI, sin relación con la lógica de negocio.
+    val pokePulses = remember { mutableLongStateOf(0L) }
+
     val gym = state.gym
     val gymActive = gym != null
     // Escena de gimnasio: combate **o** capa de entrada (bienvenida, tutorial y
@@ -131,6 +139,11 @@ fun AppRoot(
     // Takeover de escena: gimnasio (combate o entrada) y pesca ocultan HUD y
     // menú por completo.
     val sceneActive = gymScene || fishingActive
+    // Fondo de ruta animado: solo en la pantalla de juego y solo en zonas con
+    // fauna (rutas, bosque y cueva). Las ciudades y la pestaña Mapa conservan
+    // el fondo liso de siempre.
+    val showRouteBackground = state.contentTab == AppTab.Home &&
+        state.hasWilds && !sceneActive && !state.needsStarter
     // Aislamiento de capas modales (issue #21): con la entrada al gimnasio (ya
     // cubierta por `sceneActive`), la intro, el selector de principal o la
     // cortinilla de arranque activos, el menú no se compone: su Pokéball ignora
@@ -150,10 +163,22 @@ fun AppRoot(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (showRouteBackground) {
+            // Fondo de ruta: bucle vertical que se mueve con las pulsaciones de
+            // la Pokéball. Va detrás del `Scaffold`, que también se vuelve
+            // transparente para que se vea en el hueco de la barra.
+            RouteScrollingBackground(
+                pulseCount = pokePulses.longValue,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         Scaffold(
-            containerColor = if (gymScene) Color.Transparent else MaterialTheme.colorScheme.background,
+            containerColor = when {
+                gymScene -> Color.Transparent
+                showRouteBackground -> Color.Transparent
+                else -> MaterialTheme.colorScheme.background
+            },
             bottomBar = {
                 // En combate o pesca no se dibuja el menú: la escena ocupa toda
                 // la altura y ya trae sus propios controles. Tampoco bajo las
@@ -167,6 +192,7 @@ fun AppRoot(
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
                         onPokeBallGameClick = { offset ->
+                            pokePulses.longValue++
                             onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)
                         },
                         onExpandedChange = onPokeBallExpanded
