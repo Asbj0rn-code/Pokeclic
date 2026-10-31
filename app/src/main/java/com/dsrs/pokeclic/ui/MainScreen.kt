@@ -5,14 +5,14 @@
  *
  * La pantalla es **sin estado**: recibe `GameUiState` y lambdas. El HUD calcula
  * solo presentación (fracciones ya derivadas por el ViewModel). Los únicos
- * estados extra son **efímeros de UI**: animaciones de impacto, pops flotantes
- * y fases de pulsación declarados dentro de los composables.
+ * estados extra son **efímeros de UI**: pops flotantes y fases de pulsación
+ * declarados dentro de los composables.
  */
 package com.dsrs.pokeclic.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
+
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -77,9 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.viewmodel.GameUiState
-import kotlin.math.PI
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -273,6 +271,10 @@ private data class RetroPop(
     val yJitter: Dp
 )
 
+/**
+ * Capa superior de pops flotantes: cada "+N" se autoelimina al terminar su
+ * subida (`onRemove`), así la lista no crece entre clics.
+ */
 @Composable
 private fun PopLayer(
     pops: List<RetroPop>,
@@ -477,10 +479,10 @@ private fun LedDot(color: Color) {
  * La Pokéball **no** se posiciona aquí: vive en el bottom menu.
  */
 object MainLayout {
-    val TRAINER_SIZE = 180.dp
+    val TRAINER_SIZE = 100.dp
 
     /** Trainer pegado a la parte alta de la zona de contenido. */
-    const val TRAINER_BIAS = -0.55f
+    const val TRAINER_BIAS = -0.0f
 
     /** Botón de hierba alta: junto al trainer, arriba a la derecha. */
     val TALL_GRASS_SIZE = 80.dp
@@ -491,16 +493,16 @@ object MainLayout {
      * Capas de hierba alta que se superponen al trainer.
      * Ambas se centran sobre la misma posición que el trainer.
      */
-    val TALL_GRASS_FULL_SIZE = 120.dp
-    val TALL_GRASS_MID_SIZE = 120.dp
+    val TALL_GRASS_FULL_SIZE = 80.dp
+    val TALL_GRASS_MID_SIZE = 80.dp
 
     /**
      * Desplazamiento de las capas de hierba respecto al trainer.
      * Positivo lo mueve a la derecha (X) o hacia abajo (Y); negativo, al revés.
      * Afecta a las dos capas a la vez para que no se separen entre sí.
      */
-    val TALL_GRASS_X_OFFSET = 3.dp
-    val TALL_GRASS_Y_OFFSET = 38.dp
+    val TALL_GRASS_X_OFFSET = 2.dp
+    val TALL_GRASS_Y_OFFSET = 30.dp
 
     /** Margen del HUD respecto al borde superior de la zona de contenido. */
     val HUD_PADDING = 16.dp
@@ -510,9 +512,10 @@ object MainLayout {
  * Pantalla principal: HUD arriba y zona de juego debajo, sin marco ni fondo:
  * el entrenador y la hierba alta viven directamente sobre el fondo de la app.
  *
- * A cada clic de zona (toque de la Pokéball) responde con un flash blanco de
- * impacto y números de ganancia flotantes (+potencia) que suben y se
- * desvanecen.
+ * A cada clic de zona (toque de la Pokéball) responde con números de ganancia
+ * flotantes (+potencia) que suben y se desvanecen. Es el **único** feedback: el
+ * flash blanco de pantalla y la sacudida del sprite se retiraron porque el
+ * parpadeo resultaba molesto.
  *
  * Es un composable **sin estado propio**: recibe el [GameUiState] ya calculado y
  * reenvía las interacciones como lambdas. No conoce el ViewModel.
@@ -527,8 +530,7 @@ fun MainScreen(
     onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // "Juice" efímero: cada incremento real de zoneClicks dispara flash + sacudida + pop.
-    val impact = remember { Animatable(0f) }
+    // "Juice" efímero: cada incremento real de zoneClicks dispara pop flotante.
     var prevClicks by remember { mutableLongStateOf(state.zoneClicks) }
     var lcdPops by remember { mutableStateOf(emptyList<RetroPop>()) }
     var nextPopId by remember { mutableLongStateOf(0L) }
@@ -537,11 +539,6 @@ fun MainScreen(
         val delta = state.zoneClicks - prevClicks
         prevClicks = state.zoneClicks
         if (delta > 0L) {
-            impact.snapTo(1f)
-            impact.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 90, easing = LinearEasing)
-            )
             lcdPops = lcdPops + RetroPop(
                 id = nextPopId++,
                 text = "+$delta",
@@ -572,6 +569,7 @@ fun MainScreen(
                 modifier = Modifier.matchParentSize(),
                 applyInsets = false
             ) {
+                // Respiración en reposo: sube y baja 4 px en bucle (1700 ms).
                 val bob by rememberInfiniteTransition(label = "trainerBob").animateFloat(
                     initialValue = -4f,
                     targetValue = 4f,
@@ -588,16 +586,7 @@ fun MainScreen(
                 TrainerGrassStack(
                     trainerFrameRes = state.trainerFrameRes,
                     showTallGrass = state.isTallGrass,
-                    // Salto de impacto encima de la respiración en reposo:
-                    // sacudida horizontal + squash, todo en fase de dibujo.
-                    modifier = Modifier
-                        .graphicsLayer { translationY = bob }
-                        .graphicsLayer {
-                            val f = impact.value
-                            translationX = f * 7f * sin((f * PI * 3f).toFloat())
-                            scaleX = 1f + 0.05f * f
-                            scaleY = 1f - 0.03f * f
-                        }
+                    modifier = Modifier.graphicsLayer { translationY = bob }
                         .anchorVertically(MainLayout.TRAINER_BIAS)
                 )
 
@@ -616,13 +605,6 @@ fun MainScreen(
                 }
             }
 
-            // Flash blanco de impacto (cada clic de zona avanza la ruta).
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = impact.value * 0.24f }
-                    .background(Color.White)
-            )
             PopLayer(
                 pops = lcdPops,
                 onRemove = removeLcdPop,

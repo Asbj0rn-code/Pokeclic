@@ -123,7 +123,7 @@ Pokeclic/
 │   └── src/
 │       ├── main/
 │       │   ├── AndroidManifest.xml
-│       │   ├── java/com/example/myapplication/
+│       │   ├── java/com/dsrs/pokeclic/
 │       │   │   ├── MainActivity.kt              # Host único: setContent, splash y cableado del único MainViewModel
 │       │   │   ├── data/
 │       │   │   │   └── GameStateStore.kt        # Interfaz de persistencia + SharedPreferencesGameStateStore
@@ -134,8 +134,9 @@ Pokeclic/
 │       │   │   ├── viewmodel/                   # ── VIEWMODEL ──
 │       │   │   │   ├── GameUiState.kt           # Estado único (juego + navegación + combate)
 │       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y CPS
-│       │   │   └── ui/                          # ── VIEW (plano, 8 archivos) ──
+│       │   │   └── ui/                          # ── VIEW (plano, 9 archivos) ──
 │       │   │       ├── AppRoot.kt               # Shell: Scaffold, pestañas, overlays y previews
+│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle vertical movido por la Pokéball
 │       │   │       ├── MainScreen.kt            # Pantalla principal + GameHud
 │       │   │       ├── PokemonBottomMenu.kt     # Barra, Pokéball, hendidura y controles
 │       │   │       ├── GymOverlay.kt            # Escena del gimnasio, HUD y sprites del combate
@@ -149,8 +150,9 @@ Pokeclic/
 │       │       │   ├── colors.xml
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
-│       │       └── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
-│       └── test/                                # Tests unitarios JVM (ModelTest)
+│       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
+│       │       └── drawable-nodpi/              # background_ruta.png: pixel art sin reescalado por densidad
+│       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
 ├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
 ├── gradle/libs.versions.toml
@@ -164,9 +166,9 @@ Pokeclic/
   implementación que conoce `R.drawable`.
 - **`data/`**: contrato `GameStateStore` y su implementación con
   `SharedPreferences`.
-- **`ui/`**: 8 archivos planos; cada uno agrupa una pantalla o tema visual.
-- **Tests**: `src/test/` contiene `ModelTest`, ejecutable en la JVM. No hay tests
-  de instrumentación.
+- **`ui/`**: 9 archivos planos; cada uno agrupa una pantalla o tema visual.
+- **Tests**: `src/test/` contiene `ModelTest`, `CatalogTest` y
+  `MainViewModelTest`, ejecutables en la JVM. No hay tests de instrumentación.
 
 ---
 
@@ -344,7 +346,7 @@ Es el control principal del menú y tiene tres comportamientos:
 | Gesto | Estado | Resultado |
 |---|---|---|
 | Toque | En reposo | `onHomeClick` → pantalla principal |
-| Toque | Expandida | `onPokeBallGameClick(pos)` → `MainViewModel.onPokeBallTouch(...)` |
+| Toque | Expandida | `onPokeBallGameClick(pos)` → `pokePulses++` (fondo de ruta) y `MainViewModel.onPokeBallTouch(...)` |
 | Arrastre arriba y soltar | cualquiera | Se expande y avisa con `onExpandedChange(true)`; además lleva a la pantalla principal |
 | Arrastre abajo y soltar | cualquiera | Vuelve a su sitio con `onExpandedChange(false)` |
 
@@ -411,8 +413,9 @@ visibilidad vive en `GameUiState.isOptionsOpen`.
 | Elemento | Tamaño | Sesgo vertical | Sesgo horizontal | Interactivo |
 |---|---|---|---|---|
 | HUD | automático | primera fila del `Column` | ancho completo | Botones de gimnasio/reset/principal |
-| Trainer (+ capas de hierba) | `180.dp` | `-0.55f` | centrado | No |
+| Trainer (+ capas de hierba) | `100.dp` | `-0.0f` | centrado | No |
 | Botón de hierba alta | `80.dp` | `0.80f` | `0.90f` (derecha) | Sí (entra/sale del modo) |
+| Fondo de ruta (capa inferior) | pantalla completa | — | — | No: lo mueve la Pokéball |
 | Poké Ball | — | — | — | **No está aquí**: vive en el bottom menu |
 
 Los valores están centralizados en `object MainLayout` (`ui/MainScreen.kt`).
@@ -424,6 +427,30 @@ altura natural y el **entrenador + hierba** van en una `Box` con `weight(1f)`
 justo debajo. Así el HUD no se superpone al trainer: si crece mucho (nombre,
 monedas, zona, barras, botones…), reduce el espacio restante. `TRAINER_BIAS` se
 ajusta sobre esa caja, no sobre la pantalla completa.
+
+### Fondo de ruta animado
+
+En la pantalla Home de las zonas con fauna (`GameUiState.hasWilds`) y sin escena
+de gimnasio/pesca ni intro abierta, `AppRoot` compone
+`RouteScrollingBackground` (`ui/RouteBackground.kt`) **detrás** del contenido:
+el PNG `drawable-nodpi/background_ruta.png` se repite en vertical y se desplaza
+con las pulsaciones de la Pokéball. En ese estado el `Scaffold` usa
+`containerColor = Color.Transparent`, así el arte se ve también en el hueco de
+la barra.
+
+| Aspecto | Decisión |
+|---|---|
+| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: cada clic suma `IMPULSE = 0.22` t/s (tope `MAX_SPEED = 1.40` t/s) |
+| Frenado | Exponencial `FRICTION = 3.0` /s; por debajo de `STOP_EPSILON = 0.008` t/s se corta del todo y deja de redibujar |
+| Dirección | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla |
+| Bucle sin costura | Al cargar, las filas se enrollan cíclicamente (`SEAM_CUT_ROW = 1269`): la unión junta la pareja de filas consecutivas idénticas 1268\|1269 del PNG. **Ninguna copia se refleja** |
+| Escalado | Ancho completo y altura por repetición: `FilterQuality.None` al ampliar (pixel art) y `Medium` al reducir; independiente de la resolución |
+
+La velocidad se mide en **alturas de baldosa por segundo**, no en px, así el
+ritmo es el mismo en cualquier pantalla. La fase vive normalizada en `[0f, 1f)`
+y se actualiza dentro del bucle de frames (`withFrameNanos`): una pulsación
+**no recompone ni redibuja** la capa, solo cambia la física. Es estado efímero
+de UI: no toca el ViewModel ni el save.
 
 ### Capas de hierba alta sobre el trainer
 
@@ -577,6 +604,18 @@ private fun scheduleFrameReset() {
 }
 ```
 
+### Feedback del clic
+
+Cada incremento real de `zoneClicks` (delta > 0) agrega un **pop flotante**
+"+N" (`RetroPop` → `PopLayer` en `MainScreen`): sube 48 dp, se desvanece y se
+autoelimina a los 640 ms. Es el **único** feedback del clic: no hay flash de
+pantalla ni sacudida del sprite (se retiraron porque el parpadeo blanco
+resultaba molesto).
+
+El pop solo aparece cuando el clic suma avance real: con la barra de zona llena
+(`zoneClicks` se capa en el umbral) o en modo hierba alta, el delta es 0 y no se
+genera.
+
 ### Captura del toque
 
 El toque lo captura la Pokéball del bottom menu. `AppRoot` (sin estado) lo
@@ -588,13 +627,16 @@ val pokeBallSizePx = with(LocalDensity.current) { BottomMenuDefaults.POKEBALL_SI
 
 PokemonBottomMenu(
     onPokeBallGameClick = { offset ->
+        pokePulses.longValue++      // empujón del fondo de ruta (efímero de UI)
         onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)
     },
     // ...
 )
 ```
 
-`offset` es la posición local dentro de la Pokéball, que es lo que necesita
+`pokePulses` es un contador `Long` recordado en `AppRoot`; solo alimenta a
+`RouteScrollingBackground`, nunca al ViewModel. `offset` es la posición local
+dentro de la Pokéball, que es lo que necesita
 `directionFrom`. Sigue siendo válida aunque esté escalada y desplazada, porque
 `graphicsLayer` no transforma las coordenadas de puntero.
 
@@ -678,10 +720,10 @@ Centralizados en `object MainLayout` (`ui/MainScreen.kt`):
 
 ```kotlin
 object MainLayout {
-    val TRAINER_SIZE = 180.dp
+    val TRAINER_SIZE = 100.dp
     val TALL_GRASS_SIZE = 80.dp
 
-    const val TRAINER_BIAS = -0.55f      // trainer (mueve también las capas)
+    const val TRAINER_BIAS = -0.0f       // trainer (mueve también las capas)
     const val TALL_GRASS_BIAS = 0.8f     // botón de hierba
     const val TALL_GRASS_H_BIAS = 0.9f   // botón de hierba: hacia la derecha
     val HUD_PADDING = 16.dp              // margen del HUD
@@ -811,6 +853,7 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `golem.gif` | Enemigo de Brock |
 | `rock.png` | Proyectil del gimnasio |
 | `rock_gym.jpg` | Fondo del gimnasio |
+| `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
@@ -819,7 +862,8 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 
 1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
    solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `tallGrassButton.png` →
-   `tall_grass_button.png`).
+   `tall_grass_button.png`). Si es pixel art que no debe reescalarse por densidad,
+   va en `res/drawable-nodpi/` (así vive `background_ruta.png`).
 2. Añade su `contentDescription` en `strings.xml` si aporta información.
 3. Añade el composable en la pantalla correspondiente.
 4. Declara tamaño y posición en el `object` de configuración de esa pantalla.
@@ -925,6 +969,7 @@ lo que permite que R8 elimine los que no se usan.
 ```
 MenuPokeBall (toque sin arrastrar, ya expandida)
   → AppRoot.onPokeBallGameClick(offset)
+      → pokePulses++                                        // empujón del fondo de ruta
       → onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)   ← lambda que cableó MainActivity
           → MainViewModel.onPokeBallTouch(x, y, sizePx)
               → directionFrom(...)          // lógica de negocio
