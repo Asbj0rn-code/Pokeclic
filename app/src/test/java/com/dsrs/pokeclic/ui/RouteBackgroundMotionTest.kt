@@ -1,16 +1,18 @@
 package com.dsrs.pokeclic.ui
 
+import com.dsrs.pokeclic.model.Direction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.dsrs.pokeclic.model.Direction
 import kotlin.math.abs
 
 /**
  * La trayectoria es la única parte del fondo que se puede comprobar sin emulador:
- * decide cuánto se corre el personaje a cada lado y debe ser acotada, continua y
- * cerrada. Si dejara de serlo, el arte original dejaría de cubrir la pantalla o el
- * bucle daría un salto.
+ * decide cuánto avanza el fondo en cada eje y hacia dónde camina el entrenador.
+ *
+ * El modelo es simétrico: **un clic recorre lo mismo en cualquier dirección**, y
+ * los dos ejes son scrolls sin tope. Lo que se comprueba aquí es esa ley, que
+ * cada tramo mueva un solo eje y que la dirección salga del tramo, no aparte.
  *
  * La trayectoria se escribe en clics, así que los tests convierten a baldosas con
  * [tiles], la misma ley que usa la física.
@@ -20,12 +22,13 @@ class RouteBackgroundMotionTest {
     private fun tiles(clicks: Float): Double =
         (clicks * RouteScrollDefaults.TILES_PER_CLICK).toDouble()
 
+    /** 10 recto · 5 derecha · 5 recto · 5 izquierda: 25 clics, cierra el lateral. */
     private val motion = RouteBackgroundMotion(
         legs = listOf(
-            RouteLeg(clicks = 10f, drift = 0f),
-            RouteLeg(clicks = 5f, drift = 0.1f),
-            RouteLeg(clicks = 5f, drift = 0f),
-            RouteLeg(clicks = 5f, drift = -0.1f)
+            RouteLeg(clicks = 10f),
+            RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+            RouteLeg(clicks = 5f),
+            RouteLeg(clicks = 5f, direction = Direction.LEFT)
         )
     )
 
@@ -35,8 +38,19 @@ class RouteBackgroundMotionTest {
     }
 
     @Test
+    fun lateralDistance_comesFromTheClicks() {
+        // La ley del modelo: un tramo lateral de 5 clics recorre exactamente lo
+        // mismo que cinco clics rectos. No hay magnitud aparte que ajustar.
+        assertEquals(
+            5f * RouteScrollDefaults.TILES_PER_CLICK,
+            motion.legs[1].distance,
+            1e-6f
+        )
+    }
+
+    @Test
     fun straightLeg_keepsTheCharacterOnTheCentreLine() {
-        assertEquals(0f, motion.offsetAt(tiles(8f)), 0.0001f)
+        assertEquals(0f, motion.lateralDistanceAt(tiles(8f)), 1e-6f)
     }
 
     @Test
@@ -44,60 +58,69 @@ class RouteBackgroundMotionTest {
         // Del clic 10 al 15 el fondo se corre de lado: la distancia vertical no
         // puede moverse ni un píxel (nada de diagonales).
         val frozen = motion.verticalDistanceAt(tiles(10f))
-        assertEquals(frozen, motion.verticalDistanceAt(tiles(12f)), 1e-6)
-        assertEquals(frozen, motion.verticalDistanceAt(tiles(15f)), 1e-6)
-        assertTrue("El tramo lateral debe correrse", motion.offsetAt(tiles(15f)) > 0.05f)
+        assertEquals(frozen, motion.verticalDistanceAt(tiles(12f)), 1e-9)
+        assertEquals(frozen, motion.verticalDistanceAt(tiles(15f)), 1e-9)
     }
 
     @Test
     fun verticalLeg_doesNotDriftSideways() {
-        val off = motion.offsetAt(tiles(2f))
-        assertEquals(off, motion.offsetAt(tiles(9f)), 1e-6f)
+        val side = motion.lateralDistanceAt(tiles(15f))
+        assertEquals(side, motion.lateralDistanceAt(tiles(19f)), 1e-6f)
         assertTrue(
             "El tramo recto debe avanzar",
-            motion.verticalDistanceAt(tiles(9f)) > motion.verticalDistanceAt(tiles(2f))
+            motion.verticalDistanceAt(tiles(19f)) > motion.verticalDistanceAt(tiles(15f))
         )
     }
 
     @Test
-    fun verticalDistance_onlyCountsStraightLegs() {
-        // En un ciclo solo cuentan los tramos rectos: 10 + 5 clics.
-        assertEquals(tiles(15f), motion.verticalDistanceAt(tiles(25f)), 1e-6)
-        assertEquals(tiles(30f), motion.verticalDistanceAt(tiles(50f)), 1e-6)
+    fun lateralLeg_recoversExactlyTheDistanceOfItsClicks() {
+        // 5 clics de lado → 5 × TILES_PER_CLICK, al mismo ritmo que el vertical.
+        assertEquals(
+            motion.legs[1].distance,
+            motion.lateralDistanceAt(tiles(15f)),
+            1e-6f
+        )
     }
 
     @Test
-    fun driftingLeg_reachesItsSideAtTheEnd() {
-        assertEquals(0.1f, motion.offsetAt(tiles(15f)), 0.0001f)
-        assertEquals(0.1f, motion.offsetAt(tiles(20f)), 0.0001f)
+    fun lateralAdvanceIsLinear() {
+        // A mitad del tramo lateral, mitad del recorrido: sin rampa de entrada ni
+        // de salida, igual que el vertical.
+        assertEquals(
+            motion.legs[1].distance / 2f,
+            motion.lateralDistanceAt(tiles(12.5f)),
+            1e-6f
+        )
     }
 
     @Test
-    fun cycle_endsBackOnTheCentreLine() {
-        assertEquals(0f, motion.offsetAt(0.0), 0.0001f)
-        assertEquals(0f, motion.offsetAt(tiles(25f)), 0.0001f)
-        assertEquals(0f, motion.offsetAt(tiles(24.999f)), 0.0001f)
-    }
-
-    @Test
-    fun offset_neverExceedsTheDeclaredDrift() {
-        var travelled = 0.0
-        while (travelled < motion.cycleDistance * 3.0) {
-            travelled += 0.0001
-            assertTrue(
-                "Se corre demasiado en $travelled",
-                abs(motion.offsetAt(travelled)) <= motion.maxDrift + 0.0001f
+    fun lateral_isAScrollWithoutATope() {
+        // Un ciclo con clics de más a un lado acumula deriva vuelta tras vuelta:
+        // es un scroll infinito, no un corrimiento acotado que vuelve al centro.
+        val oneSided = RouteBackgroundMotion(
+            legs = listOf(
+                RouteLeg(clicks = 5f),
+                RouteLeg(clicks = 5f, direction = Direction.RIGHT)
             )
-        }
+        )
+        val first = oneSided.lateralDistanceAt(oneSided.cycleDistance.toDouble())
+        val fifth = oneSided.lateralDistanceAt(oneSided.cycleDistance * 5.0)
+        assertTrue("El lateral debe crecer", fifth > first)
+        assertEquals(first * 5f, fifth, 1e-4f)
     }
 
     @Test
-    fun offset_neverJumpsBetweenSamples() {
-        var previous = motion.offsetAt(0.0)
+    fun balancedCycle_returnsToTheCentreLine() {
+        assertEquals(0f, motion.lateralDistanceAt(motion.cycleDistance * 7.0), 1e-4f)
+    }
+
+    @Test
+    fun lateral_neverJumpsBetweenSamples() {
+        var previous = motion.lateralDistanceAt(0.0)
         var travelled = 0.0
         while (travelled < motion.cycleDistance * 3.0) {
             travelled += 0.0001
-            val current = motion.offsetAt(travelled)
+            val current = motion.lateralDistanceAt(travelled)
             assertTrue(
                 "Corrimiento salta en $travelled: $previous -> $current",
                 abs(current - previous) < 0.01f
@@ -107,46 +130,52 @@ class RouteBackgroundMotionTest {
     }
 
     @Test
-    fun offset_isPeriodic() {
-        val cycle = motion.cycleDistance.toDouble()
-        assertEquals(
-            motion.offsetAt(tiles(9.3f)),
-            motion.offsetAt(tiles(9.3f) + cycle * 5.0),
-            0.0001f
-        )
+    fun directionFollowsTheAxisOfEachStep() {
+        assertEquals(Direction.BACK, motion.directionForStep(1))
+        assertEquals(Direction.BACK, motion.directionForStep(10))
+        assertEquals(Direction.RIGHT, motion.directionForStep(11))
+        assertEquals(Direction.RIGHT, motion.directionForStep(15))
+        assertEquals(Direction.BACK, motion.directionForStep(16))
+        assertEquals(Direction.LEFT, motion.directionForStep(21))
+        assertEquals(Direction.LEFT, motion.directionForStep(25))
+        assertEquals(Direction.BACK, motion.directionForStep(26))
     }
 
     @Test
-    fun nonClosingCycle_stillHasNoSeam() {
-        // Una localización mal sumada no debe dar un salto en el bucle: el cierre
-        // que falte se reparte por el ciclo.
-        val broken = RouteBackgroundMotion(legs = listOf(RouteLeg(clicks = 10f, drift = 0.05f)))
-        assertEquals(broken.offsetAt(0.0), broken.offsetAt(tiles(9.999f)), 0.001f)
-        assertEquals(broken.offsetAt(0.0), broken.offsetAt(tiles(10.001f)), 0.001f)
+    fun frontLeg_isRejected() {
+        // FRONT es el reposo del sprite, no una dirección de avance.
+        var threw = false
+        try {
+            RouteBackgroundMotion(
+                legs = listOf(RouteLeg(clicks = 5f, direction = Direction.FRONT))
+            )
+        } catch (expected: IllegalArgumentException) {
+            threw = true
+        }
+        assertTrue("Un tramo FRONT no debería construirse", threw)
     }
 
     @Test
     fun defaultMotion_turnsRightAtFifteenClicks() {
         val default = RouteScrollDefaults.MOTION
 
-        // Hasta el clic 15 el personaje no se ha movido de la línea central: ahí
-        // empieza exactamente el giro a la derecha.
-        assertEquals(0f, default.offsetAt(tiles(14.99f)), 0.0001f)
+        assertEquals(0f, default.lateralDistanceAt(tiles(14.99f)), 1e-6f)
         assertTrue(
             "El giro a la derecha debe empezar en el clic 15",
-            default.offsetAt(tiles(15.5f)) > 0f
+            default.lateralDistanceAt(tiles(15.5f)) > 0f
         )
     }
 
     @Test
-    fun defaultMotion_holdsTheRightSideForOneClick() {
+    fun defaultMotion_holdsTheRightSideWhileItGoesStraight() {
         val default = RouteScrollDefaults.MOTION
+        val step = 1f * RouteScrollDefaults.TILES_PER_CLICK
 
-        // Del 15 al 16 se abre a la derecha; a partir del 16 se queda en +0.08
+        // Del 15 al 16 se abre a la derecha; a partir del 16 se queda ahí
         // mientras sube recto otros 10 clics (hasta el 26).
-        assertEquals(0.08f, default.offsetAt(tiles(16f)), 0.0001f)
-        assertEquals(0.08f, default.offsetAt(tiles(21f)), 0.0001f)
-        assertEquals(0.08f, default.offsetAt(tiles(26f)), 0.0001f)
+        assertEquals(step, default.lateralDistanceAt(tiles(16f)), 1e-6f)
+        assertEquals(step, default.lateralDistanceAt(tiles(21f)), 1e-6f)
+        assertEquals(step, default.lateralDistanceAt(tiles(26f)), 1e-6f)
     }
 
     @Test
@@ -159,36 +188,12 @@ class RouteBackgroundMotionTest {
         assertEquals(frozen, default.verticalDistanceAt(tiles(16f)), 1e-6)
 
         // Clics 16 → 26: sube recto 10 clics y el lateral no se mueve.
-        val side = default.offsetAt(tiles(16f))
-        assertEquals(side, default.offsetAt(tiles(21f)), 1e-6f)
+        val side = default.lateralDistanceAt(tiles(16f))
+        assertEquals(side, default.lateralDistanceAt(tiles(21f)), 1e-6f)
         assertTrue(
             "Tras el tramo lateral el vertical debe volver a avanzar",
             default.verticalDistanceAt(tiles(26f)) > frozen + tiles(9f)
         )
-    }
-
-    @Test
-    fun defaultMotion_lateralAdvanceIsLinear() {
-        val default = RouteScrollDefaults.MOTION
-
-        // Tramo lateral: del clic 15 al 16. Al 25 % del tramo el corrimiento debe
-        // ser el 25 % de 0,08. Con `smoothstep` daría 0,0125 (arranque lento).
-        assertEquals(0.02f, default.offsetAt(tiles(15.25f)), 0.0001f)
-        assertEquals(0.04f, default.offsetAt(tiles(15.5f)), 0.0001f)
-        assertEquals(0.06f, default.offsetAt(tiles(15.75f)), 0.0001f)
-    }
-
-    @Test
-    fun defaultMotion_followsTheRequestedPath() {
-        val default = RouteScrollDefaults.MOTION
-
-        // Puntos de paso: recto (15), derecha (16), recto 10 clics (26),
-        // vuelta al centro (27).
-        assertEquals(0f, default.offsetAt(tiles(15f)), 0.0001f)
-        assertEquals(0.08f, default.offsetAt(tiles(16f)), 0.0001f)
-        assertEquals(0.08f, default.offsetAt(tiles(26f)), 0.0001f)
-        assertEquals(0f, default.offsetAt(tiles(27f)), 0.0001f)
-        assertEquals(0.08f, default.maxDrift, 0.0001f)
     }
 
     @Test
@@ -197,13 +202,12 @@ class RouteBackgroundMotionTest {
 
         // 27 clics por ciclo: 15 + 1 + 10 + 1.
         assertEquals(tiles(27f), default.cycleDistance.toDouble(), 1e-6)
-        // De ellos, 25 son avance vertical (1,08 baldosas de recorrido total,
-        // 1,0 verticales).
+        // De ellos, 25 son avance vertical: una baldosa exacta.
         assertEquals(tiles(25f), default.verticalDistanceAt(tiles(27f)), 1e-6)
-        // El ciclo cierra exactamente en la línea central: sin deriva acumulada.
-        assertEquals(0f, default.offsetAt(tiles(27f)), 0.00001f)
-        assertEquals(0f, default.offsetAt(tiles(27f * 7f)), 0.00001f)
+        // Y el lateral cierra en el centro porque los dos sentidos duran igual.
+        assertEquals(0f, default.lateralDistanceAt(tiles(27f)), 1e-6f)
         assertEquals(tiles(25f * 7f), default.verticalDistanceAt(tiles(27f * 7f)), 1e-6)
+        assertEquals(0f, default.lateralDistanceAt(tiles(27f * 7f)), 1e-5f)
     }
 
     @Test
@@ -217,8 +221,6 @@ class RouteBackgroundMotionTest {
         assertEquals(1.0, vertical, 1e-6)
         assertEquals(vertical * 2.0, default.verticalDistanceAt(cycle * 2.0), 1e-6)
         assertEquals(vertical * 5.0, default.verticalDistanceAt(cycle * 5.0), 1e-5)
-        // Y el lateral vuelve a cero en cada vuelta.
-        assertEquals(0f, default.offsetAt(cycle * 5.0), 1e-5f)
     }
 
     @Test
@@ -233,24 +235,6 @@ class RouteBackgroundMotionTest {
         assertEquals(Direction.BACK, default.directionForStep(17))
         assertEquals(Direction.BACK, default.directionForStep(26))
         assertEquals(Direction.LEFT, default.directionForStep(27))
-        // Y vuelve a empezar el ciclo.
         assertEquals(Direction.BACK, default.directionForStep(28))
-    }
-
-    @Test
-    fun slackFactor_coversTheWholeLateralTravel() {
-        val screenWidth = 1000f
-        for (maxDrift in listOf(0f, 0.05f, 0.08f, 0.2f)) {
-            val factor = routeSlackFactor(maxDrift)
-            val tileWidth = screenWidth * factor
-            // Con el personaje en cada extremo, el arte sigue tapando la pantalla.
-            val leftAtRight = (screenWidth - tileWidth) / 2f - maxDrift * screenWidth
-            val leftAtLeft = (screenWidth - tileWidth) / 2f + maxDrift * screenWidth
-            assertTrue("Borde visible a la derecha con drift=$maxDrift", leftAtRight <= 0f)
-            assertTrue(
-                "Borde visible a la izquierda con drift=$maxDrift",
-                leftAtLeft + tileWidth >= screenWidth
-            )
-        }
     }
 }

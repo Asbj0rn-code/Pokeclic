@@ -14,55 +14,83 @@ package com.dsrs.pokeclic.ui
 
 import androidx.annotation.DrawableRes
 import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.Direction
 
 /**
  * Aspecto y trayectoria del fondo animado de una zona.
  *
- * @param imageRes drawable que se repite en vertical. Debe medir, idealmente, un
- *   ancho de pantalla: el bucle horizontal y el margen lateral se calculan a partir
- *   de su proporción.
+ * Con solo [imageRes] ya funciona: hereda la trayectoria estándar
+ * ([RouteScrollDefaults.MOTION]) y después se ajustan los clics.
+ *
+ * @param imageRes drawable que se repite. Debe medir, idealmente, un ancho de
+ *   pantalla: las columnas horizontales se calculan a partir de su ancho.
  * @param motion clics y direcciones de la zona ([RouteLeg]).
  * @param seamCutRow **0 para el arte normal**: los fondos son patrones continuos,
  *   así que el borde inferior del dibujo coincide con el superior y se repiten sin
  *   costura. Solo el arte antiguo, dibujado como un tramo suelto, necesita aquí la
  *   fila por la que debe cortar el bucle (ver [RouteScrollDefaults.SEAM_CUT_ROW]).
+ * @param startAnchor fracción de la altura de la pantalla donde cae el **borde
+ *   inferior del arte** al entrar en la zona (`0,5` = el centro, donde está el
+ *   entrenador). `null` arranca por el principio del arte.
+ * @param startOffset posición lateral del personaje al entrar, en anchos de
+ *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
+ *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
  */
 internal data class ZoneBackground(
     @DrawableRes val imageRes: Int,
-    val motion: RouteBackgroundMotion,
-    val seamCutRow: Int = 0
+    val motion: RouteBackgroundMotion = RouteScrollDefaults.MOTION,
+    val seamCutRow: Int = 0,
+    val startAnchor: Float? = null,
+    val startOffset: Float = 0f
 )
 
 /**
  * Fondos disponibles, indexados por `Zone.id`.
  *
- * Para darle a una zona su propia animación basta con añadir una entrada a
- * [byZone]:
+ * ## Cómo añadir la animación de una zona
+ *
+ * 1. **Arte**: un PNG en `res/drawable-nodpi/` (sin reescalado por densidad). Se
+ *    dibuja a un ancho de pantalla y se repite en los dos ejes. Para que el bucle
+ *    no muestre costura tiene que ser **continuo en los dos ejes**: el borde
+ *    inferior coincide con el superior y el derecho con el izquierdo. Si no lo es
+ *    se nota una unión (el bosque tiene una suave en horizontal; el arte antiguo
+ *    de ruta necesitó `seamCutRow` en vertical).
+ * 2. **Trayectoria**: una lista de [RouteLeg] con **clics y dirección**. Alternar
+ *    recto con laterales es lo que hace que el entrenador cambie de orientación;
+ *    la dirección del sprite sale del tramo, no se configura aparte.
+ * 3. **Arranque** (opcional): `startAnchor` para empezar por una parte concreta
+ *    del arte y `startOffset` para correr la imagen de lado.
+ * 4. Añadir la entrada a [byZone] con el `Zone.id` del catálogo de zonas. Con solo
+ *    el arte ya se anima: hereda la trayectoria estándar y después se ajustan los
+ *    clics.
+ *
+ * No hace falta nada más: ni tocar la pantalla, ni el ViewModel, ni el sprite.
+ * `AppRoot` lee `RouteBackgrounds.forZone(state.zoneId)` y le pasa el resultado a
+ * [RouteScrollingBackground]; una zona sin entrada usa [DEFAULT].
+ *
+ * Ejemplo mínimo de una zona con su propia trayectoria:
  *
  * ```
  * "ruta2" to ZoneBackground(
  *     imageRes = R.drawable.background_ruta2,
  *     motion = RouteBackgroundMotion(
  *         legs = listOf(
- *             RouteLeg(clicks = 20f, drift = 0f),
- *             RouteLeg(clicks = 2f, drift = 0.10f),
- *             RouteLeg(clicks = 12f, drift = 0f),
- *             RouteLeg(clicks = 2f, drift = -0.10f)
+ *             RouteLeg(clicks = 20f),
+ *             RouteLeg(clicks = 2f, direction = Direction.RIGHT),
+ *             RouteLeg(clicks = 12f),
+ *             RouteLeg(clicks = 2f, direction = Direction.LEFT)
  *         )
  *     )
  * )
  * ```
  *
- * El arte se dibuja como **patrón continuo**: el borde inferior coincide con el
- * superior, así que no hay que indicar ninguna fila de corte. Solo [DEFAULT] lleva
- * `seamCutRow` porque su PNG es el antiguo, dibujado como un tramo suelto.
- * Reglas que [RouteBackgroundsTest] comprueba para **cada** zona del catálogo:
+ * ## Lo que [RouteBackgroundsTest] comprueba en **cada** zona
  *
- * - la suma de `drift` de un ciclo es cero (el lateral vuelve al centro),
- * - los clics de los tramos rectos suman un número entero de baldosas, para que
- *   cada vuelta empiece en el mismo píxel del arte,
- * - hay al menos un tramo recto y uno lateral, así que el entrenador cambia de
- *   dirección.
+ * - el arte existe y la trayectoria tiene tramos,
+ * - el fondo avanza en vertical (si no, nunca se mueve),
+ * - hay al menos un tramo recto y uno lateral (si no, el entrenador no cambia de
+ *   orientación),
+ * - cada tramo recorre exactamente `clics × TILES_PER_CLICK` en su eje.
  */
 internal object RouteBackgrounds {
 
@@ -77,14 +105,48 @@ internal object RouteBackgrounds {
 
     /** Un fondo propio por zona. Las que falten aquí usan [DEFAULT]. */
     private val byZone: Map<String, ZoneBackground> = mapOf(
+        // Bosque Verde: arte y trayectoria propios. Los clics y las direcciones
+        // salen de esta lista, en orden y contados en clics:
+        //   2 recto · 3 derecha · 2 recto · 2 derecha · 6 recto ·
+        //   6 izquierda · 6 recto · 5 derecha · 5 recto · 4 izquierda · 4 recto
+        //
+        // No hay magnitudes laterales que ajustar: un clic de lado recorre lo
+        // mismo que un clic recto. Como los dos sentidos suman 10 clics, el
+        // personaje vuelve solo a la línea central en cada vuelta; el zigzag se
+        // aleja hasta 0,20 alturas de baldosa del centro.
+        "bosque_verde" to ZoneBackground(
+            imageRes = R.drawable.background_bosque_verde,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 3f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 2f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 6f),
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 6f),
+                    RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 4f),
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 5f)
+                )
+            ),
+            startAnchor = 0.5f,
+            startOffset = -0.08f
+        ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
-        // "bosque_verde" to ZoneBackground(
-        //     imageRes = R.drawable.background_bosque,
-        //     motion = RouteBackgroundMotion(legs = listOf(...)),
-        //     seamCutRow = 1269
+        // "ruta2" to ZoneBackground(
+        //     imageRes = R.drawable.background_ruta2,
+        //     motion = RouteBackgroundMotion(legs = listOf(...))
         // )
     )
 
     /** Fondo de [zoneId]; nunca es nulo. */
     fun forZone(zoneId: String): ZoneBackground = byZone[zoneId] ?: DEFAULT
+
+    /**
+     * Ids con entrada propia. Lo usa [RouteBackgroundsTest] para detectar un id
+     * mal escrito: sin esto, esa zona caería en [DEFAULT] sin avisar.
+     */
+    internal val configuredZoneIds: Set<String> = byZone.keys
 }
