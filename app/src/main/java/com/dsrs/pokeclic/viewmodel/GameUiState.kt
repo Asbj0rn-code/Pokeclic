@@ -73,6 +73,8 @@ data class GameUiState(
 
     // --- derivados (los rellena el ViewModel) ---
     val zoneName: String = "",
+    /** Clave estable de la zona actual, para resolver su fondo animado. */
+    val zoneId: String = "",
     val zoneRequirement: Long = 0L,
     /** Especies en posesión incluyendo al starter, igual que la potencia de clic. */
     val ownedCount: Int = 0,
