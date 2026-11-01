@@ -27,6 +27,8 @@ import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advanceZone
 import com.dsrs.pokeclic.model.isGymPending
+import com.dsrs.pokeclic.model.isLateral
+import com.dsrs.pokeclic.model.startFrame
 import com.dsrs.pokeclic.model.typeDamageMultiplier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -37,7 +39,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.atan2
 import kotlin.math.roundToLong
 import kotlin.random.Random
 
@@ -83,6 +84,9 @@ class MainViewModel(
     /** Job del reset de frame; se cancela al programar uno nuevo. */
     private var resetJob: Job? = null
 
+    /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
+    private var lateralFrameJob: Job? = null
+
     /** Job del bucle de combate del gimnasio. */
     private var gymJob: Job? = null
 
@@ -109,21 +113,31 @@ class MainViewModel(
     // --- Eventos de UI -----------------------------------------------------
 
     /**
-     * Traduce el toque sobre la pokéball a una dirección y aplica el efecto del
-     * modo actual: caminar > avance de zona. Durante el minijuego de pesca la
-     * pokéball no se dibuja (la escena ocupa toda la pantalla), así que un toque
-     * que la alcanzara no cambia nada sustantivo.
+     * Pulsación sobre la Pokébola.
+     *
+     * @param direction llega ya resuelta desde la UI: la marca el eje por el que
+     *   se mueve el fondo (recto → de espaldas, lateral → derecha o izquierda).
+     *   La Pokébola ya no elige dirección según el lado que se toca.
+     *
+     * Aplica el efecto del modo actual: caminar > avance de zona. Durante el
+     * minijuego de pesca la Pokébola no se dibuja (la escena ocupa toda la
+     * pantalla), así que un toque que la alcanzara no cambia nada sustantivo.
      */
-    fun onPokeBallTouch(touchX: Float, touchY: Float, sizePx: Float) {
-        val direction = directionFrom(touchX, touchY, sizePx)
-
+    fun onPokeBallTouch(direction: Direction) {
         val now = nowMs()
-        var directionChanged = false
+        // Un clic nuevo manda: si quedaba pendiente el segundo fotograma de un
+        // lateral anterior, ya no aplica.
+        lateralFrameJob?.cancel()
 
+        var directionChanged = false
         val updated = _uiState.updateAndGet { state ->
             directionChanged = direction != state.trainer.currentDirection
             val trainer = if (directionChanged) {
-                state.trainer.copy(currentDirection = direction, currentFrame = 0)
+                // Al estrenar dirección se arranca por su fotograma de entrada:
+                // los laterales empiezan en el segundo del ciclo.
+                val total = sprites.frameCount(direction)
+                val first = direction.startFrame().coerceIn(0, (total - 1).coerceAtLeast(0))
+                state.trainer.copy(currentDirection = direction, currentFrame = first)
             } else {
                 val total = sprites.frameCount(direction)
                 state.trainer.copy(currentFrame = (state.trainer.currentFrame + 1) % total)
@@ -146,7 +160,13 @@ class MainViewModel(
         }
         store.save(updated.toSnapshot())
 
-        if (directionChanged) resetJob?.cancel() else scheduleFrameReset()
+        // El paso de lado dura un solo clic: su segundo fotograma entra cuando el
+        // desplazamiento ya está en marcha, no en el mismo instante del toque.
+        if (directionChanged && direction.isLateral) {
+            scheduleLateralSecondFrame(direction)
+        }
+        // Un segundo sin pulsar devuelve al entrenador al reposo (front, frame 0).
+        scheduleFrameReset()
     }
 
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
@@ -201,6 +221,7 @@ class MainViewModel(
         gymJob?.cancel()
         cancelFishing()
         resetJob?.cancel()
+        lateralFrameJob?.cancel()
         lastWalkTapMs = 0L
         nextProjectileId = 0L
         store.clear()
@@ -688,30 +709,48 @@ class MainViewModel(
 
     // --- Animación del entrenador -----------------------------------------
 
+    /**
+     * Vuelve al reposo tras [FRAME_RESET_DELAY_MS] sin pulsar: **front** y su
+     * primer fotograma, quieto. Cada pulsación reprograma el plazo.
+     */
     private fun scheduleFrameReset() {
         resetJob?.cancel()
         resetJob = viewModelScope.launch {
             delay(FRAME_RESET_DELAY_MS)
             _uiState.update { state ->
                 state.copy(
-                    trainer = state.trainer.copy(currentFrame = 0),
-                    trainerFrameRes = sprites.frame(state.trainer.currentDirection, 0)
+                    trainer = state.trainer.copy(
+                        currentDirection = Direction.FRONT,
+                        currentFrame = 0
+                    ),
+                    trainerFrameRes = sprites.frame(Direction.FRONT, 0)
                 )
             }
         }
     }
 
-    private fun directionFrom(touchX: Float, touchY: Float, sizePx: Float): Direction {
-        val center = sizePx / 2f
-        val dx = (touchX - center).toDouble()
-        val dy = (touchY - center).toDouble()
-        val angle = Math.toDegrees(atan2(dy, dx))
-
-        return when {
-            angle >= -45.0 && angle < 45.0 -> Direction.RIGHT
-            angle >= 45.0 && angle < 135.0 -> Direction.FRONT
-            angle >= 135.0 || angle < -135.0 -> Direction.LEFT
-            else -> Direction.BACK
+    /**
+     * Segundo fotograma del paso lateral.
+     *
+     * El paso de lado dura un solo clic, así que sus dos fotogramas caen dentro de
+     * la misma animación: el primero se pinta al tocar y este entra
+     * [LATERAL_SECOND_FRAME_DELAY_MS] después, cuando el fondo ya está deslizando.
+     * Cualquier clic nuevo cancela el plazo.
+     */
+    private fun scheduleLateralSecondFrame(direction: Direction) {
+        lateralFrameJob?.cancel()
+        lateralFrameJob = viewModelScope.launch {
+            delay(LATERAL_SECOND_FRAME_DELAY_MS)
+            _uiState.update { state ->
+                if (state.trainer.currentDirection != direction) return@update state
+                val total = sprites.frameCount(direction)
+                val frame = (direction.startFrame() + 1)
+                    .coerceIn(0, (total - 1).coerceAtLeast(0))
+                state.copy(
+                    trainer = state.trainer.copy(currentFrame = frame),
+                    trainerFrameRes = sprites.frame(direction, frame)
+                )
+            }
         }
     }
 
@@ -788,6 +827,7 @@ class MainViewModel(
 
         return state.copy(
             zoneName = zone.name,
+            zoneId = zone.id,
             zoneRequirement = zone.clickRequirement,
             ownedCount = ownedCount,
             clickPower = clickPower,
@@ -824,6 +864,13 @@ class MainViewModel(
 
     private companion object {
         const val FRAME_RESET_DELAY_MS = 1_000L
+
+        /**
+         * Cuánto tarda el segundo fotograma de un paso lateral. Cae dentro de los
+         * ~100 ms que dura el desplazamiento de ese clic, así que se ve el
+         * arranque (frame 1) y luego la zancada (frame 2).
+         */
+        const val LATERAL_SECOND_FRAME_DELAY_MS = 60L
         const val CPS_TICK_MS = 1_000L
         const val WALK_TICK_MS = 100L
 

@@ -37,6 +37,19 @@ enum class Direction {
     BACK
 }
 
+/**
+ * Fotograma del ciclo con el que arranca cada dirección.
+ *
+ * Los laterales arrancan en el **segundo** fotograma: como el paso de lado dura un
+ * solo clic, es el único que llega a verse, y el primero del ciclo es una pose de
+ * apoyo que no lee como caminar. El resto arranca por el primero.
+ */
+fun Direction.startFrame(): Int = if (isLateral) 1 else 0
+
+/** ¿La dirección es de lado? */
+val Direction.isLateral: Boolean
+    get() = this == Direction.RIGHT || this == Direction.LEFT
+
 /** Fotograma y orientación actuales del sprite del entrenador (solo visual). */
 data class TrainerState(
     val currentDirection: Direction = Direction.FRONT,
