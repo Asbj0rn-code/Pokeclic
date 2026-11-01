@@ -151,7 +151,7 @@ Pokeclic/
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
 │       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
-│       │       └── drawable-nodpi/              # background_ruta.png: pixel art sin reescalado por densidad
+│       │       └── drawable-nodpi/              # background_ruta.png y background_bosque_verde.png: pixel art sin reescalado por densidad
 │       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
 ├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
@@ -433,24 +433,66 @@ ajusta sobre esa caja, no sobre la pantalla completa.
 En la pantalla Home de las zonas con fauna (`GameUiState.hasWilds`) y sin escena
 de gimnasio/pesca ni intro abierta, `AppRoot` compone
 `RouteScrollingBackground` (`ui/RouteBackground.kt`) **detrás** del contenido:
-el PNG `drawable-nodpi/background_ruta.png` se repite en vertical y se desplaza
-con las pulsaciones de la Pokéball. En ese estado el `Scaffold` usa
-`containerColor = Color.Transparent`, así el arte se ve también en el hueco de
-la barra.
+el arte de la zona se repite en vertical y se desplaza con las pulsaciones de la
+Pokéball. En ese estado el `Scaffold` usa `containerColor = Color.Transparent`,
+así el arte se ve también en el hueco de la barra.
+
+Cada zona saca su **arte** y su **trayectoria** del catálogo `RouteBackgrounds`
+(`ui/RouteBackgrounds.kt`), indexado por `Zone.id`: la **misma** instancia de
+`ZoneBackground.motion` mueve el dibujo y decide la dirección del entrenador, así
+que no pueden desincronizarse. Las zonas sin entrada propia usan
+`RouteBackgrounds.DEFAULT`. Hoy tiene arte propio **Bosque Verde**
+(`background_bosque_verde.png`, 1152×1920), que además arranca por el final del
+dibujo (`startAnchor = 0,5`: el entrenador empieza pisando su borde inferior y
+camina hacia arriba) y con la imagen corrida a la derecha (`startOffset = -0,08`,
+8 % del ancho de pantalla); el resto sigue con el de ruta y arranca por el
+principio, centrado.
+
+Bosque Verde también tiene **trayectoria propia**, y se escribe solo con clics y
+dirección: 2 recto · 1 derecha · 2 recto · 3 derecha · 5 recto · 5 izquierda ·
+5 recto · 5 derecha · 4 recto · 4 izquierda · 8 recto. No hay magnitudes
+laterales: un clic de lado recorre lo mismo que un clic recto. Como los dos
+sentidos suman 9 clics, el zigzag vuelve solo a la línea central en cada vuelta y
+no se aleja más de 0,16 alturas de baldosa.
 
 | Aspecto | Decisión |
 |---|---|
-| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: cada clic suma `IMPULSE = 0.22` t/s (tope `MAX_SPEED = 1.40` t/s) |
-| Frenado | Exponencial `FRICTION = 3.0` /s; por debajo de `STOP_EPSILON = 0.008` t/s se corta del todo y deja de redibujar |
+| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia |
+| Frenado | No hay inercia: el paso se consume en `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) y el fondo se para en seco al soltar |
 | Dirección | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla |
-| Bucle sin costura | Al cargar, las filas se enrollan cíclicamente (`SEAM_CUT_ROW = 1269`): la unión junta la pareja de filas consecutivas idénticas 1268\|1269 del PNG. **Ninguna copia se refleja** |
+| Trayectoria | Tramos `RouteLeg` de **un solo eje**: los rectos avanzan en vertical y los laterales corren el fondo sin bajarlo. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
+| Ejes infinitos | El vertical repite el arte en bucle y el lateral lo repite **como loseta**: al borde derecho de una columna le sigue el borde izquierdo del arte, sin reflejarlo. Así **ningún eje tiene tope ni tiene que volver a cero**: un ciclo con más clics a un lado deja al personaje cada vez más corrido, igual que uno recto lo deja cada vez más arriba |
+| Punto de partida vertical | `ZoneBackground.startAnchor`: fracción de la pantalla donde cae el **borde inferior del arte** al entrar en la zona (`0,5` = el centro, que es donde está el entrenador). `null` arranca por el principio del arte. Solo mueve el punto de vista, no la trayectoria |
+| Punto de partida lateral | `ZoneBackground.startOffset`: posición lateral del personaje al entrar, en anchos de pantalla y con el signo de `lateralDistanceAt` (positivo = personaje a la derecha, imagen a la izquierda) |
+| Bucle sin costura | Los fondos son patrones continuos (`seamCutRow = 0`). Solo el arte antiguo de ruta se enrolla por `SEAM_CUT_ROW = 1269` para que la unión caiga en la pareja de filas 1268\|1269. **Ninguna copia se refleja en vertical** |
 | Escalado | Ancho completo y altura por repetición: `FilterQuality.None` al ampliar (pixel art) y `Medium` al reducir; independiente de la resolución |
 
-La velocidad se mide en **alturas de baldosa por segundo**, no en px, así el
-ritmo es el mismo en cualquier pantalla. La fase vive normalizada en `[0f, 1f)`
+El recorrido se mide en **baldosas** (repeticiones del arte), no en px ni dp, así
+el ritmo es el mismo en cualquier pantalla. La fase vive normalizada en `[0f, 1f)`
 y se actualiza dentro del bucle de frames (`withFrameNanos`): una pulsación
-**no recompone ni redibuja** la capa, solo cambia la física. Es estado efímero
+**no recompone ni redibuja** la capa, solo cambia la posición. Es estado efímero
 de UI: no toca el ViewModel ni el save.
+
+#### Cómo añadir la animación de una zona nueva
+
+1. Deja el PNG en `res/drawable-nodpi/`, idealmente de un ancho de pantalla. Para
+   que el bucle no muestre costura tiene que ser **continuo en los dos ejes**:
+   borde inferior = superior y borde derecho = izquierdo (el bosque tiene una unión
+   suave en horizontal; el arte viejo de ruta necesitó `seamCutRow` en vertical).
+2. Añade la entrada a `RouteBackgrounds.byZone` con el `Zone.id` del catálogo:
+   arte + una lista de `RouteLeg(clicks, direction)`. Alternar recto con laterales
+   es lo que hace que el entrenador cambie de orientación.
+3. Opcional: `startAnchor` (por dónde arranca el arte en vertical) y `startOffset`
+   (corrimiento lateral inicial, en anchos de pantalla).
+
+No hay que tocar la pantalla, ni el ViewModel, ni el sprite: `AppRoot` pide el
+fondo con `forZone(state.zoneId)` y le pasa el resultado a
+`RouteScrollingBackground`. Una zona sin entrada usa `DEFAULT`.
+
+`RouteBackgroundsTest` lo comprueba en **cada** zona: que el arte exista, que el
+fondo avance en vertical, que alterne recto y lateral, que cada tramo recorra
+`clics × 1/25` baldosa y que el id de la entrada sea una zona real (un id mal
+escrito caería en `DEFAULT` sin avisar).
 
 ### Capas de hierba alta sobre el trainer
 
@@ -854,6 +896,7 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `rock.png` | Proyectil del gimnasio |
 | `rock_gym.jpg` | Fondo del gimnasio |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
+| `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
@@ -863,7 +906,8 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
    solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `tallGrassButton.png` →
    `tall_grass_button.png`). Si es pixel art que no debe reescalarse por densidad,
-   va en `res/drawable-nodpi/` (así vive `background_ruta.png`).
+   va en `res/drawable-nodpi/` (así viven `background_ruta.png` y
+   `background_bosque_verde.png`).
 2. Añade su `contentDescription` en `strings.xml` si aporta información.
 3. Añade el composable en la pantalla correspondiente.
 4. Declara tamaño y posición en el `object` de configuración de esa pantalla.

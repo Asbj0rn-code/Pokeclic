@@ -12,11 +12,12 @@
  * Cada tramo mueve **un solo eje**: mientras se corre de lado el fondo no baja,
  * y mientras baja no se corre. Nunca hay movimiento diagonal.
  *
- * El desplazamiento lateral está **acotado a propósito**: el arte original mide
- * exactamente un ancho de pantalla. Para poder correrse de lado hay dos modos
- * ([RouteScrollDefaults.LATERAL_MARGIN]): agrandar la imagen lo justo para que
- * nunca enseñe su borde, o dibujarla a escala 1:1 y tapar el hueco con la copia
- * espejada de la columna vecina.
+ * Los dos ejes son **infinitos**. El vertical sube sin tope porque el arte se
+ * repite en bucle; el lateral se corre sin tope porque las columnas se dibujan
+ * contiguas **como losetas**: al borde derecho de una le sigue el borde izquierdo
+ * del arte otra vez, sin reflejarlo. Un clic recorre lo mismo en cualquier
+ * dirección, y ni la distancia ni el sentido tienen que compensarse al cerrar el
+ * ciclo.
  *
  * Es una capa pura de UI: no toca el ViewModel ni el estado de juego. Lee el
  * recuento de pulsaciones que le pasa el caller y lo traduce a movimiento.
@@ -46,49 +47,42 @@ import androidx.compose.ui.platform.LocalContext
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.Direction
 import kotlinx.coroutines.isActive
-import kotlin.math.abs
 import kotlin.math.floor
 
 /**
  * Un tramo de la trayectoria del fondo.
  *
- * @param clicks cuántos clics dura el tramo, contados desde la posición
- *   inicial. Es la unidad en la que se percibe el recorrido al jugar, y la que
- *   conviene tocar al ajustar la animación.
- * @param drift cuánto se corre el personaje **hacia un lado** a lo largo de este
- *   tramo, en **anchos de pantalla**. Positivo = hacia la derecha.
+ * @param clicks cuántos clics dura el tramo. Es la unidad en la que se percibe el
+ *   recorrido al jugar, y la única que hay que tocar al ajustar la animación.
+ * @param direction eje y sentido del tramo: [Direction.BACK] avanza recto (el
+ *   fondo sube y al entrenador se le ve de espaldas); [Direction.RIGHT] y
+ *   [Direction.LEFT] lo corren de lado sin avanzar en vertical.
  *
- * Cada tramo mueve **un solo eje**: con `drift = 0f` el fondo baja (o sube) y no
- * se corre a ningún lado; con `drift != 0f` el fondo se corre de lado y **no
- * baja**. Así el movimiento nunca es diagonal.
+ * Cada tramo mueve **un solo eje** y avanza **lo mismo por clic** en cualquiera
+ * de los dos ([RouteScrollDefaults.TILES_PER_CLICK] baldosas), así que cuatro
+ * clics de lado recorren exactamente la misma distancia que cuatro clics rectos.
+ * La distancia lateral se mide en **alturas de baldosa** y el renderer la
+ * multiplica por el alto del arte: el ritmo en píxeles es idéntico en los dos
+ * ejes aunque el dibujo no sea cuadrado.
  */
 internal data class RouteLeg(
     val clicks: Float,
-    val drift: Float
+    val direction: Direction = Direction.BACK
 ) {
-    /**
-     * Recorrido del tramo en **baldosas**. Un clic avanza
-     * [RouteScrollDefaults.TILES_PER_CLICK], así que `clicks` es también el número
-     * de pasos que dura el tramo. Una baldosa es una repetición completa de la
-     * imagen, ≈ 1,8 anchos de pantalla en esta proporción.
-     */
+    /** Recorrido del tramo, en alturas de baldosa. */
     val distance: Float
         get() = clicks * RouteScrollDefaults.TILES_PER_CLICK
 
     /** `true` si el tramo se corre de lado (y por tanto no avanza hacia arriba). */
     val isLateral: Boolean
-        get() = drift != 0f
+        get() = direction != Direction.BACK
 
-    /**
-     * Dirección en la que camina el entrenador mientras este tramo está activo:
-     * el recto baja, así que se le ve de espaldas; el lateral mira hacia donde se
-     * corre (positivo = derecha).
-     */
-    val direction: Direction
-        get() = when {
-            !isLateral -> Direction.BACK
-            drift > 0f -> Direction.RIGHT
-            else -> Direction.LEFT
+    /** +1 derecha, −1 izquierda, 0 recto. */
+    val sideSign: Float
+        get() = when (direction) {
+            Direction.RIGHT -> 1f
+            Direction.LEFT -> -1f
+            else -> 0f
         }
 }
 
@@ -96,14 +90,21 @@ internal data class RouteLeg(
  * Trayectoria completa del fondo, formada por tramos que se repiten en bucle.
  *
  * Todo se calcula como **posición en función de lo recorrido**, no como
- * velocidad acumulada: así no puede derivar nunca. La suma de los `drift` de un
- * ciclo debe dar cero para que el bucle cierre; si no cierra, la diferencia se
- * reparte linealmente por el ciclo para que el salto no se vea.
+ * velocidad acumulada: así no puede derivar nunca.
  *
- * Los tramos son de un eje: [verticalDistanceAt] avanza solo en los tramos
- * rectos y [offsetAt] solo en los laterales.
+ * Los dos ejes son **scrolls infinitos**: el vertical sube sin tope y el lateral
+ * se corre sin tope, porque el arte se repite en vertical (en bucle) y en
+ * horizontal (columnas contiguas, como losetas). Ninguno tiene que volver a su
+ * origen al cerrar el ciclo: uno con más clics a la derecha que a la izquierda
+ * deja al personaje más a la derecha en cada vuelta, igual que uno recto lo deja
+ * más arriba.
  *
- * @param legs tramos en orden; deben cubrir el ciclo completo.
+ * Los tramos son de un eje: [verticalDistanceAt] avanza solo en los rectos y
+ * [lateralDistanceAt] solo en los laterales. Un clic recorre
+ * [RouteScrollDefaults.TILES_PER_CLICK] baldosas en cualquiera de los dos, así que
+ * no hay magnitudes que ajustar por tramo.
+ *
+ * @param legs tramos en orden; se repiten indefinidamente.
  */
 internal class RouteBackgroundMotion(
     val legs: List<RouteLeg>
@@ -111,65 +112,46 @@ internal class RouteBackgroundMotion(
     init {
         require(legs.isNotEmpty()) { "La trayectoria necesita al menos un tramo" }
         require(legs.all { it.distance > 0f }) { "Cada tramo debe avanzar algo" }
+        require(legs.none { it.direction == Direction.FRONT }) {
+            "Un tramo avanza recto (BACK) o de lado (LEFT/RIGHT)"
+        }
     }
 
     /** Largo de un ciclo completo, en baldosas. */
     val cycleDistance: Float = legs.sumOf { it.distance.toDouble() }.toFloat()
 
-    /** Desplazamiento acumulado al final de cada tramo, en anchos de pantalla. */
-    private val waypoints: FloatArray = FloatArray(legs.size).also { marks ->
-        var accumulated = 0f
-        legs.forEachIndexed { index, leg ->
-            accumulated += leg.drift
-            marks[index] = accumulated
-        }
-    }
-
-    /** Cierre del ciclo: cero si los tramos están bien compensados. */
-    private val residual: Float = waypoints.last()
-
     /** Baldosas que baja el fondo en un ciclo: solo las de los tramos rectos. */
     private val verticalPerCycle: Double =
         legs.filterNot { it.isLateral }.sumOf { it.distance.toDouble() }
 
-    /**
-     * Corrimiento máximo respecto a la línea central, en anchos de pantalla. Es
-     * lo que decide cuánto margen lateral (y por tanto cuánto zoom) hace falta
-     * para que no se vea nunca el borde del arte.
-     */
-    val maxDrift: Float = waypoints.maxOf { abs(it) } + abs(residual)
+    /** Alturas de baldosa que se corre el fondo en un ciclo, con signo. */
+    private val lateralPerCycle: Double =
+        legs.sumOf { (it.sideSign * it.distance).toDouble() }
 
     /**
-     * Corrimiento lateral tras [travelled] baldosas de recorrido, en anchos de
-     * pantalla: positivo = el personaje se ha corrido a la derecha.
+     * Corrimiento lateral tras [travelled] baldosas de recorrido, en **alturas de
+     * baldosa**: positivo = el personaje se ha corrido a la derecha. **Sin tope**:
+     * si un ciclo deja más clics a un lado que al otro, el valor crece vuelta tras
+     * vuelta.
      *
      * Permanece **constante** durante los tramos rectos (no hay movimiento
-     * diagonal) y dentro de los laterales avanza **lineal**: velocidad constante
-     * de principio a fin, sin rampa de entrada ni de salida. Con `smoothstep` el
-     * arranque y el final iban a velocidad casi cero y el paso se percibía lento
-     * aunque el recorrido total fuese el mismo.
+     * diagonal) y dentro de los laterales avanza **lineal**, a la misma velocidad
+     * que el vertical: un clic de lado recorre lo mismo que un clic recto.
      */
-    fun offsetAt(travelled: Double): Float {
+    fun lateralDistanceAt(travelled: Double): Float {
+        if (travelled <= 0.0) return 0f
         val cycle = cycleDistance.toDouble()
-        val inCycle = wrapped(travelled, cycle)
+        val cycles = floor(travelled / cycle)
+        var cursor = travelled - cycles * cycle
+        var lateral = cycles * lateralPerCycle
 
-        var cursor = inCycle
-        var offset = 0f
-        for (index in legs.indices) {
+        for (leg in legs) {
             if (cursor <= 0.0) break
-            val leg = legs[index]
             val take = minOf(cursor, leg.distance.toDouble())
-            val start = if (index == 0) 0f else waypoints[index - 1]
-            val end = waypoints[index]
-            val t = (take / leg.distance).toFloat().coerceIn(0f, 1f)
-            offset = start + (end - start) * t
+            if (leg.isLateral) lateral += take * leg.sideSign
             cursor -= take
         }
-
-        if (residual == 0f) return offset
-        // Red de seguridad: reparte el cierre que falte por todo el ciclo para
-        // que el bucle no dé un salto aunque una localización esté mal sumada.
-        return offset - residual * (inCycle / cycle).toFloat()
+        return lateral.toFloat()
     }
 
     /**
@@ -224,25 +206,12 @@ internal class RouteBackgroundMotion(
 }
 
 /**
- * Factor de escala extra que deja margen lateral para que el personaje pueda
- * correrse hasta [maxDrift] anchos de pantalla sin que el arte original deje de
- * cubrir la pantalla.
- *
- * Se deriva de la trayectoria a propósito: no hay dos números que puedan quedar
- * desincronizados. El precio es un zoom: `1f + 2f * (maxDrift + margen)`, es
- * decir, un 10 % de corrimiento a cada lado cuesta un ~22 % de zoom. Si una
- * localización necesita más recorrido lateral del que el zoom tolera, la salida
- * correcta es un arte preparado para repetirse en horizontal.
- */
-internal fun routeSlackFactor(maxDrift: Float): Float =
-    1f + 2f * (abs(maxDrift) + RouteScrollDefaults.SLACK_MARGIN)
-
-/**
  * Columna (copia horizontal) que cubre el borde izquierdo de la pantalla.
  *
- * Las columnas se dibujan contiguas, `tileW` de ancho cada una, y alternando
- * normal y espejada. Devolver la primera que toca la pantalla es lo que evita que
- * el corrimiento lateral deje una franja vacía en un borde.
+ * Las columnas se dibujan contiguas, `tileW` de ancho cada una, cada una con la
+ * misma copia del arte: al borde derecho de una le sigue el borde izquierdo de la
+ * siguiente. Devolver la primera que toca la pantalla es lo que evita que el
+ * corrimiento lateral deje una franja vacía en un borde.
  */
 internal fun routeFirstColumn(left0: Float, shiftH: Float, tileW: Float): Int =
     floor((shiftH - left0) / tileW).toInt()
@@ -250,6 +219,28 @@ internal fun routeFirstColumn(left0: Float, shiftH: Float, tileW: Float): Int =
 /** Borde izquierdo de la columna [column], en px de pantalla. */
 internal fun routeColumnStart(column: Int, left0: Float, shiftH: Float, tileW: Float): Float =
     left0 - shiftH + column * tileW
+
+/**
+ * Desplazamiento vertical inicial, en px de baldosa, que deja el **borde
+ * inferior del arte** a la altura [anchor] de la pantalla cuando el recorrido
+ * está a cero.
+ *
+ * Sirve para que una zona arranque por el final de su arte en vez de por el
+ * principio: con `anchor = 0.5f` el final del dibujo cae en el centro de la
+ * pantalla, que es donde está el entrenador, así que empieza pisando el borde
+ * inferior del escenario y camina hacia arriba por él.
+ *
+ * @param tileH alto de una repetición del arte, ya escalado a la pantalla.
+ * @param screenH alto de la pantalla.
+ * @param anchor fracción de la altura de la pantalla (0 = arriba, 0,5 = centro,
+ *   1 = abajo); `null` deja el arte empezando por arriba, como siempre.
+ */
+internal fun routeStartShift(tileH: Float, screenH: Float, anchor: Float?): Float {
+    if (anchor == null || tileH <= 0f) return 0f
+    val raw = tileH - anchor * screenH
+    val wrapped = raw % tileH
+    return if (wrapped < 0f) wrapped + tileH else wrapped
+}
 
 /**
  * Convierte clics en recorrido **sin inercia**: un clic pide un paso y el paso se
@@ -378,17 +369,6 @@ internal object RouteScrollDefaults {
     const val MIN_STEP_NANOS = 30_000_000L
 
     /**
-     * Margen lateral (zoom) del arte.
-     *
-     * - `true`: la imagen se agranda lo justo para que el corrimiento lateral nunca
-     *   descubra su borde. Se ve **solo** el arte original, algo más grande.
-     * - `false`: escala 1:1. Como la imagen mide exactamente un ancho de pantalla,
-     *   al correrse de lado entra por un borde su **copia espejada**: es la única
-     *   forma de tapar el hueco sin agrandar el arte.
-     */
-    const val LATERAL_MARGIN = false
-
-    /**
      * Fila de corte del **arte antiguo** de ruta: excepción, no la norma.
      *
      * Los fondos son patrones continuos (el borde inferior coincide con el
@@ -403,11 +383,8 @@ internal object RouteScrollDefaults {
      */
     const val SEAM_CUT_ROW = 1269
 
-    /** Tope de repeticiones verticales dibujadas por frame, por si la proporción es absurda. */
+    /** Tope de repeticiones dibujadas por frame, por si la proporción es absurda. */
     const val MAX_REPEATS = 64
-
-    /** Margen extra a cada lado para que el borde del arte no asome por redondeo. */
-    const val SLACK_MARGIN = 0.01f
 
     /**
      * Trayectoria por defecto de las rutas actuales, escrita en **clics**:
@@ -417,30 +394,26 @@ internal object RouteScrollDefaults {
      * 3. sube recto 10 clics más (hasta el 26),
      * 4. se corre a la izquierda 1 clic, volviendo a la línea central.
      *
-     * Los corrimientos laterales duran **un clic a propósito**: su velocidad es
-     * `drift / (clicks · TILES_PER_CLICK · aspecto)` veces la del avance vertical.
-     * Con 0,08 en 1 clic van a 1,12× la vertical, a velocidad **constante** de
-     * principio a fin; con 2 clics caen al 56 % y con 5 al 22 %, que es lo que se
-     * percibe como arrastre. Si hay que alargar el tramo, el `drift` tiene que
-     * subir en la misma proporción para conservar la velocidad, y eso pide más
-     * zoom para no enseñar el borde.
+     * Cada clic avanza lo mismo en cualquier eje, así que el paso lateral dura un
+     * clic y recorre exactamente lo que recorre un clic recto: no hay que elegir
+     * ninguna magnitud ni compensar nada.
      *
-     * Los dos corrimientos se compensan exactamente, así que la trayectoria se
-     * repite sin desplazarse y el personaje nunca se sale del arte original.
+     * Como los dos sentidos duran lo mismo, el lateral vuelve solo a la línea
+     * central en cada vuelta; si una zona tuviera más clics a un lado que al otro,
+     * el personaje quedaría cada vez más corrido, igual que uno recto queda cada
+     * vez más arriba. El arte se repite en los dos ejes, así que no hay borde.
      *
-     * **El ciclo cierra también sobre el dibujo.** Dura 27 clics (25 rectos + 2
-     * laterales) y sus tramos rectos suman exactamente **una baldosa**, así que
-     * cada vuelta empieza en el mismo píxel del arte y con el lateral en cero:
-     * todas las vueltas son idénticas, no solo en la estructura. Para cambiar el
-     * número de clics rectos hay que mover [TILES_PER_CLICK] a la vez (25 clics
-     * por baldosa, o un múltiplo: 50 clics por cada dos baldosas).
+     * El ciclo dura 27 clics y sus tramos rectos suman **una baldosa** exacta, así
+     * que cada vuelta empieza en el mismo píxel del arte. Para cambiar el número
+     * de clics rectos hay que mover [TILES_PER_CLICK] a la vez (25 clics por
+     * baldosa, o un múltiplo: 50 clics por cada dos baldosas).
      */
     val MOTION = RouteBackgroundMotion(
         legs = listOf(
-            RouteLeg(clicks = 15f, drift = 0f),       // sube recto hasta el giro
-            RouteLeg(clicks = 1f, drift = 0.08f),     // se corre a la derecha
-            RouteLeg(clicks = 10f, drift = 0f),       // sube recto de nuevo
-            RouteLeg(clicks = 1f, drift = -0.08f)     // se corre a la izquierda
+            RouteLeg(clicks = 15f),                            // sube recto hasta el giro
+            RouteLeg(clicks = 1f, direction = Direction.RIGHT), // se corre a la derecha
+            RouteLeg(clicks = 10f),                            // sube recto de nuevo
+            RouteLeg(clicks = 1f, direction = Direction.LEFT)   // se corre a la izquierda
         )
     )
 }
@@ -450,20 +423,19 @@ internal object RouteScrollDefaults {
  *
  * Decisiones dentro, todas reversibles:
  *
- * 1. **Escala**: la imagen se escala uniforme hasta llenar el ancho, más el
- *    margen que pide la trayectoria si [RouteScrollDefaults.LATERAL_MARGIN] está
- *    activo, y la altura se cubre repitiendo. Sin deformación y con el mismo
- *    aspecto en 720p, 1080p o 1440p.
+ * 1. **Escala**: la imagen se escala uniforme hasta llenar el ancho y la altura
+ *    se cubre repitiendo. Sin deformación y con el mismo aspecto en 720p, 1080p
+ *    o 1440p.
  * 2. **Bucle vertical sin costura**: el arte es un patrón continuo, así que la
  *    fila inferior y la superior coinciden y la repetición no se nota. Solo si el
  *    drawable no cumple eso (el arte antiguo de ruta) se enrolla cíclicamente por
  *    `seamCutRow` para que la unión caiga en la pareja de filas más parecida.
  *    Ninguna copia se dibuja reflejada en vertical.
- * 3. **Horizontal**: con margen activo, el zoom tapa el recorrido lateral y nunca
- *    se ve una segunda columna. Sin margen (escala 1:1) la imagen mide justo el
- *    ancho de pantalla, así que las columnas impares se dibujan **espejadas**
- *    para que el corrimiento no deje un hueco: la unión es la misma columna de
- *    píxeles por los dos lados y no hay costura.
+ * 3. **Horizontal infinito, como loseta**: la imagen mide justo el ancho de
+ *    pantalla, así que las columnas se dibujan contiguas y **todas iguales**: al
+ *    borde derecho de una le sigue el borde izquierdo del arte. El corrimiento
+ *    lateral no tiene tope: por mucho que se corra, siempre hay una columna
+ *    tapando el borde, y el dibujo se repite como el vertical.
  * 4. **Filtro**: nearest-neighbour al ampliar, para conservar el pixel art;
  *    bilineal al reducir, porque nearest-neighbour deja moteado al perder filas.
  *
@@ -471,13 +443,21 @@ internal object RouteScrollDefaults {
  *   incremento pide un **paso seco** de [RouteScrollDefaults.TILES_PER_CLICK]
  *   baldosas que se consume en un plazo corto; al dejar de pulsar no queda
  *   deslizamiento, el fondo se para en el acto.
- * @param motion trayectoria a seguir: qué tramos suben recto y cuánto se corren
+ * @param motion trayectoria a seguir: qué tramos suben recto y cuáles se corren
  *   de lado. Por defecto, la de las rutas actuales.
  * @param imageRes drawable que se repite. Cada zona puede traer el suyo.
  * @param seamCutRow fila del drawable por la que se enrolla el bucle vertical.
  *   **Los fondos son patrones continuos, así que el valor normal es `0`** (no
  *   enrollar). Solo el arte antiguo, dibujado como un tramo suelto, necesita un
  *   valor aquí.
+ * @param startAnchor fracción de la altura de la pantalla donde debe caer el
+ *   **borde inferior del arte** al arrancar la zona con cero clics (`0,5` = el
+ *   centro, donde está el entrenador). `null` arranca por el principio del arte.
+ *   Solo cambia el punto de partida: la trayectoria y la dirección no se tocan.
+ * @param startOffset corrimiento lateral con el que arranca la zona, en anchos de
+ *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
+ *   positivo = personaje a la derecha, así que la imagen se ve corrida a la
+ *   izquierda. Tampoco toca la trayectoria: es un punto de partida, no un tramo.
  */
 @Composable
 internal fun RouteScrollingBackground(
@@ -485,7 +465,9 @@ internal fun RouteScrollingBackground(
     modifier: Modifier = Modifier,
     motion: RouteBackgroundMotion = RouteScrollDefaults.MOTION,
     @DrawableRes imageRes: Int = R.drawable.background_ruta,
-    seamCutRow: Int = 0
+    seamCutRow: Int = 0,
+    startAnchor: Float? = null,
+    startOffset: Float = 0f
 ) {
     val context = LocalContext.current
     // `drawable-nodpi` evita el reescalado por densidad: siempre se carga a
@@ -521,9 +503,11 @@ internal fun RouteScrollingBackground(
     // trayectoria: mientras dura un tramo lateral se queda congelada.
     val phaseV = remember { mutableFloatStateOf(0f) }
 
-    // Corrimiento lateral vigente, en anchos de pantalla. Es pequeño y acotado,
-    // así que no hay problema de precisión.
-    val offset = remember { mutableFloatStateOf(0f) }
+    // Corrimiento lateral vigente, en **alturas de baldosa** (la misma unidad que
+    // el avance vertical). Puede crecer sin tope: el arte se repite en horizontal,
+    // así que no hay borde que descubrir. Se guarda en baldosas y no en px para
+    // que el número siga siendo pequeño en sesiones largas.
+    val lateral = remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(motion) {
         // Arranca en la posición que ya llevaba el recorrido: al volver a componer
@@ -549,7 +533,7 @@ internal fun RouteScrollingBackground(
                 nextV -= floor(nextV)
                 phaseV.floatValue = nextV.toFloat()
 
-                offset.floatValue = motion.offsetAt(position)
+                lateral.floatValue = motion.lateralDistanceAt(position)
             }
         }
     }
@@ -563,48 +547,47 @@ internal fun RouteScrollingBackground(
                 val srcH = bmp.height
                 if (srcW <= 0 || srcH <= 0) return@drawBehind
 
-                // Con margen lateral el arte se agranda lo justo para que el
-                // corrimiento nunca descubra su borde; sin margen se dibuja a
-                // escala 1:1 y el hueco lo tapa la copia espejada.
-                val slack = if (RouteScrollDefaults.LATERAL_MARGIN) {
-                    routeSlackFactor(motion.maxDrift)
-                } else {
-                    1f
-                }
-                val scale = size.width * slack / srcW
+                // Escala 1:1 al ancho: el arte mide justo una pantalla y el hueco
+                // lateral lo tapa la columna vecina, que es la misma loseta.
+                val scale = size.width / srcW
                 val tileW = srcW * scale
                 val tileH = srcH * scale
                 if (tileH <= 1f || tileW <= 1f) return@drawBehind
 
                 val filter = if (scale >= 1f) FilterQuality.None else FilterQuality.Medium
-                val shiftV = phaseV.floatValue * tileH
-                // Centrada con `offset` a cero; el corrimiento positivo (personaje
-                // a la derecha) mueve el contenido hacia la izquierda.
+                // El punto de partida de la zona se suma a la fase: `phaseV` sigue
+                // midiendo el recorrido (y por tanto la trayectoria), y el ancla
+                // solo decide por dónde se empieza a ver el arte.
+                val shiftV = (phaseV.floatValue * tileH +
+                    routeStartShift(tileH, size.height, startAnchor)) % tileH
+                // El lateral se mide en alturas de baldosa, así que se multiplica
+                // por el ALTO del arte: un clic de lado recorre los mismos píxeles
+                // que un clic recto aunque el dibujo no sea cuadrado. `startOffset`
+                // viene en anchos de pantalla y se convierte aparte.
                 val left0 = (size.width - tileW) / 2f
-                val shiftH = offset.floatValue * size.width
+                // El patrón horizontal se repite **como un tile**: a la derecha de
+                // una columna vuelve a empezar el borde izquierdo del arte, sin
+                // reflejarlo. Enrollar el desplazamiento en el ancho de una columna
+                // mantiene el número pequeño sin cambiar lo que se ve.
+                val period = tileW
+                var shiftH = (lateral.floatValue * tileH + startOffset * size.width) % period
+                if (shiftH < 0f) shiftH += period
 
-                // Primera columna que todavía toca la pantalla. Las pares van
-                // derechas y las impares espejadas: la unión es la misma columna de
-                // píxeles por los dos lados, así que no hay costura.
+                // Primera columna que todavía toca la pantalla. Todas son la misma
+                // copia del arte, contiguas: el dibujo se repite como una loseta.
                 var column = routeFirstColumn(left0, shiftH, tileW)
                 var columnsDrawn = 0
 
                 while (columnsDrawn < RouteScrollDefaults.MAX_REPEATS) {
                     val startX = routeColumnStart(column, left0, shiftH, tileW)
                     if (startX >= size.width) break
-                    val mirrored = column % 2 != 0
 
                     var top = -shiftV
                     var rowsDrawn = 0
                     while (top < size.height && rowsDrawn < RouteScrollDefaults.MAX_REPEATS) {
                         withTransform({
-                            if (mirrored) {
-                                translate(startX + tileW, top)
-                                scale(-scale, scale, Offset.Zero)
-                            } else {
-                                translate(startX, top)
-                                scale(scale, scale, Offset.Zero)
-                            }
+                            translate(startX, top)
+                            scale(scale, scale, Offset.Zero)
                         }) {
                             drawImage(image = bmp, filterQuality = filter)
                         }

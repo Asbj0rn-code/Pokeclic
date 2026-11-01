@@ -479,7 +479,7 @@ private fun LedDot(color: Color) {
  * La Pokéball **no** se posiciona aquí: vive en el bottom menu.
  */
 object MainLayout {
-    val TRAINER_SIZE = 90.dp
+    val TRAINER_SIZE = 80.dp
 
     /** Trainer pegado a la parte alta de la zona de contenido. */
     const val TRAINER_BIAS = -0.0f
