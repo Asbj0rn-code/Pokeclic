@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cadenas del editor de zonas, SOLO del source set debug: no existen en el
+    artefacto release. Las usa la actividad/compositor del editor y el
+    manifiesto de debug (etiqueta de la actividad).
+-->
+<resources>
+    <string name="map_editor_title">Editor de zonas de Kanto</string>
+    <string name="map_editor_status_ready">Preparando el borrador…</string>
+    <string name="map_editor_status_saved">Borrador guardado a las %1$s · %2$d zonas</string>
+    <string name="map_editor_status_pending">Cambios pendientes: se autoguardan al confirmar</string>
+    <string name="map_editor_status_error">Error del borrador: %1$s</string>
+    <string name="map_editor_close">Cerrar editor y volver al juego</string>
+    <string name="map_editor_reset_view">Restaurar vista del editor</string>
+
+    <!-- Persistencia: acciones y confirmaciones (4D) -->
+    <string name="map_editor_action_export">Exportar JSON</string>
+    <string name="map_editor_action_import">Importar JSON</string>
+    <string name="map_editor_action_copy">Copiar JSON</string>
+    <string name="map_editor_recover_title">Borrador anterior encontrado</string>
+    <string name="map_editor_recover_text">El borrador contiene %1$d zonas confirmadas. ¿Recuperarlas para seguir editando o empezar de cero? (Empezar de cero conserva el fichero hasta que tu primer cambio lo sobrescriba al autoguardarse.)</string>
+    <string name="map_editor_recover_yes">Recuperar borrador</string>
+    <string name="map_editor_recover_no">Empezar de cero</string>
+    <string name="map_editor_corrupt_title">Borrador dañado</string>
+    <string name="map_editor_corrupt_text">No se pudo leer el borrador anterior: %1$s. No se ha borrado nada y el editor sigue abierto; puedes descartar el fichero o continuar con el mapeo de los assets.</string>
+    <string name="map_editor_discard_damaged">Descartar fichero</string>
+    <string name="map_editor_keep_damaged">Continuar sin borrar</string>
+    <string name="map_editor_import_confirm_title">¿Sustituir el mapeo actual?</string>
+    <string name="map_editor_import_confirm_text">Sustituirás las %1$d zonas actuales por las %2$d del fichero importado (el borrador y los assets del juego no se modifican por importar).</string>
+    <string name="map_editor_import_confirm_yes">Importar</string>
+    <string name="map_editor_import_confirm_no">Cancelar</string>
+
+    <!-- Barra de herramientas -->
+    <string name="map_editor_zones_open">Ubicaciones…</string>
+    <string name="map_editor_tool_navigate">Navegar</string>
+    <string name="map_editor_tool_circle">Círculo</string>
+    <string name="map_editor_tool_rectangle">Rectángulo</string>
+    <string name="map_editor_tool_polygon">Ruta</string>
+    <string name="map_editor_tool_edit">Editar</string>
+    <string name="map_editor_undo">Deshacer vértice</string>
+    <string name="map_editor_cancel">Cancelar dibujo</string>
+    <string name="map_editor_confirm">Confirmar ruta</string>
+    <string name="map_editor_edit_apply">Aplicar cambios</string>
+    <string name="map_editor_edit_cancel">Cancelar edición</string>
+    <string name="map_editor_edit_delete">Eliminar zona</string>
+    <string name="map_editor_zones_edit_action">Editar</string>
+
+    <!-- Confirmación de borrado -->
+    <string name="map_editor_edit_delete_confirm_title">¿Eliminar la zona?</string>
+    <string name="map_editor_edit_delete_confirm_text">«%1$s» desaparecerá del editor y del borrador al autoguardarse; los assets del juego no se tocan.</string>
+    <string name="map_editor_edit_delete_confirm_yes">Eliminar</string>
+    <string name="map_editor_edit_delete_confirm_no">Conservar</string>
+
+    <!-- Feedback de éxito -->
+    <string name="map_editor_feedback_created">Zona creada: %1$s</string>
+    <string name="map_editor_feedback_updated">Zona actualizada: %1$s</string>
+    <string name="map_editor_feedback_deleted">Zona eliminada: %1$s</string>
+    <string name="map_editor_feedback_imported">Importadas %1$s zonas (borrador actualizado)</string>
+
+    <!-- Indicaciones paso a paso -->
+    <string name="map_editor_hint_navigate">Navega con zoom/desplazamiento; elige dónde dibujar</string>
+    <string name="map_editor_hint_no_target">Elige una ubicación del catálogo o una zona libre</string>
+    <string name="map_editor_hint_edit_select">Toca el interior de una zona ya dibujada para editarla</string>
+    <string name="map_editor_hint_edit_move">Arrastra los puntos de control (el arrastre del mapa desplaza la vista); «Aplicar cambios» valida y confirma</string>
+    <string name="map_editor_hint_circle_center">Objetivo: %1$s · toca el centro del círculo (1/2)</string>
+    <string name="map_editor_hint_circle_radius">Objetivo: %1$s · toca un punto del borde (2/2)</string>
+    <string name="map_editor_hint_rect_first">Objetivo: %1$s · toca la primera esquina (1/2)</string>
+    <string name="map_editor_hint_rect_second">Objetivo: %1$s · toca la esquina opuesta (2/2)</string>
+    <string name="map_editor_hint_polygon">Objetivo: %1$s · toca los vértices de la ruta (al menos %2$d)</string>
+    <string name="map_editor_hint_polygon_confirm">Objetivo: %1$s · toca más vértices o confirma la ruta</string>
+
+    <!-- Errores (los nombres siguen a MapEditorError) -->
+    <string name="map_editor_error_NO_TARGET">Elige primero una ubicación o zona libre</string>
+    <string name="map_editor_error_DUPLICATE_TARGET">Esa ubicación ya tiene una zona</string>
+    <string name="map_editor_error_FREE_NAME_REQUIRED">La zona libre necesita un nombre</string>
+    <string name="map_editor_error_OUT_OF_IMAGE">La zona se sale de la imagen</string>
+    <string name="map_editor_error_SMALL_RADIUS">El radio del círculo es demasiado pequeño</string>
+    <string name="map_editor_error_SMALL_SHAPE">La figura es demasiado pequeña</string>
+    <string name="map_editor_error_FEW_VERTICES">Faltan vértices (mínimo 3)</string>
+    <string name="map_editor_error_MANY_VERTICES">Demasiados vértices (máximo 64)</string>
+    <string name="map_editor_error_NOTHING_EDITABLE">No hay ninguna zona bajo ese toque: toca el interior de una zona</string>
+    <string name="map_editor_error_IMPORT_REJECTED">No se aceptó el mapeo importado</string>
+
+    <!-- Panel de ubicaciones -->
+    <string name="map_editor_sheet_title">Ubicaciones y zonas</string>
+    <string name="map_editor_sheet_groups_city">Ciudades y pueblos</string>
+    <string name="map_editor_sheet_groups_route">Rutas</string>
+    <string name="map_editor_sheet_groups_special">Ubicaciones especiales</string>
+    <string name="map_editor_sheet_free_title">Zona libre (fuera del catálogo)</string>
+    <string name="map_editor_free_name_hint">Nombre de la zona libre</string>
+    <string name="map_editor_free_type">Tipo de la zona libre</string>
+    <string name="map_editor_free_type_city">Ciudad</string>
+    <string name="map_editor_free_type_route">Ruta</string>
+    <string name="map_editor_free_type_special">Especial</string>
+    <string name="map_editor_free_accept">Dibujar esta zona libre</string>
+</resources>
