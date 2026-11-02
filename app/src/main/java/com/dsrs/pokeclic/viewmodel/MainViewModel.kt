@@ -21,6 +21,8 @@ import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.Projectile
+import com.dsrs.pokeclic.model.RingFeedback
+import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
@@ -398,8 +400,14 @@ class MainViewModel(
         updateGym { current ->
             val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
             val onBeat = GymCombat.isRingOnBeat(ring, current, now)
-            val withoutRing = current.copy(rings = current.rings.filterNot { it.id == ring.id })
-            if (onBeat) withoutRing else applyRingMiss(withoutRing, config.ringMissDamage)
+            val resolved = current.copy(
+                rings = current.rings.filterNot { it.id == ring.id },
+                ringFeedback = RingFeedback(
+                    ringId = ring.id,
+                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
+                )
+            )
+            if (onBeat) resolved else applyRingMiss(resolved, config.ringMissDamage)
         }
     }
 
@@ -584,7 +592,14 @@ class MainViewModel(
         val expired = GymCombat.expiredRings(next, now)
         if (expired.isNotEmpty()) {
             val expiredIds = expired.map { it.id }.toSet()
-            next = next.copy(rings = next.rings.filterNot { it.id in expiredIds })
+            next = next.copy(
+                rings = next.rings.filterNot { it.id in expiredIds },
+                ringFeedback = RingFeedback(
+                    ringId = expired.maxOf { it.id },
+                    outcome = RingOutcome.MISS,
+                    count = expired.size
+                )
+            )
             next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
         }
 

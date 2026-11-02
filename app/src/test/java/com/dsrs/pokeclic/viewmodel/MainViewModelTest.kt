@@ -6,6 +6,7 @@ import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymPhase
+import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.Zone
 import kotlin.random.Random
@@ -369,6 +370,8 @@ class MainViewModelTest {
         with(vm.uiState.value.gym!!) {
             assertEquals(hpBefore, playerHp)
             assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
         }
     }
 
@@ -389,6 +392,8 @@ class MainViewModelTest {
         with(vm.uiState.value.gym!!) {
             assertEquals(hpBefore - 1, playerHp)
             assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
         }
     }
 
@@ -408,6 +413,9 @@ class MainViewModelTest {
         with(vm.uiState.value.gym!!) {
             assertEquals(hpBefore - 1, playerHp)
             assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
+            assertEquals(1, ringFeedback?.count)
         }
     }
 

@@ -77,6 +77,9 @@
 
     <!-- Minijuego de anillos (Misty) -->
     <string name="gym_ring_hint">Pulsa justo cuando el anillo se cierre sobre el círculo fijo</string>
+    <string name="gym_ring_hit">¡Acierto!</string>
+    <string name="gym_ring_miss">¡Fallo!</string>
+    <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
     <string name="gym_ring_tutorial_step1_title">Acierta el círculo</string>
     <string name="gym_ring_tutorial_step1_text">Los círculos se cierran sobre tu Pokémon. Pulsa la pantalla justo cuando el círculo que baja toque el círculo fijo que lo rodea.</string>
     <string name="gym_ring_tutorial_step2_title">Cada círculo va a su ritmo</string>

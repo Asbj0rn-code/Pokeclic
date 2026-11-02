@@ -251,6 +251,30 @@ data class TimingRing(
         nowMs - convergeAtMs() > windowMs
 }
 
+/** Resultado de un anillo del minijuego de ritmo. */
+enum class RingOutcome {
+    HIT,
+    MISS
+}
+
+/**
+ * Feedback visual del último anillo resuelto (estado **transitorio**).
+ *
+ * El modelo decide si el anillo se acertó o falló; la UI solo necesita saber qué
+ * ocurrió y cuándo para lanzar su animación. [ringId] actúa de clave: cada anillo
+ * produce como máximo un resultado, así que un id nuevo reinicia el efecto.
+ *
+ * @param ringId anillo que produjo el resultado.
+ * @param outcome acierto o fallo.
+ * @param count anillos cobrados en el mismo evento; solo puede ser mayor que 1
+ *   cuando varios caducan en el mismo tick.
+ */
+data class RingFeedback(
+    val ringId: Long,
+    val outcome: RingOutcome,
+    val count: Int = 1
+)
+
 /**
  * Estado **transitorio** del combate de gimnasio (no se persiste).
  *
@@ -269,6 +293,7 @@ data class TimingRing(
  * @param rings anillos activos del minijuego de ritmo.
  * @param ringWindowMs margen de acierto de los anillos, en ms. La UI lo usa para
  *   resaltar el anillo que está en su momento exacto.
+ * @param ringFeedback último acierto o fallo, para la animación de la escena.
  * @param waveDurationMs duración total de la oleada, en ms.
  * @param waveRemainingMs tiempo de oleada restante; la barra de stamina es este
  *   contador bajando por tiempo.
@@ -295,6 +320,7 @@ data class GymState(
     val projectiles: List<Projectile> = emptyList(),
     val rings: List<TimingRing> = emptyList(),
     val ringWindowMs: Long = 0L,
+    val ringFeedback: RingFeedback? = null,
     val waveDurationMs: Long = 0L,
     val waveRemainingMs: Long = 0L,
     val exposureDurationMs: Long = 0L,
