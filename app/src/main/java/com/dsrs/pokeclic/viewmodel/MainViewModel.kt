@@ -338,8 +338,8 @@ class MainViewModel(
         // detenido (`onGymRetry` llega sin la capa de intro compuesta).
         val fromIntro = phase == GymIntroPhase.WELCOME || phase == GymIntroPhase.TUTORIAL
         val fromRetry = _uiState.value.gym != null
-        if (!fromIntro && !fromRetry) return
-        if (fromIntro && fromRetry) return
+        // Solo hay un punto de partida válido: la intro o el reintento, nunca ambos.
+        if (fromIntro == fromRetry) return
 
         gymIntroJob?.cancel()
         gymIntroJob = viewModelScope.launch {
@@ -568,11 +568,7 @@ class MainViewModel(
             state = state.copy(projectiles = projectiles),
             damage = landedCount * config.projectileDamage
         )
-        return if (damaged.playerHp <= 0) {
-            damaged.copy(outcome = GymOutcome.LOST)
-        } else {
-            damaged
-        }
+        return damaged.withDefeatIfPlayerDown()
     }
 
     /**
@@ -614,18 +610,16 @@ class MainViewModel(
             next = next.copy(rings = next.rings + TimingRing(nextCombatId++, now, travel))
         }
 
-        return if (next.playerHp <= 0) next.copy(outcome = GymOutcome.LOST) else next
+        return next.withDefeatIfPlayerDown()
     }
 
     /** Daño de un anillo fallado; cierra el combate si deja al jugador a 0. */
-    private fun applyRingMiss(state: GymState, damage: Int): GymState {
-        val damaged = GymCombat.registerImpact(state, damage)
-        return if (damaged.playerHp <= 0) {
-            damaged.copy(outcome = GymOutcome.LOST)
-        } else {
-            damaged
-        }
-    }
+    private fun applyRingMiss(state: GymState, damage: Int): GymState =
+        GymCombat.registerImpact(state, damage).withDefeatIfPlayerDown()
+
+    /** Cierra el combate como derrota si el jugador se ha quedado sin vida. */
+    private fun GymState.withDefeatIfPlayerDown(): GymState =
+        if (playerHp <= 0) copy(outcome = GymOutcome.LOST) else this
 
     /**
      * Victoria del gimnasio: cierra el combate y da sus recompensas, pero **no
@@ -645,8 +639,6 @@ class MainViewModel(
             )
         }
     }
-
-    // --- Mecánicas de zona y captura --------------------------------------
 
     // --- Pesca (Etapa 3) ---------------------------------------------------
 

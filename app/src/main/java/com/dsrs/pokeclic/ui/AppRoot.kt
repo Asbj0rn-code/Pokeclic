@@ -212,11 +212,12 @@ fun AppRoot(
         }
 
         Scaffold(
-            containerColor = when {
-                gymScene -> Color.Transparent
-                showRouteBackground -> Color.Transparent
-                showMapOceanBackdrop -> Color.Transparent
-                else -> MaterialTheme.colorScheme.background
+            // El fondo propio (gimnasio, ruta u océano) se compone detrás, así que
+            // el Scaffold tiene que dejar verlo.
+            containerColor = if (gymScene || showRouteBackground || showMapOceanBackdrop) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.background
             },
             bottomBar = {
                 // En combate o pesca no se dibuja el menú: la escena ocupa toda
