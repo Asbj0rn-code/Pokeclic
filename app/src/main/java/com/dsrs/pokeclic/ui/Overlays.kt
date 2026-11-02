@@ -34,8 +34,8 @@ import com.dsrs.pokeclic.data.loadKantoMapData
 import com.dsrs.pokeclic.dbg.isMapEditorAvailable
 import com.dsrs.pokeclic.dbg.openMapEditor
 import com.dsrs.pokeclic.model.LeadOption
-import com.dsrs.pokeclic.model.MapRegion
-import com.dsrs.pokeclic.model.regionAt
+import com.dsrs.pokeclic.model.MapRegionSelection
+import com.dsrs.pokeclic.model.selectAt
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
@@ -65,7 +65,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Build
@@ -80,6 +85,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -354,11 +360,13 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  * **Zonas interactivas**: al arrancar la pantalla se cargan una vez el catálogo
  * y el mapeo de Kanto ([loadKantoMapData], con validación cruzada de los
  * `catalogId`). Un toque simple se convierte a `(u, v)` con [screenToUv] y
- * [com.dsrs.pokeclic.model.KantoRegionMap.regionAt] elige la zona de mayor
- * prioridad que lo contenga; su nombre aparece en [MapRegionBadge], anclado a
- * la esquina superior derecha del área visible (fijo, aunque la imagen se
- * mueva). Si el toque cae fuera de toda zona **se conserva** el último nombre
- * mostrado; antes de la primera selección el indicador no existe. Con assets
+ * [com.dsrs.pokeclic.model.KantoRegionMap.selectAt] devuelve **todas** las
+ * zonas que contienen realmente el punto (hit-testing geométrico), ordenadas
+ * por categoría CITY > ROUTE > SPECIAL; sus nombres aparecen en
+ * [MapRegionBadge], anclado a la esquina superior derecha del área visible
+ * (fijo, aunque la imagen se mueva, con márgenes de zona segura). Si el toque
+ * cae fuera de toda zona el indicador **desaparece** hasta la siguiente
+ * pulsación dentro de una zona; al abrir la pantalla no existe. Con assets
  * ausentes, vacíos o con errores, la pantalla vive sin indicador y el fallo
  * queda en `Logcat`.
  *
@@ -388,10 +396,12 @@ fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
     val context = LocalContext.current
     val kantoMap = remember { loadKantoMapData(context).getOrNull() }
 
-    // Última zona tocada; es determinación puramente visual: se muestra su
-    // nombre tal cual hasta que otra pulsación la sustituya. Antes de la
-    // primera selección vale `null` y el indicador no se compone.
-    var selectedRegion by remember { mutableStateOf<MapRegion?>(null) }
+    // Última selección en el punto tocado: todas las zonas que contienen el
+    // punto, ya ordenadas para presentación (ciudad > ruta > especial).
+    // Determinación puramente visual: se muestra tal cual hasta que otra
+    // pulsación la sustituya. Antes de la primera zona o al tocar fuera vale
+    // `null` (pulso sin ninguna zona: el indicador desaparece).
+    var selection by remember { mutableStateOf<MapRegionSelection?>(null) }
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(MapFitZoom) }
@@ -512,8 +522,13 @@ fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
                                 size.width / 2f, size.height / 2f,
                                 offset.x, offset.y, zoom, fitWidthPx, fitHeightPx
                             )
-                            selectedRegion = kantoMap?.regions
-                                ?.regionAt(uv.u, uv.v, kantoMap.locations)
+                            // `selectAt` ordena CIUDAD > RUTA > ESPECIAL y solo
+                            // incluye lo que realmente contiene el punto; fuera
+                            // de toda zona devuelve `null` y limpia el estado
+                            // (el indicador desaparece, comportamiento de la
+                            // mejora del indicador).
+                            selection = kantoMap?.regions
+                                ?.selectAt(uv.u, uv.v, kantoMap.locations)
                         },
                         onDoubleTap = { tap ->
                             cancelViewAnimation()
@@ -555,14 +570,40 @@ fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
                     }
             )
 
-            // Indicador de zona: fijo en la esquina superior derecha del área
-            // visible, sin seguir al mapa. Solo se compone a partir de la
-            // primera selección; el nombre resuelto (catálogo o propio) puede
-            // ser `null` si el enlace de catálogo está roto, y entonces la
-            // zona tocada no enseña nada (ni rompe la pantalla).
-            selectedRegion
-                ?.resolvedName(kantoMap?.locations.orEmpty())
-                ?.let { resolvedName -> MapRegionBadge(resolvedName, Modifier.align(Alignment.TopEnd)) }
+            // Indicador de zona(s): fijo en la esquina superior derecha del
+            // área visible, sin seguir al mapa, con márgenes de zona segura.
+            // Solo se compone con una selección; el nombre resuelto (catálogo
+            // o propio) puede ser `null` si el enlace de catálogo está roto,
+            // y entonces esa línea enseña su id técnico (último recurso,
+            // informativo, nunca rompe la pantalla).
+            val locations = kantoMap?.locations.orEmpty()
+            selection?.let { selected ->
+                // Márgenes de zona segura: el `Scaffold` (`AppRoot`) ya
+                // descuenta las barras del sistema de esta área, así que aquí
+                // solo se compensa el recorte de pantalla (que aquel no
+                // desuenta) y se añade el respiro fijo del diseño; sin
+                // duplicar márgenes. La anchura queda limitada a una fracción
+                // del contenedor, adaptativa a cualquier dispositivo, y la
+                // altura crece con las líneas coexistentes sin desbordarse
+                // (el cuadro envuelve su contenido).
+                val cutout = WindowInsets.displayCutout.asPaddingValues()
+                val layoutDirection = LocalLayoutDirection.current
+                val badgeMaxWidth = with(density) {
+                    containerSize.width.toDp() * MapBadgeMaxWidthFraction
+                }
+                MapRegionBadge(
+                    primary = selected.primary.resolvedName(locations)
+                        ?: selected.primary.id,
+                    others = selected.secondary.mapNotNull { it.resolvedName(locations) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            top = cutout.calculateTopPadding() + MapBadgeEdgeMargin,
+                            end = cutout.calculateEndPadding(layoutDirection) + MapBadgeEdgeMargin
+                        )
+                        .widthIn(max = badgeMaxWidth)
+                )
+            }
 
             // Botón discreto para restaurar la vista completa, solo visible si la vista
             // se ha movido o ampliado respecto al estado inicial. Vive en el área

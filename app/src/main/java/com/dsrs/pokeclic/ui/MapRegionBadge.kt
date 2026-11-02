@@ -1,54 +1,90 @@
 /**
- * Indicador discreto del nombre de la zona pulsada en el mapa de Kanto.
+ * Indicador informativo de la zona o zonas pulsadas en el mapa de Kanto.
  *
  * Se compone en la esquina superior derecha del **área visible** de
- * [MapScreen] (fase de gestos y transformación, no de la imagen), de modo que
- * permanece **fijo en pantalla** sea cual sea el zoom o el desplazamiento del
- * mapa: ni se mueve con la imagen ni queda detrás del bottom menu.
+ * [MapScreen], de modo que permanece **fijo en pantalla** sea cual sea el
+ * zoom o el desplazamiento del mapa. Sin selección no se compone (la
+ * llamante gestiona el `null`), así que el estado vacío es literalmente
+ * ausencia.
  *
- * Es puramente presentación: no sabe de zonas, tipos ni catálogo; recibe el
- * nombre ya resuelto. Sin selección no se compone (la llamante gestiona el
- * `null`), así que el estado vacío es literalmente ausencia.
+ * Es puramente presentación: no sabe de zonas, tipos ni catálogo; recibe los
+ * nombres ya resueltos.
  *
- * Estética deliberadamente discreta, más parecida al botón de restauración
- * que a un HUD de guerra: fondo blanco translúcido, esquinas poco redondeadas
- * y tipografía monoespaciada del chasis.
+ * Estética: la misma del cuadro «Que comience el combate» de los gimnasios
+ * ([CountdownBanner]): el marco biselado compartido [RetroPanel] (fondo
+ * crema, doble borde y sombra dura) con la tipografía del chasis. La zona
+ * destacada ([primary], ciudad o ruta) lleva `titleMedium` semibold y las
+ * coexistentes ([others], especiales) `bodyMedium`, de menor tamaño, para
+ * jerarquía visual clara sin diseñar nada nuevo.
+ *
+ * Cada línea es de una sola línea con el acortamiento de final para que
+ * nombres largos no rompan el cuadro; la altura crece con el número de
+ * ubicaciones coexistentes y la anchura la limita la llamante
+ * ([MapBadgeMaxWidthFraction] del ancho del área visible).
  */
 package com.dsrs.pokeclic.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
- * Muestra [regionName] pegado a la esquina superior derecha.
+ * Respiro fijo del cuadro respecto a cada borde: se añade a los insets ya
+ * consumidos por el `Scaffold` ([AppRoot]) y al recorte de pantalla (que el
+ * `Scaffold` no descuenta), dentro del rango 12–16 dp de la mejora.
+ */
+internal val MapBadgeEdgeMargin: Dp = 16.dp
+
+/**
+ * Ancho máximo del cuadro, en fracción del área visible del mapa: cabe en
+ * cualquier dispositivo y deja el resto del mapa utilizable.
+ */
+internal const val MapBadgeMaxWidthFraction = 0.7f
+
+/**
+ * Muestra la zona destacada [primary] y, debajo, las coexistentes en [others]
+ * (puede ser vacío: solo la destacada).
  *
- * @param modifier anclado por la llamante (normalmente `Alignment.TopEnd`
- *   dentro del área visible del mapa).
+ * @param modifier anclado y limitado en anchura por la llamante (normalmente
+ *   `Alignment.TopEnd` con los márgenes seguros, dentro del área visible).
  */
 @Composable
-internal fun MapRegionBadge(regionName: String, modifier: Modifier = Modifier) {
-    Text(
-        text = regionName,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier
-            .padding(top = 12.dp, end = 12.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                shape = RoundedCornerShape(6.dp)
+internal fun MapRegionBadge(
+    primary: String,
+    others: List<String>,
+    modifier: Modifier = Modifier
+) {
+    RetroPanel(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = primary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = RetroColors.InkBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    )
+            others.forEach { name ->
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RetroColors.InkBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }

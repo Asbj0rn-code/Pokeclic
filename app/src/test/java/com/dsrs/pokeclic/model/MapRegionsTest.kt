@@ -299,4 +299,234 @@ class MapRegionsTest {
             assertTrue("999" in expected.message!!)
         }
     }
+
+    // ─────────────────── Selección múltiple (selectAt) ───────────────────
+
+    /** Catálogo minúsculo: enlace de catálogo 1 (ruta) y 26 (ciudad). */
+    private val selectCatalog = listOf(
+        MapLocation(1, "Ruta 1", MapRegionType.ROUTE),
+        MapLocation(26, "Pueblo Paleta", MapRegionType.CITY)
+    )
+
+    private fun catalogRegion(
+        catalogId: Int,
+        geometry: MapRegionGeometry
+    ): MapRegion = MapRegion(
+        id = "ubic-$catalogId",
+        geometry = geometry,
+        catalogId = catalogId
+    )
+
+    private fun freeRegion(
+        name: String,
+        type: MapRegionType,
+        geometry: MapRegionGeometry
+    ): MapRegion = MapRegion(
+        id = "libre-$name",
+        geometry = geometry,
+        name = name,
+        type = type
+    )
+
+    private fun mapOf(regions: List<MapRegion>): KantoRegionMap =
+        KantoRegionMap(version = 1, regions = regions)
+
+    @Test
+    fun selectAt_cityAlone_primaryOnly() {
+        val map = mapOf(
+            listOf(
+                catalogRegion(26, MapRegionGeometry.Circle(0.3f, 0.4f, 0.15f))
+            )
+        )
+        val selection = map.selectAt(0.3f, 0.4f, selectCatalog)!!
+        assertEquals(26, selection.primary.catalogId)
+        assertTrue(selection.secondary.isEmpty())
+    }
+
+    @Test
+    fun selectAt_routeAlone_primaryOnly() {
+        val map = mapOf(
+            listOf(
+                catalogRegion(1, MapRegionGeometry.Envelope(0.5f, 0.5f, 0.9f, 0.7f))
+            )
+        )
+        val selection = map.selectAt(0.7f, 0.6f, selectCatalog)!!
+        assertEquals(1, selection.primary.catalogId)
+        assertTrue(selection.secondary.isEmpty())
+    }
+
+    @Test
+    fun selectAt_specialAlone_primaryOnly() {
+        val map = mapOf(
+            listOf(
+                freeRegion(
+                    "Cueva Rara",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Circle(0.2f, 0.8f, 0.1f)
+                )
+            )
+        )
+        val selection = map.selectAt(0.2f, 0.8f, selectCatalog)!!
+        assertEquals("Cueva Rara", selection.primary.name)
+        assertEquals(MapRegionType.SPECIAL, selection.primary.type)
+        assertTrue(selection.secondary.isEmpty())
+    }
+
+    @Test
+    fun selectAt_cityAndSpecial_cityFirst() {
+        val map = mapOf(
+            listOf(
+                freeRegion(
+                    "Especial",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Envelope(0.25f, 0.35f, 0.35f, 0.45f)
+                ),
+                catalogRegion(26, MapRegionGeometry.Circle(0.3f, 0.4f, 0.15f))
+            )
+        )
+        val selection = map.selectAt(0.3f, 0.4f, selectCatalog)!!
+        assertEquals(26, selection.primary.catalogId)
+        assertEquals(1, selection.secondary.size)
+        assertEquals(MapRegionType.SPECIAL, selection.secondary.single().type)
+    }
+
+    @Test
+    fun selectAt_cityAndRoute_cityFirst() {
+        val map = mapOf(
+            listOf(
+                catalogRegion(1, MapRegionGeometry.Envelope(0.2f, 0.2f, 0.4f, 0.4f)),
+                catalogRegion(26, MapRegionGeometry.Circle(0.3f, 0.3f, 0.15f))
+            )
+        )
+        val selection = map.selectAt(0.3f, 0.3f, selectCatalog)!!
+        assertEquals(26, selection.primary.catalogId)
+        assertEquals(1, selection.secondary.single().catalogId)
+    }
+
+    @Test
+    fun selectAt_routeAndSeveralSpecials_routeFirstThenSpecialsInJsonOrder() {
+        val map = mapOf(
+            listOf(
+                // Especial B delante en el JSON: el orden de lista gana el empate.
+                freeRegion(
+                    "Especial B",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Circle(0.5f, 0.6f, 0.2f)
+                ),
+                catalogRegion(1, MapRegionGeometry.Polygon(listOf(
+                    UvPoint(0.0f, 0.5f),
+                    UvPoint(1.0f, 0.5f),
+                    UvPoint(1.0f, 0.7f),
+                    UvPoint(0.0f, 0.7f)
+                ))),
+                freeRegion(
+                    "Especial A",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Envelope(0.45f, 0.55f, 0.55f, 0.65f)
+                )
+            )
+        )
+        val selection = map.selectAt(0.5f, 0.6f, selectCatalog)!!
+        assertEquals(1, selection.primary.catalogId)
+        assertEquals(
+            listOf("Especial B", "Especial A"),
+            selection.secondary.map { it.name }
+        )
+    }
+
+    @Test
+    fun selectAt_severalSpecials_allShownInJsonOrder() {
+        val map = mapOf(
+            listOf(
+                freeRegion(
+                    "Torre",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Circle(0.5f, 0.45f, 0.15f)
+                ),
+                freeRegion(
+                    "Central",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Circle(0.5f, 0.55f, 0.15f)
+                )
+            )
+        )
+        val selection = map.selectAt(0.5f, 0.5f, selectCatalog)!!
+        // Ambas se muestran: la primera del JSON como destacada, la otra debajo.
+        assertEquals("Torre", selection.primary.name)
+        assertEquals(listOf("Central"), selection.secondary.map { it.name })
+    }
+
+    @Test
+    fun selectAt_tieSameCategory_firstInJsonListWins() {
+        val map = mapOf(
+            listOf(
+                catalogRegion(26, MapRegionGeometry.Circle(0.5f, 0.5f, 0.2f)),
+                MapRegion(
+                    id = "paleta-2",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.2f),
+                    name = "Segunda Ciudad",
+                    type = MapRegionType.CITY
+                )
+            )
+        )
+        val selection = map.selectAt(0.5f, 0.5f, selectCatalog)!!
+        assertEquals(26, selection.primary.catalogId)
+        assertEquals("Segunda Ciudad", selection.secondary.single().name)
+    }
+
+    @Test
+    fun selectAt_allThreeCategories_cityRouteSpecial() {
+        val map = mapOf(
+            listOf(
+                freeRegion(
+                    "Especial",
+                    MapRegionType.SPECIAL,
+                    MapRegionGeometry.Envelope(0.3f, 0.3f, 0.4f, 0.4f)
+                ),
+                catalogRegion(1, MapRegionGeometry.Envelope(0.25f, 0.25f, 0.45f, 0.45f)),
+                catalogRegion(26, MapRegionGeometry.Circle(0.35f, 0.35f, 0.15f))
+            )
+        )
+        val selection = map.selectAt(0.35f, 0.35f, selectCatalog)!!
+        assertEquals(26, selection.primary.catalogId)
+        assertEquals(
+            listOf(MapRegionType.ROUTE, MapRegionType.SPECIAL),
+            selection.secondary.map { it.resolvedType(selectCatalog) }
+        )
+    }
+
+    @Test
+    fun selectAt_outsideAllRegions_null() {
+        val map = mapOf(
+            listOf(
+                catalogRegion(26, MapRegionGeometry.Circle(0.3f, 0.3f, 0.1f)),
+                catalogRegion(1, MapRegionGeometry.Envelope(0.6f, 0.6f, 0.9f, 0.8f))
+            )
+        )
+        assertNull(map.selectAt(0.05f, 0.05f, selectCatalog))
+        assertNull(map.selectAt(0.5f, 0.5f, selectCatalog))
+    }
+
+    @Test
+    fun selectAt_emptyMap_null() {
+        assertNull(KantoRegionMap(1, emptyList()).selectAt(0.5f, 0.5f, selectCatalog))
+    }
+
+    @Test
+    fun selectAt_geometryBoundaries_inclusive() {
+        val map = mapOf(
+            listOf(
+                // Círculo: el borde exacto entra (radio potencia de dos, como regionAt).
+                catalogRegion(26, MapRegionGeometry.Circle(0.5f, 0.5f, 0.25f)),
+                // Rectángulo: la esquina exacta entra.
+                catalogRegion(1, MapRegionGeometry.Envelope(0.1f, 0.1f, 0.3f, 0.3f))
+            )
+        )
+        val atCircleEdge = map.selectAt(0.75f, 0.5f, selectCatalog)!!
+        assertTrue(atCircleEdge.primary.catalogId == 26 || 26 in atCircleEdge.secondary.map { it.catalogId })
+
+        val atEnvelopeCorner = map.selectAt(0.3f, 0.3f, selectCatalog)!!
+        assertTrue(1 in atEnvelopeCorner.primary.let { listOfNotNull(it.catalogId) } +
+            atEnvelopeCorner.secondary.mapNotNull { it.catalogId })
+    }
 }
