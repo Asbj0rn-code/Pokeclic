@@ -154,7 +154,7 @@ fun MapEditorScreen(onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
-    // Catálogo (46) y mapeo base de los assets: se cargan una vez. Las zonas
+    // Catálogo (47) y mapeo base de los assets: se cargan una vez. Las zonas
     // de la sesión viven en el MapEditorState; el borrador en disco decide
     // si se retoman al abrir (diálogo de recuperación).
     val loaded = remember { loadKantoMapData(context).getOrNull() }
@@ -1319,7 +1319,7 @@ private fun MapEditorFeedbackKind.stringRes(): Int = when (this) {
 // ───────────────────────────── Panel de ubicaciones ─────────────────────────────
 
 /**
- * Panel inferior con las 46 ubicaciones del catálogo agrupadas por clase y la
+ * Panel inferior con las 47 ubicaciones del catálogo agrupadas por clase y la
  * constructora de zonas libres. Una ubicación con zona en la sesión aparece
  * deshabilitada con sufijo "(ya dibujada)" — no se pueden crear duplicados.
  */

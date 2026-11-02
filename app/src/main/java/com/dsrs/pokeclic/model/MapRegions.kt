@@ -12,7 +12,7 @@
  *
  * - El **catálogo** (`assets/kanto_locations.json`, copia derivada de
  *   `ubicaciones.json`) es la única fuente de identificadores, nombres y tipos
- *   de las 46 ubicaciones de Kanto. Sus ids numéricos son **estables**: son la
+ *   de las 47 ubicaciones de Kanto. Sus ids numéricos son **estables**: son la
  *   referencia que el resto del sistema usa para enlazar sin duplicar textos.
  * - El **mapeo** (`assets/kanto_regions.json`) solo guarda geografía: qué
  *   región (círculo, rectángulo o polígono) ocupa cada ubicación ya dibujada.
