@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Solo para compilaciones debug: registra la actividad del editor visual del
+    mapa. Con la fusión de manifiestos este registro desaparece por completo en
+    release, igual que las clases del source set `debug`.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.dsrs.pokeclic.dbg.MapEditorActivity"
+            android:exported="false"
+            android:label="@string/map_editor_title">
+            <intent-filter>
+                <action android:name="com.dsrs.pokeclic.dbg.action.OPEN_MAP_EDITOR" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

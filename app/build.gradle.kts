@@ -61,4 +61,8 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // org.json existe en la plataforma Android, pero los tests unitarios
+    // corren en un JVM sin ella: este artefacto aporta la misma API para tests.
+    testImplementation("org.json:json:20240303")
 }

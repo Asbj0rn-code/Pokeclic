@@ -15,6 +15,7 @@
     <!-- Mapa -->
     <string name="map_kanto_desc">Mapa de Kanto</string>
     <string name="map_reset_view">Restaurar vista</string>
+    <string name="map_open_dev_editor">Abrir editor de desarrollo del mapa</string>
 
     <!-- Menú de opciones (placeholder) -->
     <string name="options_title">Opciones</string>
