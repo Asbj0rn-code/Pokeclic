@@ -82,7 +82,6 @@
     <string name="map_editor_error_IMPORT_REJECTED">No se aceptó el mapeo importado</string>
 
     <!-- Panel de ubicaciones -->
-    <string name="map_editor_sheet_title">Ubicaciones y zonas</string>
     <string name="map_editor_sheet_groups_city">Ciudades y pueblos</string>
     <string name="map_editor_sheet_groups_route">Rutas</string>
     <string name="map_editor_sheet_groups_special">Ubicaciones especiales</string>

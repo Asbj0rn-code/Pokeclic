@@ -678,9 +678,6 @@ private fun MapEditorViewport(
     val editorTool = session.tool
     // Desactivar el pellizco/tap de navegación en el modo Editar (4C)
     val editingMode = editorTool == MapEditorTool.EDIT
-    // Índice del punto de control agarrado mientras arrastras en Editar
-    // (-1 = arrastre normal del mapa, que también existe en el modo Editar).
-    var grabbedHandle by remember { mutableStateOf(-1) }
 
     fun clampOffset(candidate: Offset): Offset = clampMapOffset(
         candidate = candidate,

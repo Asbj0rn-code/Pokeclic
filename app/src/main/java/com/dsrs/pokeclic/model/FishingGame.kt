@@ -190,10 +190,6 @@ object FishingGame {
         )
     }
 
-    /** ¿El sprite está dentro de la barra de captura? */
-    fun isOverlapping(state: FishingState): Boolean =
-        abs(state.spritePos - state.barPos) <= state.config.barSize / 2f
-
     /**
      * Avanza la partida un tick de [dt] segundos.
      *
