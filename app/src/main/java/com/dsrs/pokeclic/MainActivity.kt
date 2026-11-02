@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
                         onAdvanceZone = mainViewModel::onAdvanceZone,
                         onGymRetry = mainViewModel::onGymRetry,
                         onGymProjectileHit = mainViewModel::onGymProjectileHit,
+                        onGymRingTap = mainViewModel::onGymRingTap,
                         onGymEnemyHit = mainViewModel::onGymEnemyHit,
                         onFishingHold = mainViewModel::onFishingHold,
                         onFishingResultContinue = mainViewModel::onFishingResultContinue,

@@ -1,10 +1,11 @@
 /**
  * Escena, HUD y sprites del combate de gimnasio.
  *
- * La escena anima las rocas con un reloj de fotogramas y reparte los toques entre
- * el líder expuesto y el proyectil más cercano; el HUD pinta las fracciones de
- * vida y stamina ya calculadas por el modelo. No hay lógica de combate aquí:
- * solo presentación y eventos hacia el ViewModel.
+ * Cada mecánica tiene su escena: rocas por columnas (Brock) o anillos que se
+ * cierran sobre el jugador (Misty). Ambas animan con un reloj de fotogramas y
+ * reparten los toques entre el líder expuesto y el ataque en curso; el HUD pinta
+ * las fracciones de vida y stamina ya calculadas por el modelo. No hay lógica de
+ * combate aquí: solo presentación y eventos hacia el ViewModel.
  */
 package com.dsrs.pokeclic.ui
 
@@ -18,7 +19,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -55,8 +59,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,12 +72,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.RingOutcome
+import kotlin.math.PI
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.shape.CircleShape
 
@@ -79,21 +92,25 @@ import androidx.compose.foundation.shape.CircleShape
  * [AppRoot].
  *
  * Combate por **fases excluyentes** (ver [GymPhase]):
- * - **Ataque**: cae una oleada de rocas y la stamina del líder baja **por
- *   tiempo**; hay que aguantarla rompiendo las rocas que impactarían.
- * - **Expuesta**: sin rocas, tocar al líder le resta vida (con ventaja de tipo).
+ * - **Ataque**: corre la oleada y la stamina del líder baja **por tiempo**. La
+ *   defensa depende de la mecánica: romper rocas (Brock) o acertar el círculo
+ *   que converge (Misty).
+ * - **Expuesta**: sin ataque enemigo, tocar al líder le resta vida (con ventaja
+ *   de tipo).
  *
- * Por debajo del 25 % de vida el líder entra en **furia**: la oleada es más
- * densa y rápida (ver `Gym.rage*`).
+ * Por debajo del 25 % de vida el líder entra en **furia**: los ataques son más
+ * densos y rápidos (ver `Gym.rage*`).
  *
  * Todos los sprites son solo visuales y **una única capa de toque** reparte los
- * gestos: primero al enemigo si está expuesto y el toque cae sobre él, y si no, a
- * la roca más cercana. Así la Pokéball del menú deja de ser el pulsador de ataque.
+ * gestos: primero al enemigo si está expuesto y el toque cae sobre él, y si no,
+ * la mecánica del líder (la roca más cercana para Brock, el anillo más cercano
+ * para Misty). Así la Pokéball del menú deja de ser el pulsador de ataque.
  */
 @Composable
 fun GymOverlay(
     state: GymState,
     onProjectileHit: (Long) -> Unit,
+    onRingTap: () -> Unit,
     onEnemyHit: () -> Unit,
     onRetry: () -> Unit,
     onLeave: () -> Unit,
@@ -104,15 +121,54 @@ fun GymOverlay(
     // El combate oculta el bottom menu, así que el `Scaffold` ya no reserva el
     // inset inferior: se aplica aquí para que el sprite del jugador no quede
     // debajo de la barra de navegación.
-    Box(modifier = modifier.fillMaxSize().navigationBarsPadding()) {
+    //
+    // El minijuego de anillos juzga los toques en la **raíz** del overlay, como
+    // hace la pesca: así ningún sprite, barra o capa intermedia puede dejar el
+    // gesto sin receptor.
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .pointerInput(state.mechanic, exposed) {
+                if (state.mechanic != GymMechanic.TIMING_RINGS) return@pointerInput
 
-        GymScene(
-            state = state,
-            exposed = exposed,
-            onProjectileHit = onProjectileHit,
-            onEnemyHit = onEnemyHit,
-            modifier = Modifier.fillMaxSize()
-        )
+                val enemyLeftPx = (size.width - ENEMY_WIDTH.toPx()) / 2f
+                val enemyTopPx = ENEMY_TOP.toPx()
+                val enemyRightPx = enemyLeftPx + ENEMY_WIDTH.toPx()
+                val enemyBottomPx = enemyTopPx + ENEMY_HEIGHT.toPx()
+
+                awaitEachGesture {
+                    // El minijuego se juzga al **apoyar** el dedo, no al
+                    // levantarlo: soltar tarde no debe convertir un acierto en
+                    // fallo.
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (!exposed) {
+                        onRingTap()
+                    } else if (
+                        down.position.x in enemyLeftPx..enemyRightPx &&
+                        down.position.y in enemyTopPx..enemyBottomPx
+                    ) {
+                        onEnemyHit()
+                    }
+                    waitForUpOrCancellation()
+                }
+            }
+    ) {
+
+        when (state.mechanic) {
+            GymMechanic.PROJECTILES -> GymScene(
+                state = state,
+                exposed = exposed,
+                onProjectileHit = onProjectileHit,
+                onEnemyHit = onEnemyHit,
+                modifier = Modifier.fillMaxSize()
+            )
+            GymMechanic.TIMING_RINGS -> RingGymScene(
+                state = state,
+                exposed = exposed,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         GymHud(
             state = state,
@@ -276,38 +332,13 @@ private fun GymScene(
 
         // Barra de stamina justo debajo del enemigo: es el reloj de la oleada
         // (baja por tiempo) y, en furia, se tiñe de rojo.
-        val staminaColor = when {
-            exposed -> EXPOSED_COLOR
-            state.rage -> RAGE_COLOR
-            else -> STAMINA_COLOR
-        }
-        Column(
+        GymStaminaBar(
+            state = state,
+            exposed = exposed,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
-                .width(STAMINA_WIDTH),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            LinearProgressIndicator(
-                progress = { state.staminaFraction },
-                modifier = Modifier.fillMaxWidth(),
-                color = staminaColor
-            )
-            Spacer(modifier = Modifier.size(2.dp))
-            Text(
-                text = if (exposed) {
-                    stringResource(R.string.gym_exposed)
-                } else {
-                    stringResource(
-                        R.string.gym_stamina_time,
-                        ceil(state.waveRemainingMs / 1000f).toInt()
-                    )
-                },
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (exposed) FontWeight.Bold else FontWeight.Normal,
-                color = if (exposed) EXPOSED_COLOR else Color.White
-            )
-        }
+        )
 
         // Capa de toque única: enemigo si está expuesto, o la roca más cercana.
         Box(
@@ -370,6 +401,355 @@ private fun GymScene(
                         }
                     )
                 }
+        )
+    }
+}
+
+/**
+ * Escena del minijuego de anillos de Misty.
+ *
+ * El Pokémon del jugador se queda abajo, con un **círculo fijo** a su
+ * alrededor, y el del líder arriba. Durante la oleada aparecen anillos que se
+ * cierran hacia el círculo fijo con cadencia distinta; el jugador pulsa cuando
+ * el anillo que se cierra lo toca. El modelo decide aciertos y fallos: aquí solo
+ * se pinta el radio derivado del tiempo y se envía el toque.
+ *
+ * El gesto se captura en la raíz de [GymOverlay], igual que en la pesca: esta
+ * escena solo pinta. No hay acierto por posición: el minijuego es de **momento**,
+ * no de puntería.
+ */
+@Composable
+private fun RingGymScene(
+    state: GymState,
+    exposed: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Reloj de fotogramas: el radio de cada anillo sale de su progreso, así que
+    // la escena se repinta sola sin que el ViewModel actualice cada frame.
+    val clock = remember { mutableLongStateOf(nowMs()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+            clock.longValue = nowMs()
+        }
+    }
+    val now = clock.longValue
+    val currentState by rememberUpdatedState(state)
+
+    // Acierto/fallo del último anillo: el ViewModel publica el resultado y aquí
+    // se convierte en un estallido de agua o uno rojo, más la etiqueta flotante.
+    val feedback = state.ringFeedback
+    val feedbackProgress = remember { Animatable(1f) }
+    LaunchedEffect(feedback?.ringId) {
+        if (feedback == null) return@LaunchedEffect
+        feedbackProgress.snapTo(0f)
+        feedbackProgress.animateTo(1f, tween(durationMillis = RING_FEEDBACK_MS))
+    }
+
+    // Latido del enemigo mientras está expuesto.
+    val pulse = rememberInfiniteTransition(label = "ringExposed")
+    val pulseScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.07f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 600), RepeatMode.Reverse),
+        label = "ringPulseScale"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(
+                x = size.width / 2f,
+                y = size.height - PLAYER_BOTTOM.toPx() - PLAYER_HEIGHT.toPx() / 2f
+            )
+            val targetRadius = RING_TARGET_RADIUS.toPx()
+            val startRadius = RING_START_RADIUS.toPx()
+            val mainStroke = Stroke(width = RING_STROKE.toPx())
+            val outlineStroke = Stroke(width = (RING_STROKE + 3.dp).toPx())
+            val foamStroke = Stroke(width = 1.dp.toPx())
+
+            // Charco de agua bajo el Pokémon: da profundidad al círculo fijo.
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(WATER_POOL.copy(alpha = 0.34f), Color.Transparent),
+                    center = center,
+                    radius = targetRadius
+                ),
+                radius = targetRadius,
+                center = center
+            )
+
+            // Círculo fijo: contorno oscuro + doble borde de burbuja (agua +
+            // espuma). El contorno lo separa del azul de la piscina y de las
+            // líneas blancas del fondo.
+            drawCircle(
+                color = RING_OUTLINE.copy(alpha = 0.65f),
+                radius = targetRadius,
+                center = center,
+                style = outlineStroke
+            )
+            drawCircle(
+                color = WATER_LIGHT.copy(alpha = 0.95f),
+                radius = targetRadius,
+                center = center,
+                style = mainStroke
+            )
+            drawCircle(
+                color = WATER_FOAM.copy(alpha = 0.95f),
+                radius = targetRadius - 3.dp.toPx(),
+                center = center,
+                style = foamStroke
+            )
+
+            // Burbujas que suben dentro del charco.
+            repeat(5) { index ->
+                val cycleMs = 2_600L
+                val phase = ((now + index * 520L) % cycleMs) / cycleMs.toFloat()
+                val bubbleX = center.x + (index - 2f) * (targetRadius * 0.28f)
+                val bubbleY = center.y + targetRadius * 0.82f - phase * targetRadius * 1.6f
+                drawCircle(
+                    color = WATER_FOAM.copy(alpha = 0.42f * (1f - phase)),
+                    radius = if (index % 2 == 0) 3.dp.toPx() else 2.dp.toPx(),
+                    center = Offset(bubbleX, bubbleY)
+                )
+            }
+
+            // Anillos que se cierran: agua profunda, espuma, ondulación y gotas.
+            currentState.rings.forEach { ring ->
+                val radius = startRadius + (targetRadius - startRadius) * ring.progressAt(now)
+                val onBeat = ring.isInWindow(now, currentState.ringWindowMs)
+
+                drawCircle(
+                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.30f),
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = RING_GLOW_STROKE.toPx())
+                )
+
+                val ringBrush = Brush.sweepGradient(
+                    colors = if (onBeat) {
+                        listOf(
+                            RING_ON_BEAT_DEEP,
+                            RING_ON_BEAT_COLOR,
+                            Color.White,
+                            RING_ON_BEAT_COLOR,
+                            RING_ON_BEAT_DEEP
+                        )
+                    } else {
+                        listOf(WATER_DEEP, WATER_MID, WATER_FOAM, WATER_MID, WATER_DEEP)
+                    },
+                    center = center
+                )
+
+                if (onBeat) {
+                    // En su ventana el anillo queda liso: es la señal exacta.
+                    drawCircle(
+                        color = RING_OUTLINE.copy(alpha = 0.65f),
+                        radius = radius,
+                        center = center,
+                        style = outlineStroke
+                    )
+                    drawCircle(
+                        brush = ringBrush,
+                        radius = radius,
+                        center = center,
+                        style = mainStroke
+                    )
+                } else {
+                    // Fuera de la ventana, el borde ondula como una ola.
+                    val wave = Path()
+                    val segments = 72
+                    for (step in 0..segments) {
+                        val angle = step * (2.0 * PI / segments).toFloat()
+                        val ripple = sin(angle * RING_WAVE_CYCLES + now / 220f) *
+                            RING_WAVE_AMPLITUDE.toPx()
+                        val x = center.x + cos(angle) * (radius + ripple)
+                        val y = center.y + sin(angle) * (radius + ripple)
+                        if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                    }
+                    wave.close()
+                    drawPath(
+                        path = wave,
+                        color = RING_OUTLINE.copy(alpha = 0.65f),
+                        style = outlineStroke
+                    )
+                    drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                }
+
+                drawCircle(
+                    color = WATER_FOAM.copy(alpha = if (onBeat) 0.95f else 0.65f),
+                    radius = radius - 3.dp.toPx(),
+                    center = center,
+                    style = foamStroke
+                )
+
+                // Gotas de espuma que orbitan el anillo y respiran con el tiempo.
+                val spin = (now % 7_000L) / 7_000f * 360f
+                repeat(4) { dropIndex ->
+                    val direction = if (dropIndex % 2 == 0) 1f else -1f
+                    val angle = (dropIndex * 90f + spin * direction) * PI.toFloat() / 180f
+                    val dropX = center.x + cos(angle) * radius
+                    val dropY = center.y + sin(angle) * radius
+                    val dropRadius = (dropIndex + 2).dp.toPx() *
+                        (0.75f + 0.25f * sin(now / 300f + dropIndex))
+                    drawCircle(
+                        color = if (onBeat) Color.White.copy(alpha = 0.95f)
+                        else WATER_FOAM.copy(alpha = 0.9f),
+                        radius = dropRadius,
+                        center = Offset(dropX, dropY)
+                    )
+                }
+            }
+
+            // Estallido del resultado: salpicadura de espuma o onda roja.
+            val progress = feedbackProgress.value
+            if (feedback != null && progress < 1f) {
+                val fade = 1f - progress
+                when (feedback.outcome) {
+                    RingOutcome.HIT -> {
+                        drawCircle(
+                            color = WATER_FOAM.copy(alpha = 0.9f * fade),
+                            radius = targetRadius + 42.dp.toPx() * progress,
+                            center = center,
+                            style = Stroke(width = (4f * fade + 1f).dp.toPx())
+                        )
+                        repeat(8) { dropIndex ->
+                            val angle = dropIndex * 45f * PI.toFloat() / 180f
+                            val distance = targetRadius + 60.dp.toPx() * progress
+                            drawCircle(
+                                color = WATER_LIGHT.copy(alpha = 0.9f * fade),
+                                radius = (3.5f * fade + 1f).dp.toPx(),
+                                center = Offset(
+                                    center.x + cos(angle) * distance,
+                                    center.y + sin(angle) * distance
+                                )
+                            )
+                        }
+                    }
+                    RingOutcome.MISS -> {
+                        drawCircle(
+                            color = MISS_RED.copy(alpha = 0.9f * fade),
+                            radius = targetRadius + 36.dp.toPx() * progress,
+                            center = center,
+                            style = Stroke(width = (5f * fade + 1f).dp.toPx())
+                        )
+                    }
+                }
+            }
+        }
+
+        // Enemigo, con pulso mientras está expuesto.
+        GymSpriteBox(
+            gifRes = enemyGifFor(state.gymId),
+            name = state.leaderName,
+            type = state.gymType,
+            contentDescription = stringResource(R.string.gym_title, state.leaderName),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ENEMY_TOP)
+                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .graphicsLayer {
+                    val scale = if (exposed) pulseScale else 1f
+                    scaleX = scale
+                    scaleY = scale
+                }
+        )
+
+        // Jugador; placeholder por tipo si aún no hay back.
+        GymSpriteBox(
+            gifRes = backGifFor(state.leadSpeciesId),
+            name = state.leadName,
+            type = state.leadType,
+            contentDescription = state.leadName,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = -PLAYER_BOTTOM)
+                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+        )
+
+        GymStaminaBar(
+            state = state,
+            exposed = exposed,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
+        )
+
+        // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
+        // cueva. Sube y se desvanece con el mismo reloj que el estallido.
+        feedback?.let { result ->
+            val progress = feedbackProgress.value
+            // Se queda legible un instante y después se desvanece.
+            val fade = if (progress < 0.45f) {
+                1f
+            } else {
+                ((1f - progress) / 0.55f).coerceIn(0f, 1f)
+            }
+            val hit = result.outcome == RingOutcome.HIT
+            val label = when {
+                hit -> stringResource(R.string.gym_ring_hit)
+                result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
+                else -> stringResource(R.string.gym_ring_miss)
+            }
+            Text(
+                text = label,
+                color = if (hit) WATER_FOAM else MISS_RED,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
+                ),
+                fontWeight = FontWeight.Black,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = (-36).dp)
+                    .graphicsLayer {
+                        alpha = fade
+                        val scale = 1f + 0.18f * progress
+                        scaleX = scale
+                        scaleY = scale
+                    }
+            )
+        }
+
+    }
+}
+
+/**
+ * Barra de stamina del líder bajo su sprite: es el reloj de la oleada (baja por
+ * tiempo) y, en furia, se tiñe de rojo. La comparten las dos mecánicas de
+ * gimnasio para que la lectura del combate no cambie entre líderes.
+ */
+@Composable
+private fun GymStaminaBar(
+    state: GymState,
+    exposed: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val staminaColor = when {
+        exposed -> EXPOSED_COLOR
+        state.rage -> RAGE_COLOR
+        else -> STAMINA_COLOR
+    }
+    Column(
+        modifier = modifier.width(STAMINA_WIDTH),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LinearProgressIndicator(
+            progress = { state.staminaFraction },
+            modifier = Modifier.fillMaxWidth(),
+            color = staminaColor
+        )
+        Spacer(modifier = Modifier.size(2.dp))
+        Text(
+            text = if (exposed) {
+                stringResource(R.string.gym_exposed)
+            } else {
+                stringResource(
+                    R.string.gym_stamina_time,
+                    ceil(state.waveRemainingMs / 1000f).toInt()
+                )
+            },
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (exposed) FontWeight.Bold else FontWeight.Normal,
+            color = if (exposed) EXPOSED_COLOR else Color.White
         )
     }
 }
@@ -441,7 +821,11 @@ private fun GymHud(
 
                 Text(
                     text = stringResource(
-                        if (exposed) R.string.gym_enemy_hint else R.string.gym_projectile_hint
+                        when {
+                            exposed -> R.string.gym_enemy_hint
+                            state.mechanic == GymMechanic.TIMING_RINGS -> R.string.gym_ring_hint
+                            else -> R.string.gym_projectile_hint
+                        }
                     ),
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -519,13 +903,13 @@ private const val LANE_WIDTH_FRACTION = 0.72f
 private val LANE_MAX_WIDTH = 340.dp
 
 /** Tamaño y posición del enemigo (el GIF de Golem es 72×57, ratio ~1.26). */
-private val ENEMY_WIDTH = 120.dp
-private val ENEMY_HEIGHT = 90.dp
+private val ENEMY_WIDTH = 180.dp
+private val ENEMY_HEIGHT = 150.dp
 private val ENEMY_TOP = 178.dp
 
 /** Tamaño y posición del jugador. */
-private val PLAYER_WIDTH = 110.dp
-private val PLAYER_HEIGHT = 122.dp
+private val PLAYER_WIDTH = 90.dp
+private val PLAYER_HEIGHT = 102.dp
 private val PLAYER_BOTTOM = 160.dp
 
 /** Separación de la barra de vida del jugador respecto al borde inferior. */
@@ -541,6 +925,46 @@ private val STAMINA_WIDTH = 200.dp
 private val STAMINA_COLOR = Color(0xFFFFC107)
 private val EXPOSED_COLOR = Color(0xFFFFEB3B)
 private val RAGE_COLOR = Color(0xFFFF5252)
+
+/**
+ * Anillos del minijuego de Misty: radio fijo alrededor del jugador, radio de
+ * entrada y grosor del trazo. El anillo que entra se cierra desde
+ * [RING_START_RADIUS] hasta [RING_TARGET_RADIUS].
+ *
+ * El radio fijo se calcula para el cuadro del jugador ([PLAYER_WIDTH] ×
+ * [PLAYER_HEIGHT]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
+ * unos 10 dp de margen, la misma holgura que había con 110 × 122 dp y 92 dp.
+ * Si vuelven a cambiar esos tamaños, ajustar ambos radios en la misma
+ * proporción.
+ */
+private val RING_TARGET_RADIUS = 78.dp
+private val RING_START_RADIUS = 175.dp
+private val RING_STROKE = 4.dp
+private val RING_GLOW_STROKE = 11.dp
+
+/** Ondulación del anillo de agua fuera de la ventana de acierto. */
+private val RING_WAVE_AMPLITUDE = 2.5.dp
+private const val RING_WAVE_CYCLES = 6f
+
+/** Duración del estallido y de la etiqueta de acierto/fallo. */
+private const val RING_FEEDBACK_MS = 900
+
+/** Paleta de agua de los anillos. */
+private val WATER_DEEP = Color(0xFF0D47A1)
+private val WATER_MID = Color(0xFF1E88E5)
+private val WATER_LIGHT = Color(0xFF4FC3F7)
+private val WATER_FOAM = Color(0xFFE1F5FE)
+private val WATER_POOL = Color(0xFF29B6F6)
+
+/** Contorno oscuro de los anillos: los separa del agua y de las líneas blancas. */
+private val RING_OUTLINE = Color(0xFF06111C)
+
+/** Amarillo del anillo cuando está en su ventana de acierto. */
+private val RING_ON_BEAT_COLOR = Color(0xFFFFEB3B)
+private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
+
+/** Rojo del fallo. */
+private val MISS_RED = Color(0xFFFF5252)
 
 /**
  * Radio de acierto como fracción del ancho de columna (tolerante al toque), con
@@ -564,6 +988,7 @@ private val PROJECTILE_MIN_HIT_RADIUS = 28.dp
 @DrawableRes
 fun enemyGifFor(gymId: String): Int? = when (gymId) {
     "brock" -> R.drawable.golem
+    "misty" -> R.drawable.starmie
     else -> null
 }
 

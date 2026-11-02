@@ -46,9 +46,9 @@ object SpeciesCatalog {
  *
  * Recorrido de Kanto tras la presentación y la elección del starter
  * (feature-29): Pueblo Paleta → Ruta 1 → Ciudad Verde → Ruta 2 → Bosque Verde →
- * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4. El test `CatalogTest` bloquea ese
- * orden exacto y la regla de progresión: **cada zona pide más clics que la
- * anterior**.
+ * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4 → Ciudad Celeste (feature-35). El
+ * test `CatalogTest` bloquea ese orden exacto y la regla de progresión: **cada
+ * zona pide más clics que la anterior**.
  *
  * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
  * avanzan con clics.
@@ -113,14 +113,21 @@ object ZoneCatalog {
             name = "Ruta 4",
             clickRequirement = 210L,
             wildSpeciesIds = listOf("spearow", "rattata")
+        ),
+        Zone(
+            id = "ciudad_celeste",
+            name = "Ciudad Celeste",
+            clickRequirement = 260L,
+            wildSpeciesIds = emptyList(),
+            gymId = "misty"
         )
     )
 }
 
 /**
- * Catálogo de gimnasios. En la Etapa 2 solo existe Brock, alojado en
- * Ciudad Plateada (feature-29, el gimnasio de piedra del recorrido canónico);
- * los siete restantes llegarán con el contenido de Kanto.
+ * Catálogo de gimnasios. Brock (Ciudad Plateada) usa la lluvia de rocas y Misty
+ * (Ciudad Celeste, feature-35) el minijuego de anillos rítmicos; los seis
+ * restantes llegarán con el contenido de Kanto.
  */
 object GymCatalog {
 
@@ -130,6 +137,7 @@ object GymCatalog {
         type = PokemonType.ROCK,
         coinReward = 40L,
         leaderHp = 60,
+        mechanic = GymMechanic.PROJECTILES,
         columns = 5,
         spawnIntervalMs = 650L,
         projectileTravelMs = 1_800L,
@@ -142,7 +150,35 @@ object GymCatalog {
         rageProjectileTravelMs = 1_100L
     )
 
-    private val byId: Map<String, Gym> = listOf(brock).associateBy { it.id }
+    /**
+     * Misty: sin proyectiles; los anillos se cierran con cadencias distintas y
+     * cada fallo resta vida. Los campos de proyectiles quedan a 0 porque esta
+     * mecánica no los lee.
+     */
+    val misty = Gym(
+        id = "misty",
+        leaderName = "Misty",
+        type = PokemonType.WATER,
+        coinReward = 60L,
+        leaderHp = 90,
+        mechanic = GymMechanic.TIMING_RINGS,
+        columns = 1,
+        spawnIntervalMs = 0L,
+        projectileTravelMs = 0L,
+        projectileDamage = 0,
+        waveDurationMs = 10_000L,
+        exposureDurationMs = 2_500L,
+        ringSpawnIntervalMs = 750L,
+        ringTravelMinMs = 950L,
+        ringTravelMaxMs = 1_700L,
+        ringWindowMs = 170L,
+        ringMissDamage = 1,
+        rageRingSpawnIntervalMs = 520L,
+        rageRingTravelMinMs = 700L,
+        rageRingTravelMaxMs = 1_200L
+    )
+
+    private val byId: Map<String, Gym> = listOf(brock, misty).associateBy { it.id }
 
     fun byId(id: String): Gym? = byId[id]
 

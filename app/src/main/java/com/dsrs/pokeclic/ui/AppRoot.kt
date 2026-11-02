@@ -33,6 +33,7 @@ import com.dsrs.pokeclic.model.FishingDefaults
 import com.dsrs.pokeclic.model.FishingGame
 import com.dsrs.pokeclic.model.FishingState
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
@@ -49,7 +50,7 @@ import kotlin.random.Random
  *
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
- *    fondo de la cueva a pantalla completa; si no, en zonas con fauna el
+ *    fondo del gimnasio a pantalla completa (cueva o piscina); si no, en zonas con fauna el
  *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
  *    la Pokéball) y, si la pestaña de contenido es el mapa, el [MapOceanBackdrop]
  *    (color del océano del mapa). Encima, el contenido de la pestaña
@@ -95,7 +96,8 @@ import kotlin.random.Random
  * @param onGymIntroAccepted "Entendido" (tutorial del gimnasio).
  * @param onAdvanceZone pulsa el botón Avanzar al llenarse la barra de la zona.
  * @param onGymRetry reintenta el combate; @param onGymProjectileHit rompe un
- *   proyectil; @param onGymEnemyHit golpea al líder expuesto.
+ *   proyectil; @param onGymRingTap intenta acertar el anillo más cercano;
+ *   @param onGymEnemyHit golpea al líder expuesto.
  * @param onFishingHold notifica si el jugador mantiene pulsada la pantalla
  *   durante la partida de pesca (true: pulsado; false: soltado).
  * @param onFishingResultContinue cierra el resultado de la partida de pesca.
@@ -122,6 +124,7 @@ fun AppRoot(
     onAdvanceZone: () -> Unit,
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
+    onGymRingTap: () -> Unit,
     onGymEnemyHit: () -> Unit,
     onFishingHold: (Boolean) -> Unit,
     onFishingResultContinue: () -> Unit,
@@ -173,12 +176,17 @@ fun AppRoot(
         state.isLeadOpen || isSplashShowing
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fondo del gimnasio: combate y capa de entrada comparten la cueva, de
+        // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
         // modo que al caducar el cartel el combate arranque sin salto de fondo.
-        // Está detrás de todo y el `Scaffold` se vuelve transparente.
+        // Cada mecánica tiene su arte: cueva de roca para Brock y piscina para
+        // Misty. Está detrás de todo y el `Scaffold` se vuelve transparente.
         if (gymScene) {
+            val gymBackground = when (state.gymMechanic) {
+                GymMechanic.PROJECTILES -> R.drawable.rock_gym
+                GymMechanic.TIMING_RINGS -> R.drawable.water_gym
+            }
             Image(
-                painter = painterResource(R.drawable.rock_gym),
+                painter = painterResource(gymBackground),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -282,6 +290,7 @@ fun AppRoot(
                     GymOverlay(
                         state = activeGym,
                         onProjectileHit = onGymProjectileHit,
+                        onRingTap = onGymRingTap,
                         onEnemyHit = onGymEnemyHit,
                         onRetry = onGymRetry,
                         onLeave = onLeaveGym
@@ -308,6 +317,7 @@ fun AppRoot(
         GymIntroLayer(
             phase = state.gymIntro,
             leaderName = state.gymLeaderName,
+            mechanic = state.gymMechanic,
             onWatchTutorial = onWatchGymTutorial,
             onSkip = onGymIntroSkip,
             onAccepted = onGymIntroAccepted
@@ -413,6 +423,7 @@ private fun AppRootStage(state: GameUiState) {
         onAdvanceZone = {},
         onGymRetry = {},
         onGymProjectileHit = {},
+        onGymRingTap = {},
         onGymEnemyHit = {},
         onFishingHold = {},
         onFishingResultContinue = {},

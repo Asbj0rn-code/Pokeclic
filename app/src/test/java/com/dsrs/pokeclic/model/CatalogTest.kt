@@ -29,10 +29,29 @@ class CatalogTest {
                 "Ciudad Plateada",
                 "Ruta 3",
                 "Mt.Moon",
-                "Ruta 4"
+                "Ruta 4",
+                "Ciudad Celeste"
             ),
             names
         )
+    }
+
+    /** Ciudad Celeste cierra el recorrido y aloja el gimnasio de Misty. */
+    @Test
+    fun zoneCatalog_cityCelesteFollowsRoute4AndHasMistysGym() {
+        val zones = ZoneCatalog.zones
+        val city = zones.last()
+
+        assertEquals("ciudad_celeste", city.id)
+        assertEquals("misty", city.gymId)
+        assertEquals("Ruta 4", zones[zones.lastIndex - 1].name)
+    }
+
+    /** Cada líder conserva su mecánica: Brock rocas, Misty anillos. */
+    @Test
+    fun gymCatalog_keepsTheMechanicOfEachLeader() {
+        assertEquals(GymMechanic.PROJECTILES, GymCatalog.brock.mechanic)
+        assertEquals(GymMechanic.TIMING_RINGS, GymCatalog.misty.mechanic)
     }
 
     /** Regla de progresión: cada zona pide más clics que la anterior. */

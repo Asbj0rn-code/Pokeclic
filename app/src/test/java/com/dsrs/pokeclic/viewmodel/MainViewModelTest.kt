@@ -4,9 +4,12 @@ import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymPhase
+import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.Zone
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -68,11 +71,13 @@ class MainViewModelTest {
         saved: GameSnapshot? = null,
         nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
         zones: List<Zone> = testZones,
-        sprites: SpriteRepository = FakeSprites()
+        sprites: SpriteRepository = FakeSprites(),
+        random: Random = Random.Default
     ) = MainViewModel(
         sprites,
         FakeStore().apply { this.saved = saved },
         zones = zones,
+        random = random,
         nowMs = nowMs
     )
 
@@ -90,6 +95,13 @@ class MainViewModelTest {
     private val cityThenMeadowZones = listOf(
         Zone("z_ciudad", "Ciudad", 100L, emptyList()),
         Zone("z_prado", "Prado", 100L, listOf("pidgey"))
+    )
+
+    /** Mismo recorrido corto, pero con el gimnasio de Misty en la zona central. */
+    private val mistyZones = listOf(
+        Zone("z1", "Z1", 2L, listOf("pidgey")),
+        Zone("z2", "Z2", 3L, listOf("rattata"), gymId = "misty"),
+        Zone("z3", "Z3", 4L, listOf("caterpie"))
     )
 
     @Test
@@ -283,6 +295,152 @@ class MainViewModelTest {
         vm.onAdvanceZone()
         assertEquals(2, vm.uiState.value.zoneIndex)
         assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    // --- Gimnasio de Misty: anillos rítmicos ---------------------------------
+
+    /** Entra al gimnasio de Misty y salta el cartel de arranque. */
+    private fun startMistyCombat(nowMs: () -> Long): MainViewModel {
+        val vm = viewModel(
+            saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L),
+            nowMs = nowMs,
+            zones = mistyZones,
+            random = Random(7)
+        )
+        assertTrue(vm.uiState.value.isGymReady)
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+        return vm
+    }
+
+    /** Avanza un tick del bucle con el reloj del juego ya movido. */
+    private fun tick() {
+        testScope.advanceTimeBy(50L)
+        testScope.runCurrent()
+    }
+
+    @Test
+    fun brockGym_keepsItsProjectileMechanic() {
+        val vm = viewModel(
+            saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L),
+            nowMs = { 0L }
+        )
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        assertEquals(GymMechanic.PROJECTILES, vm.uiState.value.gym?.mechanic)
+    }
+
+    @Test
+    fun mistyGym_usesTimingRingsInsteadOfProjectiles() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+
+        val started = vm.uiState.value.gym
+        assertNotNull(started)
+        assertEquals(GymMechanic.TIMING_RINGS, started!!.mechanic)
+        assertTrue(started.projectiles.isEmpty())
+
+        now = 900L
+        tick()
+
+        val ringed = vm.uiState.value.gym
+        assertNotNull(ringed)
+        assertEquals(1, ringed!!.rings.size)
+        assertTrue(ringed.projectiles.isEmpty())
+    }
+
+    @Test
+    fun ringTapOnBeat_removesTheRingWithoutDamage() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+
+        val ring = vm.uiState.value.gym!!.rings.single()
+        val hpBefore = vm.uiState.value.gym!!.playerHp
+
+        now = ring.convergeAtMs()
+        vm.onGymRingTap()
+
+        with(vm.uiState.value.gym!!) {
+            assertEquals(hpBefore, playerHp)
+            assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
+        }
+    }
+
+    @Test
+    fun ringTapOffBeat_damagesAndConsumesThatRing() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+
+        val ring = vm.uiState.value.gym!!.rings.single()
+        val hpBefore = vm.uiState.value.gym!!.playerHp
+
+        // Un instante después de nacer: muy lejos de la convergencia.
+        now = ring.spawnedAtMs + 1L
+        vm.onGymRingTap()
+
+        with(vm.uiState.value.gym!!) {
+            assertEquals(hpBefore - 1, playerHp)
+            assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
+        }
+    }
+
+    @Test
+    fun ringThatExpiresWithoutATap_damagesThePlayer() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+
+        val ring = vm.uiState.value.gym!!.rings.single()
+        val hpBefore = vm.uiState.value.gym!!.playerHp
+
+        now = ring.convergeAtMs() + 201L
+        tick()
+
+        with(vm.uiState.value.gym!!) {
+            assertEquals(hpBefore - 1, playerHp)
+            assertTrue(rings.none { it.id == ring.id })
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(ring.id, ringFeedback?.ringId)
+            assertEquals(1, ringFeedback?.count)
+        }
+    }
+
+    @Test
+    fun mistyExposure_clearsRingsAndAllowsRepeatedEnemyHits() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+        assertTrue(vm.uiState.value.gym!!.rings.isNotEmpty())
+
+        // La oleada se consume con el reloj virtual; el del juego no avanza, así
+        // que los anillos no caducan ni se generan más durante la espera.
+        testScope.advanceTimeBy(10_000L)
+        testScope.runCurrent()
+
+        val exposed = vm.uiState.value.gym
+        assertNotNull(exposed)
+        assertEquals(GymPhase.EXPOSED, exposed!!.phase)
+        assertTrue(exposed.rings.isEmpty())
+
+        val leaderBefore = exposed.leaderHp
+        vm.onGymEnemyHit()
+
+        assertEquals(leaderBefore - 1, vm.uiState.value.gym!!.leaderHp)
     }
 
     /**

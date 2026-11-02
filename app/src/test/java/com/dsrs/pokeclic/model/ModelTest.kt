@@ -183,6 +183,89 @@ class ModelTest {
         assertTrue(GymCombat.isRaging(14, 60))
     }
 
+    // --- Minijuego de anillos (Misty) -----------------------------------------
+
+    @Test
+    fun timingRingProgressGoesFromZeroToOne() {
+        val ring = TimingRing(id = 1L, spawnedAtMs = 1_000L, travelMs = 2_000L)
+        assertEquals(0f, ring.progressAt(1_000L))
+        assertEquals(0.5f, ring.progressAt(2_000L))
+        assertEquals(1f, ring.progressAt(3_000L))
+    }
+
+    @Test
+    fun timingRingProgressIsClamped() {
+        val ring = TimingRing(id = 1L, spawnedAtMs = 1_000L, travelMs = 2_000L)
+        assertEquals(0f, ring.progressAt(0L))
+        assertEquals(1f, ring.progressAt(9_999L))
+    }
+
+    @Test
+    fun timingRingConvergesWhenItsTravelEnds() {
+        val ring = TimingRing(id = 1L, spawnedAtMs = 500L, travelMs = 1_200L)
+        assertEquals(1_700L, ring.convergeAtMs())
+    }
+
+    @Test
+    fun timingRingWindowIsInclusiveAroundConvergence() {
+        val ring = TimingRing(id = 1L, spawnedAtMs = 1_000L, travelMs = 2_000L)
+        // Converge en 3.000 ms con una ventana de 170 ms.
+        assertTrue(ring.isInWindow(2_830L, 170L))
+        assertTrue(ring.isInWindow(3_170L, 170L))
+        assertFalse(ring.isInWindow(2_829L, 170L))
+        assertFalse(ring.isInWindow(3_171L, 170L))
+    }
+
+    @Test
+    fun timingRingExpiresOnlyAfterItsWindow() {
+        val ring = TimingRing(id = 1L, spawnedAtMs = 1_000L, travelMs = 2_000L)
+        assertFalse(ring.hasExpired(3_170L, 170L))
+        assertTrue(ring.hasExpired(3_171L, 170L))
+    }
+
+    @Test
+    fun nearestRingIsTheOneClosestToConvergence() {
+        val state = combatState().copy(
+            ringWindowMs = 170L,
+            rings = listOf(
+                TimingRing(1L, spawnedAtMs = 0L, travelMs = 1_000L),
+                TimingRing(2L, spawnedAtMs = 0L, travelMs = 1_500L)
+            )
+        )
+
+        assertEquals(1L, GymCombat.nearestRing(state, 900L)?.id)
+        assertEquals(1L, GymCombat.nearestRing(state, 1_100L)?.id)
+        assertEquals(2L, GymCombat.nearestRing(state, 1_260L)?.id)
+    }
+
+    @Test
+    fun expiredRingsAreOnlyThosePastTheirWindow() {
+        val state = combatState().copy(
+            ringWindowMs = 170L,
+            rings = listOf(
+                TimingRing(1L, spawnedAtMs = 0L, travelMs = 1_000L),
+                TimingRing(2L, spawnedAtMs = 0L, travelMs = 1_500L)
+            )
+        )
+
+        assertEquals(emptyList<TimingRing>(), GymCombat.expiredRings(state, 1_170L))
+        assertEquals(listOf(1L), GymCombat.expiredRings(state, 1_171L).map { it.id })
+    }
+
+    @Test
+    fun waveEndClearsRingsAndExposesLeader() {
+        val state = combatState(waveRemainingMs = 500L).copy(
+            mechanic = GymMechanic.TIMING_RINGS,
+            ringWindowMs = 170L,
+            rings = listOf(TimingRing(1L, spawnedAtMs = 0L, travelMs = 1_000L))
+        )
+
+        val exposed = GymCombat.advanceWave(state, 500L)
+
+        assertEquals(GymPhase.EXPOSED, exposed.phase)
+        assertEquals(emptyList<TimingRing>(), exposed.rings)
+    }
+
     // --- Minijuego de pesca ---------------------------------------------------
 
     /**

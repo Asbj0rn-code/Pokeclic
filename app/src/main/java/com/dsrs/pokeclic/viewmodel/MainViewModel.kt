@@ -18,11 +18,15 @@ import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.GymCatalog
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.Projectile
+import com.dsrs.pokeclic.model.RingFeedback
+import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TimingRing
 import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advanceZone
@@ -99,8 +103,8 @@ class MainViewModel(
     /** ¿El jugador mantiene pulsado durante la partida de pesca? */
     private var fishingHeld: Boolean = false
 
-    /** Siguiente id de proyectil del combate actual. */
-    private var nextProjectileId: Long = 0L
+    /** Siguiente id de ataque (proyectil o anillo) del combate actual. */
+    private var nextCombatId: Long = 0L
 
     /** Momento del último toque en hierba alta; gobierna el temporizador de caminar. */
     private var lastWalkTapMs: Long = 0L
@@ -213,7 +217,7 @@ class MainViewModel(
      *
      * `clear()` es síncrono (destructivo), y aquí se reinician los campos
      * transitorios que sobreviven al estado (`lastWalkTapMs`,
-     * `nextProjectileId`) para que ningún temporizador del estado anterior
+     * `nextCombatId`) para que ningún temporizador del estado anterior
      * "arrastre" el instante posterior al borrado.
      */
     fun onWipeGame() {
@@ -223,7 +227,7 @@ class MainViewModel(
         resetJob?.cancel()
         lateralFrameJob?.cancel()
         lastWalkTapMs = 0L
-        nextProjectileId = 0L
+        nextCombatId = 0L
         store.clear()
         _uiState.value = derive(GameUiState(trainerFrameRes = sprites.frame(Direction.FRONT, 0)))
     }
@@ -375,6 +379,39 @@ class MainViewModel(
     }
 
     /**
+     * Pulsación en el minijuego de anillos de Misty.
+     *
+     * Juzga el anillo **más cercano** a su convergencia: dentro de la ventana es
+     * acierto y el anillo desaparece; fuera, fallo, resta vida y el anillo
+     * también desaparece. Un anillo se cobra una sola vez, de modo que pulsar
+     * repetidamente no permite encadenar aciertos ni acumula daño sobre el mismo
+     * anillo. En fase expuesta no hace nada: entonces el toque válido es sobre el
+     * sprite del líder ([onGymEnemyHit]).
+     */
+    fun onGymRingTap() {
+        val state = _uiState.value
+        val gym = state.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.mechanic != GymMechanic.TIMING_RINGS) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        val config = GymCatalog.require(gym.gymId)
+        val now = nowMs()
+
+        updateGym { current ->
+            val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
+            val onBeat = GymCombat.isRingOnBeat(ring, current, now)
+            val resolved = current.copy(
+                rings = current.rings.filterNot { it.id == ring.id },
+                ringFeedback = RingFeedback(
+                    ringId = ring.id,
+                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
+                )
+            )
+            if (onBeat) resolved else applyRingMiss(resolved, config.ringMissDamage)
+        }
+    }
+
+    /**
      * Destruye (o resta un toque a) el proyectil tocado por el jugador.
      *
      * La lectura y la escritura van dentro de `updateGym` para no pisar un golpe
@@ -388,7 +425,7 @@ class MainViewModel(
 
     private fun startGymCombat(config: Gym) {
         gymJob?.cancel()
-        nextProjectileId = 0L
+        nextCombatId = 0L
         _uiState.update { current ->
             val maxHp = current.maxHp
             derive(
@@ -406,7 +443,9 @@ class MainViewModel(
                         leaderMaxHp = config.leaderHp,
                         playerHp = maxHp,
                         maxHp = maxHp,
+                        mechanic = config.mechanic,
                         columns = config.columns,
+                        ringWindowMs = config.ringWindowMs,
                         waveDurationMs = config.waveDurationMs,
                         waveRemainingMs = config.waveDurationMs,
                         exposureDurationMs = config.exposureDurationMs,
@@ -422,11 +461,10 @@ class MainViewModel(
     }
 
     /**
-     * Bucle de combate. En fase de ataque corre la cuenta atrás de la oleada,
-     * lanza ráfagas de proyectiles y aplica el daño de los que lleguen abajo; en
-     * fase expuesta solo avanza la recuperación. Al bajar del 25 % de vida, las
-     * ráfagas pasan a ser más densas y rápidas (furia). Se detiene al ganar o
-     * perder.
+     * Bucle de combate. En fase de ataque corre la cuenta atrás de la oleada y
+     * aplica la mecánica del líder —ráfagas de proyectiles o anillos que se
+     * cierran—; en fase expuesta solo avanza la recuperación. Al bajar del 25 %
+     * de vida la mecánica se acelera (furia). Se detiene al ganar o perder.
      */
     private fun startGymLoop(config: Gym) {
         gymJob = viewModelScope.launch {
@@ -444,7 +482,7 @@ class MainViewModel(
                 updateGym { current ->
                     if (current.outcome != GymOutcome.ACTIVE) return@updateGym current
 
-                    // Fase expuesta: no caen rocas y la barra se rellena sola.
+                    // Fase expuesta: no hay ataque enemigo y la barra se rellena sola.
                     if (current.phase == GymPhase.EXPOSED) {
                         val advanced = GymCombat.advanceExposure(current, GYM_TICK_MS)
                         resumed = advanced.phase == GymPhase.ATTACKING
@@ -452,61 +490,141 @@ class MainViewModel(
                     }
 
                     // La stamina es el reloj de la oleada: baja aunque el jugador
-                    // rompa todas las rocas. Al llegar a 0, el líder queda expuesto
-                    // y se limpian los proyectiles que quedaran.
+                    // acierte todo. Al llegar a 0, el líder queda expuesto y se
+                    // limpian proyectiles y anillos.
                     val advanced = GymCombat.advanceWave(current, GYM_TICK_MS)
                     if (advanced.phase == GymPhase.EXPOSED) return@updateGym advanced
 
                     val now = nowMs()
-                    val alive = advanced.projectiles.filterNot { it.hasLanded(now) }
-                    val landedCount = advanced.projectiles.size - alive.size
+                    val spawnDue = now >= nextSpawnMs
+                    if (spawnDue) nextSpawnMs += spawnIntervalMs(config, advanced)
 
-                    val projectiles = if (now >= nextSpawnMs) {
-                        val raging = GymCombat.isRaging(advanced)
-                        val interval = if (raging) config.rageSpawnIntervalMs else config.spawnIntervalMs
-                        val perSpawn = if (raging) config.rageProjectilesPerSpawn else config.projectilesPerSpawn
-                        val travel = if (raging) config.rageProjectileTravelMs else config.projectileTravelMs
-
-                        nextSpawnMs += interval
-                        // La ráfaga no siempre es completa: entre 1 y `perSpawn`
-                        // rocas, así no todas las filas son iguales.
-                        val salvoSize = random.nextInt(1, perSpawn + 1)
-                        val columns = (0 until config.columns)
-                            .shuffled(random)
-                            .take(salvoSize)
-                        alive + columns.map { column ->
-                            Projectile(
-                                id = nextProjectileId++,
-                                column = column,
-                                spawnedAtMs = now,
-                                travelMs = travel
-                            )
-                        }
-                    } else {
-                        alive
+                    val next = when (advanced.mechanic) {
+                        GymMechanic.PROJECTILES ->
+                            tickProjectiles(config, advanced, now, spawnDue)
+                        GymMechanic.TIMING_RINGS ->
+                            tickRings(config, advanced, now, spawnDue)
                     }
-
-                    if (landedCount == 0) {
-                        if (projectiles.size == advanced.projectiles.size) advanced
-                        else advanced.copy(projectiles = projectiles)
-                    } else {
-                        val damaged = GymCombat.registerImpact(
-                            state = advanced.copy(projectiles = projectiles),
-                            damage = landedCount * config.projectileDamage
-                        )
-                        if (damaged.playerHp <= 0) {
-                            lost = true
-                            damaged.copy(outcome = GymOutcome.LOST)
-                        } else {
-                            damaged
-                        }
-                    }
+                    if (next.outcome == GymOutcome.LOST) lost = true
+                    next
                 }
 
                 if (lost) break
                 // Al recuperarse, un respiro antes de la siguiente oleada.
                 if (resumed) nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
             }
+        }
+    }
+
+    /** Cadencia de aparición del ataque en curso, más rápida durante la furia. */
+    private fun spawnIntervalMs(config: Gym, state: GymState): Long =
+        when (state.mechanic) {
+            GymMechanic.PROJECTILES ->
+                if (GymCombat.isRaging(state)) config.rageSpawnIntervalMs
+                else config.spawnIntervalMs
+            GymMechanic.TIMING_RINGS ->
+                if (GymCombat.isRaging(state)) config.rageRingSpawnIntervalMs
+                else config.ringSpawnIntervalMs
+        }
+
+    /**
+     * Tick de la lluvia de rocas: retira las que ya impactaron, aplica su daño y
+     * lanza una ráfaga nueva si toca. [spawnDue] lo decide el bucle para compartir
+     * la cadencia entre mecánicas.
+     */
+    private fun tickProjectiles(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        val alive = state.projectiles.filterNot { it.hasLanded(now) }
+        val landedCount = state.projectiles.size - alive.size
+
+        val projectiles = if (spawnDue) {
+            val raging = GymCombat.isRaging(state)
+            val perSpawn = if (raging) config.rageProjectilesPerSpawn else config.projectilesPerSpawn
+            val travel = if (raging) config.rageProjectileTravelMs else config.projectileTravelMs
+            // La ráfaga no siempre es completa: entre 1 y `perSpawn` rocas, así no
+            // todas las filas son iguales.
+            val salvoSize = random.nextInt(1, perSpawn + 1)
+            val columns = (0 until config.columns)
+                .shuffled(random)
+                .take(salvoSize)
+            alive + columns.map { column ->
+                Projectile(
+                    id = nextCombatId++,
+                    column = column,
+                    spawnedAtMs = now,
+                    travelMs = travel
+                )
+            }
+        } else {
+            alive
+        }
+
+        if (landedCount == 0) return state.copy(projectiles = projectiles)
+
+        val damaged = GymCombat.registerImpact(
+            state = state.copy(projectiles = projectiles),
+            damage = landedCount * config.projectileDamage
+        )
+        return if (damaged.playerHp <= 0) {
+            damaged.copy(outcome = GymOutcome.LOST)
+        } else {
+            damaged
+        }
+    }
+
+    /**
+     * Tick de los anillos de Misty: cobra los que caducaron sin acierto y lanza
+     * uno nuevo si toca. Cada anillo elige su propia duración dentro del rango
+     * del gimnasio, de ahí que se cierren con cadencias distintas.
+     */
+    private fun tickRings(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        var next = state
+
+        val expired = GymCombat.expiredRings(next, now)
+        if (expired.isNotEmpty()) {
+            val expiredIds = expired.map { it.id }.toSet()
+            next = next.copy(
+                rings = next.rings.filterNot { it.id in expiredIds },
+                ringFeedback = RingFeedback(
+                    ringId = expired.maxOf { it.id },
+                    outcome = RingOutcome.MISS,
+                    count = expired.size
+                )
+            )
+            next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
+        }
+
+        if (spawnDue) {
+            val raging = GymCombat.isRaging(next)
+            val minTravel = if (raging) config.rageRingTravelMinMs else config.ringTravelMinMs
+            val maxTravel = if (raging) config.rageRingTravelMaxMs else config.ringTravelMaxMs
+            val travel = if (maxTravel <= minTravel) {
+                minTravel
+            } else {
+                random.nextLong(minTravel, maxTravel + 1)
+            }
+            next = next.copy(rings = next.rings + TimingRing(nextCombatId++, now, travel))
+        }
+
+        return if (next.playerHp <= 0) next.copy(outcome = GymOutcome.LOST) else next
+    }
+
+    /** Daño de un anillo fallado; cierra el combate si deja al jugador a 0. */
+    private fun applyRingMiss(state: GymState, damage: Int): GymState {
+        val damaged = GymCombat.registerImpact(state, damage)
+        return if (damaged.playerHp <= 0) {
+            damaged.copy(outcome = GymOutcome.LOST)
+        } else {
+            damaged
         }
     }
 
@@ -818,6 +936,11 @@ class MainViewModel(
 
         val gymPending = isGymPending(zone, state.gymClearedRun)
         val isGymReady = gymPending && state.zoneClicks >= zone.clickRequirement
+        // La mecánica también se resuelve antes de crear `GymState`: la capa de
+        // entrada (bienvenida/tutorial) se pinta con `gym == null` y necesita
+        // saber qué minijuego explicar.
+        val gymMechanic = zone.gymId?.let { GymCatalog.byId(it)?.mechanic }
+            ?: GymMechanic.PROJECTILES
 
         // Botón Avanzar: barra llena y, en zonas con gimnasio, ganado en la run
         // (lo excluye `gymPending`). En la última zona no hay botón.
@@ -838,6 +961,7 @@ class MainViewModel(
             isGymReady = isGymReady,
             hasWilds = zone.wildSpeciesIds.isNotEmpty(),
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
+            gymMechanic = gymMechanic,
             canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,
             leadOptions = leadOptions,

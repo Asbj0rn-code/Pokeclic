@@ -4,6 +4,7 @@ import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.FishingState
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
@@ -85,6 +86,8 @@ data class GameUiState(
     val leadType: PokemonType? = null,
     val isGymReady: Boolean = false,
     val gymLeaderName: String? = null,
+    /** Mecánica del gimnasio de la zona, también con la capa de entrada abierta. */
+    val gymMechanic: GymMechanic = GymMechanic.PROJECTILES,
     /**
      * Puede pulsarse el botón **Avanzar**: barra al 100 % y, en zonas con
      * gimnasio, gimnasio ganado durante la run. Siempre `false` en la última zona.
