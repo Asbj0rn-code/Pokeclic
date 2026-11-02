@@ -9,6 +9,9 @@ package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.dsrs.pokeclic.R
@@ -241,7 +245,27 @@ fun AppRoot(
                 }
             }
         ) { innerPadding ->
-            Box(Modifier.fillMaxSize().padding(innerPadding)) {
+            // En la pestaña Mapa el contenido **no** se desplaza por la altura del
+            // bottom menu: `MapScreen` compone su fondo y su dibujo hasta el fondo
+            // de pantalla (así el mapa ampliado se ve tras las partes transparentes
+            // del menú) y recibe como `bottomReserved` la altura reservada, que
+            // descuenta solo de su área de gestos y de referencia. El resto de
+            // pestañas conservan el padding exacto de siempre.
+            val layoutDirection = LocalLayoutDirection.current
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        when (state.contentTab) {
+                            AppTab.Map -> PaddingValues(
+                                top = innerPadding.calculateTopPadding(),
+                                start = innerPadding.calculateStartPadding(layoutDirection),
+                                end = innerPadding.calculateEndPadding(layoutDirection)
+                            )
+                            else -> innerPadding
+                        }
+                    )
+            ) {
                 // En gimnasio (combate o capa de entrada) o pesca no se dibuja
                 // la pantalla de fondo (entrenador, hierba, HUD...); queda solo
                 // la escena encima. La intro es opaca, así que debajo tampoco
@@ -256,7 +280,9 @@ fun AppRoot(
                             onAdvanceZone = onAdvanceZone,
                             onOpenLead = onOpenLead
                         )
-                        AppTab.Map -> MapScreen()
+                        AppTab.Map -> MapScreen(
+                            bottomReserved = innerPadding.calculateBottomPadding()
+                        )
                     }
                 }
 
