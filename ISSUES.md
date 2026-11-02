@@ -495,11 +495,11 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** decidir por recurso: `nodpi` para pixel-art, buckets para arte escalable, WebP para fondos; medir memoria con Android Studio Profiler.
 
 ### PERF-06 · Animación de pulso y bucles permanentes
-- **Prioridad:** P3 · **Estado:** Confirmado
-- **Evidencia:** `ui/GymOverlay.kt:195-201` (pulso infinito), `viewmodel/MainViewModel.kt:84-87,480-510` (bucles de caminar y CPS).
-- **Qué pasa:** el pulso se ejecuta durante todo el combate aunque el líder no esté expuesto; el bucle de caminar despierta cada 100 ms y el de CPS cada segundo aunque `clicksPerSecond` sea 0.
-- **Impacto:** consumo de batería y trabajo de fondo innecesario; el de CPS es hoy código muerto.
-- **Propuesta:** activar el pulso solo en fase expuesta y modelar los bucles con `Flow`/`repeatOnLifecycle`, desactivando el CPS si vale 0.
+- **Prioridad:** P3 · **Estado:** Parcialmente resuelto — el bucle y el campo de CPS se eliminaron por ser código muerto; queda el pulso infinito.
+- **Evidencia:** `ui/GymOverlay.kt:195-201` (pulso infinito), `viewmodel/MainViewModel.kt` (bucle de caminar).
+- **Qué pasa:** el pulso se ejecuta durante todo el combate aunque el líder no esté expuesto; el bucle de caminar despierta cada 100 ms.
+- **Impacto:** consumo de batería y trabajo de fondo innecesario.
+- **Propuesta:** activar el pulso solo en fase expuesta y modelar los bucles con `Flow`/`repeatOnLifecycle`.
 
 ---
 
@@ -536,9 +536,9 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ### ARCH-05 · Constantes de diseño de juego dentro de `derive`
 - **Prioridad:** P3 · **Estado:** Confirmado
 - **Evidencia:** `viewmodel/MainViewModel.kt:589,609-610,653-660`.
-- **Qué pasa:** `clicksPerSecond = 0L` y `maxHp = BASE_MAX_HP` se imponen en cada derivación, y la fórmula de potencia está hardcodeada.
-- **Impacto:** el sistema de mejoras futuro obligará a tocar `derive` y puede pisar valores si se añaden campos; el CPS actual es código muerto.
-- **Propuesta:** extraer una `ProgressionRules`/`UpgradeState` que calcule potencia, CPS y HP, y eliminar el CPS muerto hasta que exista.
+- **Qué pasa:** `maxHp = BASE_MAX_HP` se impone en cada derivación y la fórmula de potencia está hardcodeada.
+- **Impacto:** el sistema de mejoras futuro obligará a tocar `derive` y puede pisar valores si se añaden campos.
+- **Propuesta:** extraer una `ProgressionRules`/`UpgradeState` que calcule potencia y HP.
 
 ### ARCH-06 · Contenido hardcodeado y acoplado al build
 - **Prioridad:** P3 · **Estado:** Confirmado
@@ -693,10 +693,10 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** reintroducir mejoras (potencia, HP, CPS) o una tienda; mientras tanto, mostrar las monedas como “en desarrollo” o evitar la recompensa vacía.
 
 ### PROD-05 · La producción pasiva (CPS) está muerta
-- **Prioridad:** P3 · **Estado:** Confirmado
-- **Evidencia:** `viewmodel/MainViewModel.kt:609`, `viewmodel/MainViewModel.kt:500-510`, `viewmodel/GameUiState.kt:29-30`.
-- **Impacto:** hay un bucle permanente que nunca produce nada; el estado sugiere una mecánica inexistente.
-- **Propuesta:** conectar CPS a una mejora o eliminar el bucle y el campo hasta implementarlo.
+- **Prioridad:** P3 · **Estado:** Resuelto — se eliminaron el bucle `startPassiveIncomeLoop` y el campo `clicksPerSecond` por ser código muerto.
+- **Evidencia:** `viewmodel/MainViewModel.kt`, `viewmodel/GameUiState.kt`.
+- **Impacto:** ya no hay un bucle permanente que nunca produce nada ni un estado que sugiera una mecánica inexistente.
+- **Propuesta:** reintroducir CPS junto con una mejora que la active, no antes.
 
 ### PROD-06 · Contenido y balance mínimos
 - **Prioridad:** P3 · **Estado:** Confirmado

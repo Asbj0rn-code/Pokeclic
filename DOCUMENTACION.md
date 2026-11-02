@@ -26,9 +26,7 @@ Si repites la misma dirección, la animación avanza de frame. Si dejas de tocar
 1 segundo, vuelve al frame inicial.
 
 La lógica de juego vive en `MainViewModel`, que expone un único `StateFlow` con el
-estado de juego **y** el de navegación. El bucle de producción pasiva (CPS) se
-mantiene como gancho idle: hoy vale 0, pero está listo para conectarse sin tocar
-la UI.
+estado de juego **y** el de navegación.
 
 ### Stack técnico
 
@@ -46,7 +44,7 @@ la UI.
 | Contenedor | 1 sola `Activity` (`MainActivity`) + `Scaffold` de Compose |
 | Navegación | `MainViewModel` (estado único: `AppTab`, opciones y selector de principal) |
 | Estado | `StateFlow` (sin `LiveData`), consumido con `collectAsStateWithLifecycle()` |
-| Progreso y monedas | `zoneClicks`/`coins` como `Long`, con bucle pasivo de CPS (`viewModelScope`) |
+| Progreso y monedas | `zoneClicks`/`coins` como `Long` |
 | Posicionamiento | Componente propio `PercentageLayout` (guías + sesgo porcentual) |
 | Bottom menu | Componente propio `PokemonBottomMenu` (barra con hendidura + Pokéball) |
 | Tema | `Theme.Pokeclic`, pantalla completa (edge-to-edge) |
@@ -105,11 +103,11 @@ la UI.
 | **Un único ViewModel y un único `StateFlow`** | Juego, navegación y overlays comparten fuente de verdad. Elimina la sincronización entre ViewModels y los estados imposibles (dos pantallas abiertas a la vez). |
 | **`StateFlow` en vez de `LiveData`** | Es lo idiomático con Compose; se consume con `collectAsStateWithLifecycle()`. |
 | **`GameUiState` en su propio archivo (`viewmodel/GameUiState.kt`)** | La View importa solo el tipo de estado para los `@Preview`, nunca el ViewModel. |
-| **Actualizaciones con `MutableStateFlow.update {}`** | Lecturas/escrituras atómicas: evita condiciones de carrera entre el bucle de CPS y los toques. |
+| **Actualizaciones con `MutableStateFlow.update {}`** | Lecturas/escrituras atómicas: evita condiciones de carrera entre los bucles de juego y los toques. |
 | **`zoneClicks` y `coins`: `Long`** | En un clicker los contadores crecen sin techo; `Int` desbordaría a los ~2.100 millones. |
 | **Modelo consolidado en 3 archivos** | `GameData`/`Combat`/`Catalogs` agrupan tipos pequeños y estables; menos archivos de una sola clase, misma separación de responsabilidades. |
 | **`SpriteRepository` inyectado por constructor** | El ViewModel no depende de recursos de Android; la dependencia se declara en el borde (Activity). |
-| **`viewModelScope` para reset, combate y CPS** | Sustituye a `Handler`/`Looper`. Los Jobs se cancelan solos al destruir el ViewModel (sin `onCleared`). |
+| **`viewModelScope` para reset, combate y pesca** | Sustituye a `Handler`/`Looper`. Los Jobs se cancelan solos al destruir el ViewModel (sin `onCleared`). |
 | **Compose puro** | Las pantallas son composables; no hay layouts XML ni ViewModels por pantalla. |
 
 ---
@@ -133,7 +131,7 @@ Pokeclic/
 │       │   │   │   └── Catalogs.kt              # SpeciesCatalog, ZoneCatalog, GymCatalog y SpriteRepository
 │       │   │   ├── viewmodel/                   # ── VIEWMODEL ──
 │       │   │   │   ├── GameUiState.kt           # Estado único (juego + navegación + combate)
-│       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y CPS
+│       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y pesca
 │       │   │   └── ui/                          # ── VIEW (plano, 9 archivos) ──
 │       │   │       ├── AppRoot.kt               # Shell: Scaffold, pestañas, overlays y previews
 │       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle vertical movido por la Pokéball
@@ -530,7 +528,7 @@ data class GameUiState(
     // combate: gym
     // visual: trainer, trainerFrameRes
     // navegación: contentTab, isOptionsOpen, isLeadOpen
-    // derivados: zoneName, zoneRequirement, clickPower, clicksPerSecond,
+    // derivados: zoneName, zoneRequirement, clickPower,
     //            maxHp, leadName, leadType, isGymReady, gymLeaderName,
     //            needsStarter, leadOptions, starterOptions
 )
@@ -542,7 +540,6 @@ data class GameUiState(
   conocer el mapa de frames.
 - `leadOptions`/`starterOptions` llegan como listas de `LeadOption`/`StarterOption`
   resueltas; la UI no consulta catálogos.
-- `clicksPerSecond` es la producción pasiva (CPS) del género idle (ver abajo).
 - `zoneProgress` e `isLeadCandidate()` son derivaciones **puras** del propio estado.
 
 El composable `MainScreen` **no** conoce el ViewModel: recibe `GameUiState` y las
@@ -556,38 +553,12 @@ suma un 5 % por cada especie en posesión (starter incluido) y un 2 % extra por
 nivel de vínculo cuando el starter está equipado. El progreso de zona se muestra
 en el HUD y se calcula con `zoneProgress`; no hay un texto "Clicks: N".
 
-### Producción pasiva (CPS)
-
-El género idle exige un ingreso automático por segundo. Vive en el ViewModel como
-un bucle controlado dentro de `viewModelScope`:
-
-```kotlin
-private fun startPassiveIncomeLoop() {
-    viewModelScope.launch {
-        while (isActive) {
-            delay(CPS_TICK_MS)            // 1.000 ms
-            val state = _uiState.value
-            val busy = state.isTallGrass || state.encounter != null || state.gym != null
-            if (state.clicksPerSecond <= 0L || busy) continue
-            mutate { addZoneClicks(it, it.clicksPerSecond) }
-        }
-    }
-}
-```
-
-- `delay` **suspende** la corrutina; no bloquea el hilo principal.
-- El bucle se cancela solo cuando se destruye el ViewModel (`viewModelScope`), así
-  que **no hace falta `onCleared()`**.
-- Solo escribe estado cuando `clicksPerSecond > 0` y no hay una actividad que deba
-  pausar el avance (hierba, encuentro o gimnasio).
-- Hoy `clicksPerSecond` vale 0: es el gancho listo para conectar producción pasiva
-  sin tocar la UI. Bastará con actualizar ese campo y el bucle empezará a producir.
-
 ### Actualizaciones atómicas
 
 Todas las mutaciones usan `MutableStateFlow.update {}`, que es una
-compare-and-set atómica. Es lo que evita condiciones de carrera entre el bucle de
-CPS y los toques, que corren en corrutinas distintas:
+compare-and-set atómica. Es lo que evita condiciones de carrera entre los bucles
+de juego (caminar, combate o pesca) y los toques, que corren en corrutinas
+distintas:
 
 ```kotlin
 _uiState.update { state ->
@@ -705,7 +676,6 @@ PercentageLayout {                                   // zona 10 % … 90 % de la
 | Modifier | Efecto |
 |---|---|
 | `Modifier.anchorVertically(bias)` | Sesgo vertical dentro de la zona de contenido. `0f` = pegado arriba, `0.5f` = centrado, `1f` = pegado abajo. |
-| `Modifier.anchorHorizontally(bias)` | Sesgo horizontal respecto a los bordes de la pantalla. |
 | `Modifier.anchor(verticalBias, horizontalBias)` | Ambos a la vez. |
 
 `bias` es el equivalente a `app:layout_constraintVertical_bias` de
@@ -814,9 +784,9 @@ Modifier.anchor(
 )
 ```
 
-> **No encadenes `anchorVertically` + `anchorHorizontally`.** Cada uno inserta su
-> propio dato de anclaje y, al haber dos, **solo se aplica el último**. `anchor()`
-> mete ambos sesgos en un único dato, que es lo correcto.
+> **Usa `anchor(...)` cuando necesites las dos posiciones.** `anchorVertically`
+> solo fija el sesgo vertical; `anchor()` mete ambos sesgos en un único dato de
+> anclaje.
 
 ### Por qué no se usa `constraintlayout-compose`
 
@@ -1048,14 +1018,6 @@ TallGrassButton.onClick
       → TrainerGrassStack dibuja (o no) las dos capas
 ```
 
-### Producción pasiva (CPS)
-
-```
-MainViewModel.init → startPassiveIncomeLoop()
-  → while (isActive) { delay(1000) ; si no está ocupado, addZoneClicks(clicksPerSecond) }
-  → el Job vive en viewModelScope: se cancela al destruir el ViewModel
-```
-
 ### Rotación
 
 - El único `MainViewModel` de Activity sobrevive: no se pierden el progreso ni el
@@ -1065,7 +1027,7 @@ MainViewModel.init → startPassiveIncomeLoop()
 
 ### Destrucción
 
-- Los Jobs de reset de frame, caminar, CPS y combate mueren con `viewModelScope`.
+- Los Jobs de reset de frame, caminar, combate y pesca mueren con `viewModelScope`.
   **No hace falta `onCleared()`**.
 - Solo hay una composición, la de `setContent`.
 
@@ -1146,7 +1108,7 @@ PercentageLayout {
 ### Posicionar en horizontal
 
 ```kotlin
-Modifier.anchorHorizontally(bias = 0.25f)   // 0f = pegado a la izquierda
+Modifier.anchor(verticalBias = 0.5f, horizontalBias = 0.25f)   // 0f = pegado a la izquierda
 ```
 
 ### Ajustar las capas de hierba alta
@@ -1221,9 +1183,9 @@ pestaña nueva no siempre cabrá sin reordenar el menú.
 3. Ajusta los rangos de ángulo en `MainViewModel.directionFrom()`.
 4. Sube los PNG a `res/drawable/`.
 
-### Cambiar el tiempo del reset o el tick de CPS
+### Cambiar el tiempo del reset o el tick de caminar
 
-`MainViewModel` → `FRAME_RESET_DELAY_MS = 1_000L` y `CPS_TICK_MS = 1_000L`.
+`MainViewModel` → `FRAME_RESET_DELAY_MS = 1_000L` y `WALK_TICK_MS = 100L`.
 
 ### Sustituir los iconos provisionales
 
@@ -1298,7 +1260,7 @@ La migración a `PokemonInstance` y a un guardado versionado se define en §21.
 |---|---|---|
 | Los elementos se salen de la pantalla | `bias` inesperado o fuera del rango útil | Revisar el `BIAS` en `object MainLayout` |
 | Un elemento se solapa con otro | Ambos tienen sesgos cercanos | Separar los `BIAS` |
-| Solo se mueve en vertical u horizontal | Se encadenaron `anchorVertically` + `anchorHorizontally` y ganó el último | Usar `anchor(verticalBias, horizontalBias)` en una sola llamada |
+| Solo se mueve en vertical | Se usó `anchorVertically`, que no toca el horizontal | Usar `anchor(verticalBias, horizontalBias)` en una sola llamada |
 | La zona se come la pantalla | `ContentZoneDefaults` mal ajustados | Revisar `TOP`, `BOTTOM`, `MAX_TOP`, `MIN_BOTTOM` |
 | La Pokéball no responde | El `pointerInput` no llega al composable | Comprobar que el área no está cubierta por otro elemento |
 | La Pokéball no reacciona al arrastre | `pointerInput(Unit)` con un `isExpanded` capturado: queda congelado | Leer siempre `state.value` o usar `rememberUpdatedState` para los callbacks |
