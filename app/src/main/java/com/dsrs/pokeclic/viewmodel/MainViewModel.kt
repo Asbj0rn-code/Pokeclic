@@ -111,7 +111,6 @@ class MainViewModel(
 
     init {
         startWalkingLoop()
-        startPassiveIncomeLoop()
     }
 
     // --- Eventos de UI -----------------------------------------------------
@@ -808,23 +807,6 @@ class MainViewModel(
         }
     }
 
-    /**
-     * Producción pasiva del género idle: suma [GameUiState.clicksPerSecond] clics
-     * de zona por segundo cuando no se está en hierba alta. Hoy vale 0, pero
-     * conectarla a una mejora no requerirá tocar la UI.
-     */
-    private fun startPassiveIncomeLoop() {
-        viewModelScope.launch {
-            while (isActive) {
-                delay(CPS_TICK_MS)
-                val state = _uiState.value
-                val busy = state.isTallGrass || state.encounter != null || state.gym != null
-                if (state.clicksPerSecond <= 0L || busy) continue
-                mutate { addZoneClicks(it, it.clicksPerSecond) }
-            }
-        }
-    }
-
     // --- Animación del entrenador -----------------------------------------
 
     /**
@@ -954,7 +936,6 @@ class MainViewModel(
             zoneRequirement = zone.clickRequirement,
             ownedCount = ownedCount,
             clickPower = clickPower,
-            clicksPerSecond = 0L,
             maxHp = BASE_MAX_HP,
             leadName = lead?.name,
             leadType = lead?.type,
@@ -995,7 +976,6 @@ class MainViewModel(
          * arranque (frame 1) y luego la zancada (frame 2).
          */
         const val LATERAL_SECOND_FRAME_DELAY_MS = 60L
-        const val CPS_TICK_MS = 1_000L
         const val WALK_TICK_MS = 100L
 
         /** Si no se toca en este margen, el temporizador de caminar se para. */
