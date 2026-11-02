@@ -903,13 +903,13 @@ private const val LANE_WIDTH_FRACTION = 0.72f
 private val LANE_MAX_WIDTH = 340.dp
 
 /** Tamaño y posición del enemigo (el GIF de Golem es 72×57, ratio ~1.26). */
-private val ENEMY_WIDTH = 120.dp
-private val ENEMY_HEIGHT = 90.dp
+private val ENEMY_WIDTH = 180.dp
+private val ENEMY_HEIGHT = 150.dp
 private val ENEMY_TOP = 178.dp
 
 /** Tamaño y posición del jugador. */
-private val PLAYER_WIDTH = 110.dp
-private val PLAYER_HEIGHT = 122.dp
+private val PLAYER_WIDTH = 90.dp
+private val PLAYER_HEIGHT = 102.dp
 private val PLAYER_BOTTOM = 160.dp
 
 /** Separación de la barra de vida del jugador respecto al borde inferior. */
@@ -930,9 +930,15 @@ private val RAGE_COLOR = Color(0xFFFF5252)
  * Anillos del minijuego de Misty: radio fijo alrededor del jugador, radio de
  * entrada y grosor del trazo. El anillo que entra se cierra desde
  * [RING_START_RADIUS] hasta [RING_TARGET_RADIUS].
+ *
+ * El radio fijo se calcula para el cuadro del jugador ([PLAYER_WIDTH] ×
+ * [PLAYER_HEIGHT]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
+ * unos 10 dp de margen, la misma holgura que había con 110 × 122 dp y 92 dp.
+ * Si vuelven a cambiar esos tamaños, ajustar ambos radios en la misma
+ * proporción.
  */
-private val RING_TARGET_RADIUS = 92.dp
-private val RING_START_RADIUS = 205.dp
+private val RING_TARGET_RADIUS = 78.dp
+private val RING_START_RADIUS = 175.dp
 private val RING_STROKE = 3.dp
 private val RING_GLOW_STROKE = 9.dp
 
