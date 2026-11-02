@@ -939,8 +939,8 @@ private val RAGE_COLOR = Color(0xFFFF5252)
  */
 private val RING_TARGET_RADIUS = 78.dp
 private val RING_START_RADIUS = 175.dp
-private val RING_STROKE = 3.dp
-private val RING_GLOW_STROKE = 9.dp
+private val RING_STROKE = 4.dp
+private val RING_GLOW_STROKE = 11.dp
 
 /** Ondulación del anillo de agua fuera de la ventana de acierto. */
 private val RING_WAVE_AMPLITUDE = 2.5.dp
