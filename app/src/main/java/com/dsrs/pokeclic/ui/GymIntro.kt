@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import kotlinx.coroutines.delay
 
 /**
@@ -96,6 +97,7 @@ private fun IntroPanel(
  *
  * @param phase fase visible del flujo de entrada.
  * @param leaderName nombre del líder de la zona, para personalizar el saludo.
+ * @param mechanic minijuego del gimnasio; el tutorial explica el del líder.
  * @param onWatchTutorial "Ver tutorial" (bienvenida).
  * @param onSkip "Omitir" (bienvenida).
  * @param onAccepted "Entendido" (tutorial).
@@ -104,6 +106,7 @@ private fun IntroPanel(
 fun GymIntroLayer(
     phase: GymIntroPhase,
     leaderName: String?,
+    mechanic: GymMechanic,
     onWatchTutorial: () -> Unit,
     onSkip: () -> Unit,
     onAccepted: () -> Unit
@@ -125,6 +128,7 @@ fun GymIntroLayer(
                 )
             GymIntroPhase.TUTORIAL ->
                 TutorialPanel(
+                    steps = tutorialStepsFor(mechanic),
                     onAccepted = onAccepted,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -179,11 +183,26 @@ private fun WelcomePanel(
 /** Los 3 pasos del tutorial, en el orden en que se revelan. */
 private data class TutorialStep(val titleRes: Int, val textRes: Int)
 
-private val tutorialSteps = listOf(
+/** Pasos del gimnasio de proyectiles (Brock). */
+private val projectileTutorialSteps = listOf(
     TutorialStep(R.string.gym_tutorial_step1_title, R.string.gym_tutorial_step1_text),
     TutorialStep(R.string.gym_tutorial_step2_title, R.string.gym_tutorial_step2_text),
     TutorialStep(R.string.gym_tutorial_step3_title, R.string.gym_tutorial_step3_text)
 )
+
+/** Pasos del gimnasio de anillos rítmicos (Misty). */
+private val ringTutorialSteps = listOf(
+    TutorialStep(R.string.gym_ring_tutorial_step1_title, R.string.gym_ring_tutorial_step1_text),
+    TutorialStep(R.string.gym_ring_tutorial_step2_title, R.string.gym_ring_tutorial_step2_text),
+    TutorialStep(R.string.gym_ring_tutorial_step3_title, R.string.gym_ring_tutorial_step3_text)
+)
+
+/** Tutorial del líder: cada mecánica se explica con sus propias reglas. */
+private fun tutorialStepsFor(mechanic: GymMechanic): List<TutorialStep> =
+    when (mechanic) {
+        GymMechanic.PROJECTILES -> projectileTutorialSteps
+        GymMechanic.TIMING_RINGS -> ringTutorialSteps
+    }
 
 /**
  * Explicación del minijuego en 3 pasos que aparecen uno tras otro: sencillos
@@ -193,6 +212,7 @@ private val tutorialSteps = listOf(
  */
 @Composable
 private fun TutorialPanel(
+    steps: List<TutorialStep>,
     onAccepted: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -202,7 +222,7 @@ private fun TutorialPanel(
 
     LaunchedEffect(replayNonce) {
         revealedAt = 0
-        while (revealedAt < tutorialSteps.size) {
+        while (revealedAt < steps.size) {
             delay(STEP_REVEAL_MS)
             revealedAt++
         }
@@ -223,7 +243,7 @@ private fun TutorialPanel(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.Start
         ) {
-            tutorialSteps.forEachIndexed { index, step ->
+            steps.forEachIndexed { index, step ->
                 AnimatedVisibility(
                     visible = index < revealedAt,
                     enter = fadeIn(tween(durationMillis = 250)),

@@ -91,7 +91,8 @@ import kotlin.random.Random
  * @param onGymIntroAccepted "Entendido" (tutorial del gimnasio).
  * @param onAdvanceZone pulsa el botón Avanzar al llenarse la barra de la zona.
  * @param onGymRetry reintenta el combate; @param onGymProjectileHit rompe un
- *   proyectil; @param onGymEnemyHit golpea al líder expuesto.
+ *   proyectil; @param onGymRingTap intenta acertar el anillo más cercano;
+ *   @param onGymEnemyHit golpea al líder expuesto.
  * @param onFishingHold notifica si el jugador mantiene pulsada la pantalla
  *   durante la partida de pesca (true: pulsado; false: soltado).
  * @param onFishingResultContinue cierra el resultado de la partida de pesca.
@@ -118,6 +119,7 @@ fun AppRoot(
     onAdvanceZone: () -> Unit,
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
+    onGymRingTap: () -> Unit,
     onGymEnemyHit: () -> Unit,
     onFishingHold: (Boolean) -> Unit,
     onFishingResultContinue: () -> Unit,
@@ -256,6 +258,7 @@ fun AppRoot(
                     GymOverlay(
                         state = activeGym,
                         onProjectileHit = onGymProjectileHit,
+                        onRingTap = onGymRingTap,
                         onEnemyHit = onGymEnemyHit,
                         onRetry = onGymRetry,
                         onLeave = onLeaveGym
@@ -282,6 +285,7 @@ fun AppRoot(
         GymIntroLayer(
             phase = state.gymIntro,
             leaderName = state.gymLeaderName,
+            mechanic = state.gymMechanic,
             onWatchTutorial = onWatchGymTutorial,
             onSkip = onGymIntroSkip,
             onAccepted = onGymIntroAccepted
@@ -387,6 +391,7 @@ private fun AppRootStage(state: GameUiState) {
         onAdvanceZone = {},
         onGymRetry = {},
         onGymProjectileHit = {},
+        onGymRingTap = {},
         onGymEnemyHit = {},
         onFishingHold = {},
         onFishingResultContinue = {},

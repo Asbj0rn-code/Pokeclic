@@ -1,13 +1,13 @@
 package com.dsrs.pokeclic.model
 
 /**
- * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles y las
- * reglas puras del combate.
+ * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
+ * de ritmo y las reglas puras del combate.
  *
  * Todo aquí es independiente de Android y del reloj real (las funciones reciben
  * el tiempo transcurrido), para poder probar la mecánica en la JVM. El
- * ViewModel se encarga de los bucles, de crear proyectiles y de persistir la
- * victoria; la UI solo pinta el estado ya calculado.
+ * ViewModel se encarga de los bucles, de crear proyectiles y anillos y de
+ * persistir la victoria; la UI solo pinta el estado ya calculado.
  */
 
 /** Menos del 25 % de vida: el líder entra en furia y sus oleadas son más duras. */
@@ -78,10 +78,28 @@ fun typeDamageMultiplier(leadType: PokemonType?, gymType: PokemonType): Float =
     leadType?.effectiveness(gymType) ?: 1f
 
 /**
+ * Mecánica de defensa de un gimnasio. Cada líder ataca a su manera, pero las dos
+ * comparten las mismas fases ([GymPhase]) y la fase expuesta.
+ *
+ * - [PROJECTILES]: caen rocas por columnas y hay que romperlas (Brock).
+ * - [TIMING_RINGS]: círculos que se cierran sobre el jugador y hay que aciertar
+ *   el instante en que tocan el círculo fijo (Misty).
+ */
+enum class GymMechanic {
+    PROJECTILES,
+    TIMING_RINGS
+}
+
+/**
  * Un gimnasio: el muro de cada tramo del mapa.
  *
  * Los parámetros del combate se guardan como datos para que añadir gimnasios sea
  * añadir entradas al catálogo, sin código nuevo.
+ *
+ * Los campos `columns`, `spawnIntervalMs`, `projectileTravelMs`,
+ * `projectileDamage`, `projectilesPerSpawn` y sus variantes `rage*` solo se usan
+ * con [GymMechanic.PROJECTILES]. Los campos `ring*` solo se usan con
+ * [GymMechanic.TIMING_RINGS].
  *
  * @param id clave estable para medallas y persistencia.
  * @param leaderName nombre del líder, mostrado en el overlay.
@@ -89,6 +107,7 @@ fun typeDamageMultiplier(leadType: PokemonType?, gymType: PokemonType): Float =
  *   multiplicador de daño en la fase expuesta.
  * @param coinReward monedas que paga al ganar.
  * @param leaderHp vida del líder (cuánto daño hay que hacerle para ganar).
+ * @param mechanic minijuego de defensa que usa el líder.
  * @param columns número de columnas por las que caen los proyectiles.
  * @param spawnIntervalMs tiempo entre ráfagas de proyectiles, en ms.
  * @param projectileTravelMs tiempo que tarda un proyectil en caer de arriba a
@@ -103,6 +122,16 @@ fun typeDamageMultiplier(leadType: PokemonType?, gymType: PokemonType): Float =
  *   debajo del umbral [RAGE_HP_FRACTION]).
  * @param rageProjectilesPerSpawn proyectiles por ráfaga durante la furia.
  * @param rageProjectileTravelMs caída (más rápida) durante la furia.
+ * @param ringSpawnIntervalMs tiempo entre anillos durante la oleada, en ms.
+ * @param ringTravelMinMs cierre más rápido de un anillo, en ms.
+ * @param ringTravelMaxMs cierre más lento de un anillo, en ms. Cada anillo elige
+ *   un valor entre ambos: de ahí sale la cadencia distinta de cada círculo.
+ * @param ringWindowMs margen de acierto alrededor de la convergencia, en ms.
+ * @param ringMissDamage HP que resta cada anillo fallado (pulsado fuera de la
+ *   ventana o dejado caducar).
+ * @param rageRingSpawnIntervalMs cadencia de anillos durante la furia.
+ * @param rageRingTravelMinMs cierre más rápido durante la furia.
+ * @param rageRingTravelMaxMs cierre más lento durante la furia.
  */
 data class Gym(
     val id: String,
@@ -110,6 +139,7 @@ data class Gym(
     val type: PokemonType,
     val coinReward: Long,
     val leaderHp: Int,
+    val mechanic: GymMechanic = GymMechanic.PROJECTILES,
     val columns: Int,
     val spawnIntervalMs: Long,
     val projectileTravelMs: Long,
@@ -119,7 +149,15 @@ data class Gym(
     val projectilesPerSpawn: Int = 1,
     val rageSpawnIntervalMs: Long = spawnIntervalMs,
     val rageProjectilesPerSpawn: Int = projectilesPerSpawn,
-    val rageProjectileTravelMs: Long = projectileTravelMs
+    val rageProjectileTravelMs: Long = projectileTravelMs,
+    val ringSpawnIntervalMs: Long = 750L,
+    val ringTravelMinMs: Long = 900L,
+    val ringTravelMaxMs: Long = 1_600L,
+    val ringWindowMs: Long = 170L,
+    val ringMissDamage: Int = 1,
+    val rageRingSpawnIntervalMs: Long = ringSpawnIntervalMs,
+    val rageRingTravelMinMs: Long = ringTravelMinMs,
+    val rageRingTravelMaxMs: Long = ringTravelMaxMs
 )
 
 /**
@@ -173,6 +211,47 @@ data class Projectile(
 }
 
 /**
+ * Un anillo del minijuego de ritmo ([GymMechanic.TIMING_RINGS]).
+ *
+ * Nace en [spawnedAtMs] con radio grande y se cierra hasta tocar el círculo fijo
+ * del jugador en [convergeAtMs]. Su posición no se guarda: se deriva del tiempo
+ * transcurrido, igual que [Projectile], para que la UI lo interpole sin que el
+ * ViewModel actualice cada fotograma.
+ *
+ * @param id identificador único dentro del combate.
+ * @param spawnedAtMs instante de aparición, en el reloj del juego.
+ * @param travelMs tiempo que tarda en converger con el círculo fijo, en ms. Es
+ *   la cadencia del anillo: dos anillos con distinto [travelMs] se cierran a
+ *   velocidades distintas.
+ */
+data class TimingRing(
+    val id: Long,
+    val spawnedAtMs: Long,
+    val travelMs: Long
+) {
+    /** Progreso del cierre, `0f` (recién nacido) a `1f` (converge con el fijo). */
+    fun progressAt(nowMs: Long): Float {
+        if (travelMs <= 0L) return 1f
+        return ((nowMs - spawnedAtMs).toFloat() / travelMs).coerceIn(0f, 1f)
+    }
+
+    /** Instante exacto en el que el anillo toca el círculo fijo. */
+    fun convergeAtMs(): Long = spawnedAtMs + travelMs
+
+    /** Distancia temporal (siempre positiva) hasta la convergencia. */
+    fun distanceToConvergenceMs(nowMs: Long): Long =
+        kotlin.math.abs(nowMs - convergeAtMs())
+
+    /** ¿Cae [nowMs] dentro del margen de acierto [windowMs]? */
+    fun isInWindow(nowMs: Long, windowMs: Long): Boolean =
+        distanceToConvergenceMs(nowMs) <= windowMs
+
+    /** ¿Pasó ya su ventana de acierto sin resolverse? */
+    fun hasExpired(nowMs: Long, windowMs: Long): Boolean =
+        nowMs - convergeAtMs() > windowMs
+}
+
+/**
  * Estado **transitorio** del combate de gimnasio (no se persiste).
  *
  * Incluye las fracciones de barra ya calculadas para que la UI no haga cuentas
@@ -183,8 +262,13 @@ data class Projectile(
  * @param leaderMaxHp vida inicial, para la barra (y el umbral de furia).
  * @param playerHp HP restante del jugador; llega a 0 → derrota.
  * @param maxHp HP máximo del jugador.
+ * @param mechanic minijuego de defensa activo; decide qué pinta la escena y qué
+ *   eventos acepta.
  * @param columns columnas por las que caen los proyectiles.
  * @param projectiles proyectiles activos en este instante.
+ * @param rings anillos activos del minijuego de ritmo.
+ * @param ringWindowMs margen de acierto de los anillos, en ms. La UI lo usa para
+ *   resaltar el anillo que está en su momento exacto.
  * @param waveDurationMs duración total de la oleada, en ms.
  * @param waveRemainingMs tiempo de oleada restante; la barra de stamina es este
  *   contador bajando por tiempo.
@@ -206,8 +290,11 @@ data class GymState(
     val leaderMaxHp: Int,
     val playerHp: Int,
     val maxHp: Int,
+    val mechanic: GymMechanic = GymMechanic.PROJECTILES,
     val columns: Int,
     val projectiles: List<Projectile> = emptyList(),
+    val rings: List<TimingRing> = emptyList(),
+    val ringWindowMs: Long = 0L,
     val waveDurationMs: Long = 0L,
     val waveRemainingMs: Long = 0L,
     val exposureDurationMs: Long = 0L,
@@ -297,11 +384,27 @@ object GymCombat {
     }
 
     /**
+     * Anillo que el jugador debería pulsar ahora: el más cercano a su
+     * convergencia. Con varios anillos en pantalla, la pulsación se juzga contra
+     * este, nunca contra uno que aún está lejos.
+     */
+    fun nearestRing(state: GymState, nowMs: Long): TimingRing? =
+        state.rings.minByOrNull { it.distanceToConvergenceMs(nowMs) }
+
+    /** ¿La pulsación sobre [ring] cae dentro del margen de acierto del combate? */
+    fun isRingOnBeat(ring: TimingRing, state: GymState, nowMs: Long): Boolean =
+        ring.isInWindow(nowMs, state.ringWindowMs)
+
+    /** Anillos que ya pasaron su ventana de acierto sin resolverse. */
+    fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
+        state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
+
+    /**
      * Avanza el temporizador de la oleada.
      *
      * Al agotarse (la barra de stamina llega a 0) el líder queda
-     * [GymPhase.EXPOSED]: se vacían los proyectiles y empieza la cuenta de
-     * exposición. Si no está en fase de ataque, no cambia nada.
+     * [GymPhase.EXPOSED]: se vacían los proyectiles **y los anillos** y empieza
+     * la cuenta de exposición. Si no está en fase de ataque, no cambia nada.
      */
     fun advanceWave(state: GymState, elapsedMs: Long): GymState {
         if (state.phase != GymPhase.ATTACKING) return state
@@ -316,6 +419,7 @@ object GymCombat {
                 phase = GymPhase.EXPOSED,
                 exposureRemainingMs = state.exposureDurationMs,
                 projectiles = emptyList(),
+                rings = emptyList(),
                 rage = rage
             )
         } else {
