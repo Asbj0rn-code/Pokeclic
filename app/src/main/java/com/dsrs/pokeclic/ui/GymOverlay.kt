@@ -464,6 +464,7 @@ private fun RingGymScene(
             val targetRadius = RING_TARGET_RADIUS.toPx()
             val startRadius = RING_START_RADIUS.toPx()
             val mainStroke = Stroke(width = RING_STROKE.toPx())
+            val outlineStroke = Stroke(width = (RING_STROKE + 3.dp).toPx())
             val foamStroke = Stroke(width = 1.dp.toPx())
 
             // Charco de agua bajo el Pokémon: da profundidad al círculo fijo.
@@ -477,8 +478,15 @@ private fun RingGymScene(
                 center = center
             )
 
-            // Círculo fijo: doble borde de burbuja (agua + espuma). El cian lo
-            // separa de las líneas blancas del fondo de la cueva.
+            // Círculo fijo: contorno oscuro + doble borde de burbuja (agua +
+            // espuma). El contorno lo separa del azul de la piscina y de las
+            // líneas blancas del fondo.
+            drawCircle(
+                color = RING_OUTLINE.copy(alpha = 0.65f),
+                radius = targetRadius,
+                center = center,
+                style = outlineStroke
+            )
             drawCircle(
                 color = WATER_LIGHT.copy(alpha = 0.95f),
                 radius = targetRadius,
@@ -535,6 +543,12 @@ private fun RingGymScene(
                 if (onBeat) {
                     // En su ventana el anillo queda liso: es la señal exacta.
                     drawCircle(
+                        color = RING_OUTLINE.copy(alpha = 0.65f),
+                        radius = radius,
+                        center = center,
+                        style = outlineStroke
+                    )
+                    drawCircle(
                         brush = ringBrush,
                         radius = radius,
                         center = center,
@@ -553,6 +567,11 @@ private fun RingGymScene(
                         if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
                     }
                     wave.close()
+                    drawPath(
+                        path = wave,
+                        color = RING_OUTLINE.copy(alpha = 0.65f),
+                        style = outlineStroke
+                    )
                     drawPath(path = wave, brush = ringBrush, style = mainStroke)
                 }
 
@@ -930,6 +949,9 @@ private val WATER_MID = Color(0xFF1E88E5)
 private val WATER_LIGHT = Color(0xFF4FC3F7)
 private val WATER_FOAM = Color(0xFFE1F5FE)
 private val WATER_POOL = Color(0xFF29B6F6)
+
+/** Contorno oscuro de los anillos: los separa del agua y de las líneas blancas. */
+private val RING_OUTLINE = Color(0xFF06111C)
 
 /** Amarillo del anillo cuando está en su ventana de acierto. */
 private val RING_ON_BEAT_COLOR = Color(0xFFFFEB3B)

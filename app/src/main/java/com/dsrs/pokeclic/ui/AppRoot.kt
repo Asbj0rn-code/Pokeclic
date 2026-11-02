@@ -29,6 +29,7 @@ import com.dsrs.pokeclic.model.FishingDefaults
 import com.dsrs.pokeclic.model.FishingGame
 import com.dsrs.pokeclic.model.FishingState
 import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
@@ -45,7 +46,7 @@ import kotlin.random.Random
  *
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
- *    fondo de la cueva a pantalla completa; si no, en zonas con fauna el
+ *    fondo del gimnasio a pantalla completa (cueva o piscina); si no, en zonas con fauna el
  *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
  *    la Pokéball) y, si la pestaña de contenido es el mapa, el [MapOceanBackdrop]
  *    (color del océano del mapa). Encima, el contenido de la pestaña
@@ -171,12 +172,17 @@ fun AppRoot(
         state.isLeadOpen || isSplashShowing
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fondo del gimnasio: combate y capa de entrada comparten la cueva, de
+        // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
         // modo que al caducar el cartel el combate arranque sin salto de fondo.
-        // Está detrás de todo y el `Scaffold` se vuelve transparente.
+        // Cada mecánica tiene su arte: cueva de roca para Brock y piscina para
+        // Misty. Está detrás de todo y el `Scaffold` se vuelve transparente.
         if (gymScene) {
+            val gymBackground = when (state.gymMechanic) {
+                GymMechanic.PROJECTILES -> R.drawable.rock_gym
+                GymMechanic.TIMING_RINGS -> R.drawable.water_gym
+            }
             Image(
-                painter = painterResource(R.drawable.rock_gym),
+                painter = painterResource(gymBackground),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
