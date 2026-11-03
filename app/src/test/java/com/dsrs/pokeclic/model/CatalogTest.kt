@@ -31,7 +31,8 @@ class CatalogTest {
                 "Mt.Moon",
                 "Ruta 4",
                 "Ciudad Celeste",
-                "Ruta 5 - Vía Subterránea"
+                "Ruta 5 - Vía Subterránea",
+                "Ruta 6"
             ),
             names
         )
@@ -51,17 +52,31 @@ class CatalogTest {
     }
 
     /**
-     * La Ruta 5 cierra el recorrido justo después del gimnasio de Ciudad Celeste.
-     * Al ser la última zona, ya no ofrece "Avanzar" (feature-39).
+     * La Ruta 5 sigue al gimnasio de Ciudad Celeste y ya no cierra el recorrido:
+     * la Ruta 6 viene después (feature-40).
      */
     @Test
-    fun zoneCatalog_route5FollowsCelesteAndClosesTheRoute() {
+    fun zoneCatalog_route5FollowsCeleste() {
+        val zones = ZoneCatalog.zones
+        val routeIndex = zones.indexOfFirst { it.id == "ruta5" }
+
+        assertEquals("ruta5", zones[routeIndex].id)
+        assertEquals("Ruta 5 - Vía Subterránea", zones[routeIndex].name)
+        assertEquals("ciudad_celeste", zones[routeIndex - 1].id)
+    }
+
+    /**
+     * La Ruta 6 cierra el recorrido justo después de la Ruta 5. Al ser la última
+     * zona, ya no ofrece "Avanzar" (feature-40).
+     */
+    @Test
+    fun zoneCatalog_route6FollowsRoute5AndClosesTheRoute() {
         val zones = ZoneCatalog.zones
         val route = zones.last()
 
-        assertEquals("ruta5", route.id)
-        assertEquals("Ruta 5 - Vía Subterránea", route.name)
-        assertEquals("ciudad_celeste", zones[zones.lastIndex - 1].id)
+        assertEquals("ruta6", route.id)
+        assertEquals("Ruta 6", route.name)
+        assertEquals("ruta5", zones[zones.lastIndex - 1].id)
     }
 
     /** Cada líder conserva su mecánica: Brock rocas, Misty anillos. */
