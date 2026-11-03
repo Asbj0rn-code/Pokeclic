@@ -49,8 +49,9 @@ object SpeciesCatalog {
  * Recorrido de Kanto tras la presentación y la elección del starter
  * (feature-29): Pueblo Paleta → Ruta 1 → Ciudad Verde → Ruta 2 → Bosque Verde →
  * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4 → Ciudad Celeste (feature-35) →
- * Ruta 5 - Vía Subterránea (feature-39). El test `CatalogTest` bloquea ese orden
- * exacto y la regla de progresión: **cada zona pide más clics que la anterior**.
+ * Ruta 5 - Vía Subterránea (feature-39) → Ruta 6 (feature-40). El test
+ * `CatalogTest` bloquea ese orden exacto y la regla de progresión: **cada zona
+ * pide más clics que la anterior**.
  *
  * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
  * avanzan con clics.
@@ -128,6 +129,12 @@ object ZoneCatalog {
             name = "Ruta 5 - Vía Subterránea",
             clickRequirement = 320L,
             wildSpeciesIds = listOf("pidgey", "meowth", "oddish")
+        ),
+        Zone(
+            id = "ruta6",
+            name = "Ruta 6",
+            clickRequirement = 380L,
+            wildSpeciesIds = listOf("pidgey", "rattata", "oddish")
         )
     )
 }
