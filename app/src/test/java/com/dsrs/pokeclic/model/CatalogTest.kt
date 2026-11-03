@@ -30,21 +30,38 @@ class CatalogTest {
                 "Ruta 3",
                 "Mt.Moon",
                 "Ruta 4",
-                "Ciudad Celeste"
+                "Ciudad Celeste",
+                "Ruta 5 - Vía Subterránea"
             ),
             names
         )
     }
 
-    /** Ciudad Celeste cierra el recorrido y aloja el gimnasio de Misty. */
+    /**
+     * Ciudad Celeste aloja el gimnasio de Misty y sigue a la Ruta 4. El "Avanzar"
+     * de la ciudad queda bloqueado hasta ganar el combate en la run actual.
+     */
     @Test
     fun zoneCatalog_cityCelesteFollowsRoute4AndHasMistysGym() {
         val zones = ZoneCatalog.zones
-        val city = zones.last()
+        val cityIndex = zones.indexOfFirst { it.id == "ciudad_celeste" }
 
-        assertEquals("ciudad_celeste", city.id)
-        assertEquals("misty", city.gymId)
-        assertEquals("Ruta 4", zones[zones.lastIndex - 1].name)
+        assertEquals("Ruta 4", zones[cityIndex - 1].name)
+        assertEquals("misty", zones[cityIndex].gymId)
+    }
+
+    /**
+     * La Ruta 5 cierra el recorrido justo después del gimnasio de Ciudad Celeste.
+     * Al ser la última zona, ya no ofrece "Avanzar" (feature-39).
+     */
+    @Test
+    fun zoneCatalog_route5FollowsCelesteAndClosesTheRoute() {
+        val zones = ZoneCatalog.zones
+        val route = zones.last()
+
+        assertEquals("ruta5", route.id)
+        assertEquals("Ruta 5 - Vía Subterránea", route.name)
+        assertEquals("ciudad_celeste", zones[zones.lastIndex - 1].id)
     }
 
     /** Cada líder conserva su mecánica: Brock rocas, Misty anillos. */

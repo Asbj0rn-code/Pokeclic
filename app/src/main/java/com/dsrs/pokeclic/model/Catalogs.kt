@@ -28,7 +28,9 @@ object SpeciesCatalog {
         Species("spearow", "Spearow", PokemonType.FLYING, 0.25f, 6),
         Species("jigglypuff", "Jigglypuff", PokemonType.NORMAL, 0.45f, 10),
         Species("zubat", "Zubat", PokemonType.POISON, 0.5f, 10),
-        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12)
+        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12),
+        Species("meowth", "Meowth", PokemonType.NORMAL, 0.3f, 7),
+        Species("oddish", "Oddish", PokemonType.GRASS, 0.3f, 6)
     ).associateBy { it.id }
 
     /** Starters de Kanto entre los que se elige al empezar. En orden de pantalla. */
@@ -46,9 +48,9 @@ object SpeciesCatalog {
  *
  * Recorrido de Kanto tras la presentación y la elección del starter
  * (feature-29): Pueblo Paleta → Ruta 1 → Ciudad Verde → Ruta 2 → Bosque Verde →
- * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4 → Ciudad Celeste (feature-35). El
- * test `CatalogTest` bloquea ese orden exacto y la regla de progresión: **cada
- * zona pide más clics que la anterior**.
+ * Ciudad Plateada → Ruta 3 → Mt.Moon → Ruta 4 → Ciudad Celeste (feature-35) →
+ * Ruta 5 - Vía Subterránea (feature-39). El test `CatalogTest` bloquea ese orden
+ * exacto y la regla de progresión: **cada zona pide más clics que la anterior**.
  *
  * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
  * avanzan con clics.
@@ -120,6 +122,12 @@ object ZoneCatalog {
             clickRequirement = 260L,
             wildSpeciesIds = emptyList(),
             gymId = "misty"
+        ),
+        Zone(
+            id = "ruta5",
+            name = "Ruta 5 - Vía Subterránea",
+            clickRequirement = 320L,
+            wildSpeciesIds = listOf("pidgey", "meowth", "oddish")
         )
     )
 }
