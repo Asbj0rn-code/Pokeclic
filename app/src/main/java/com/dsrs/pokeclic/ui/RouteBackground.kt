@@ -243,6 +243,28 @@ internal fun routeStartShift(tileH: Float, screenH: Float, anchor: Float?): Floa
 }
 
 /**
+ * Escala que hace que la **cámara** ([RouteScrollDefaults.CAMERA_WIDTH] ×
+ * [RouteScrollDefaults.CAMERA_HEIGHT] píxeles de arte) entre entera en la
+ * pantalla sin deformarse.
+ *
+ * Es `min` y no `max` a propósito: con `max` la cámara se recortaría y el ancho
+ * visible dependería de la pantalla. Con `min` el ancho cámara (1152 px de arte)
+ * se ve siempre completo, y en pantallas más altas que 1152:1920 se ve arte de
+ * más por arriba y por abajo, que el bucle rellena.
+ *
+ * No recibe el tamaño del drawable **a propósito**: la escala de la cámara no
+ * depende del arte. Un PNG de 1152 px y otro de 2176 se dibujan a la misma
+ * escala, así que el segundo se ve más grande y más recortado.
+ */
+internal fun routeCameraScale(screenWidth: Float, screenHeight: Float): Float {
+    if (screenWidth <= 0f || screenHeight <= 0f) return 0f
+    return minOf(
+        screenWidth / RouteScrollDefaults.CAMERA_WIDTH,
+        screenHeight / RouteScrollDefaults.CAMERA_HEIGHT
+    )
+}
+
+/**
  * Convierte clics en recorrido **sin inercia**: un clic pide un paso y el paso se
  * consume en un plazo corto; cuando termina, la posición queda clavada.
  *
@@ -336,18 +358,45 @@ internal class RouteClickWalker(
 internal object RouteScrollDefaults {
 
     /**
-     * Clics que hacen falta para avanzar una baldosa.
+     * Clics rectos que hacen falta para avanzar **una altura de cámara**
+     * ([CAMERA_HEIGHT] = 1920 px de arte), no una altura de drawable.
      *
-     * 25 es el número que hace que el ciclo de la trayectoria (25 clics rectos)
-     * caiga en una baldosa exacta, y con eso que cada vuelta empiece en el mismo
-     * píxel del arte. Si se cambia, hay que reajustar los tramos de [MOTION] en la
+     * Un clic recto avanza 1920/25 = 76,8 px de arte, mida lo que mida el PNG.
+     * Por eso el número de clics para dar **una vuelta exacta al arte** ya no es
+     * una constante: es
+     *
+     * ```
+     * clicsRectosPorVuelta = altoDelArte * CLICKS_PER_TILE / CAMERA_HEIGHT
+     * ```
+     *
+     * con arte de 1920 px son 25; con arte de 3072 px, 40. Si el ciclo de la
+     * trayectoria no suma un múltiplo entero de eso, cada vuelta empieza en otro
+     * píxel del dibujo (el modelo lo permite, pero el patrón deja de cerrar).
+     *
+     * Si se cambia este número hay que reajustar los tramos de [MOTION] en la
      * misma proporción (lo comprueba
      * `RouteBackgroundMotionTest.defaultMotion_returnsToTheSameArtworkEveryCycle`).
      */
     const val CLICKS_PER_TILE = 25f
 
-    /** Avance de un clic, en baldosas. */
+    /** Avance de un clic, en alturas de cámara. */
     const val TILES_PER_CLICK = 1f / CLICKS_PER_TILE
+
+    /**
+     * Tamaño de la **cámara**, en píxeles de arte: lo que abarca la pantalla en
+     * cada momento.
+     *
+     * No depende del drawable: un fondo de 2176×3072 y otro de 1152×1920 se
+     * dibujan a la misma escala, así que la cámara siempre enseña 1152 px de
+     * ancho del arte y, como mínimo, 1920 de alto. Si la pantalla es más alta que
+     * 1152:1920 se ve arte de más por arriba y por abajo; nunca se deforma y
+     * nunca quedan franjas sin dibujar.
+     *
+     * Con [background_ruta] y [background_bosque_verde] el resultado coincide con
+     * el de antes (Bosque Verde mide exactamente 1152×1920).
+     */
+    const val CAMERA_WIDTH = 1152f
+    const val CAMERA_HEIGHT = 1920f
 
     /**
      * Dirección del desplazamiento vertical: `-1f` = el fondo baja por la
@@ -423,19 +472,21 @@ internal object RouteScrollDefaults {
  *
  * Decisiones dentro, todas reversibles:
  *
- * 1. **Escala**: la imagen se escala uniforme hasta llenar el ancho y la altura
- *    se cubre repitiendo. Sin deformación y con el mismo aspecto en 720p, 1080p
- *    o 1440p.
+ * 1. **Escala**: la cámara mide siempre [RouteScrollDefaults.CAMERA_WIDTH] ×
+ *    [RouteScrollDefaults.CAMERA_HEIGHT] píxeles de arte, sea cual sea el tamaño
+ *    del drawable. El arte no se estira ni se encoge para llenar el ancho: un PNG
+ *    de 2176 px se ve más grande (y más recortado) que uno de 1152. La escala es
+ *    `min(ancho/1152, alto/1920)`, así que la cámara entra siempre entera, sin
+ *    deformación y sin franjas.
  * 2. **Bucle vertical sin costura**: el arte es un patrón continuo, así que la
  *    fila inferior y la superior coinciden y la repetición no se nota. Solo si el
  *    drawable no cumple eso (el arte antiguo de ruta) se enrolla cíclicamente por
  *    `seamCutRow` para que la unión caiga en la pareja de filas más parecida.
  *    Ninguna copia se dibuja reflejada en vertical.
- * 3. **Horizontal infinito, como loseta**: la imagen mide justo el ancho de
- *    pantalla, así que las columnas se dibujan contiguas y **todas iguales**: al
- *    borde derecho de una le sigue el borde izquierdo del arte. El corrimiento
- *    lateral no tiene tope: por mucho que se corra, siempre hay una columna
- *    tapando el borde, y el dibujo se repite como el vertical.
+ * 3. **Horizontal infinito, como loseta**: las columnas se dibujan contiguas y
+ *    **todas iguales**: al borde derecho de una le sigue el borde izquierdo del
+ *    arte. El corrimiento lateral no tiene tope: por mucho que se corra, siempre
+ *    hay una columna tapando el borde, y el dibujo se repite como el vertical.
  * 4. **Filtro**: nearest-neighbour al ampliar, para conservar el pixel art;
  *    bilineal al reducir, porque nearest-neighbour deja moteado al perder filas.
  *
@@ -497,23 +548,32 @@ internal fun RouteScrollingBackground(
     // fondo no redibuja ni recompone nada por cada pulsación, solo el avance.
     val pulses by rememberUpdatedState(pulseCount)
 
-    // Fase vertical normalizada, 0f..1f sobre el alto de una baldosa. Se guarda
-    // normalizada y no en px acumulados para que la precisión del float no se
-    // degrade en sesiones larguísimas. Cada frame se recalcula desde la
+    // Fase vertical normalizada, 0f..1f sobre el alto de **una cámara**. Se
+    // guarda normalizada y no en px acumulados para que la precisión del float no
+    // se degrade en sesiones larguísimas. Cada frame se recalcula desde la
     // trayectoria: mientras dura un tramo lateral se queda congelada.
     val phaseV = remember { mutableFloatStateOf(0f) }
 
     // Corrimiento lateral vigente, en **alturas de baldosa** (la misma unidad que
-    // el avance vertical). Puede crecer sin tope: el arte se repite en horizontal,
-    // así que no hay borde que descubrir. Se guarda en baldosas y no en px para
-    // que el número siga siendo pequeño en sesiones largas.
+    // el avance vertical de la trayectoria). Puede crecer sin tope: el arte se
+    // repite en horizontal, así que no hay borde que descubrir. Se guarda en
+    // baldosas y no en px para que el número siga siendo pequeño en sesiones
+    // largas; el dibujo lo pasa a píxeles de cámara.
     val lateral = remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(motion) {
+    // Alto del arte en px: la cámara se mide en **alturas de arte**, así que el
+    // paso de un clic tiene que traducirse con esta proporción.
+    val artHeight = bitmap?.height ?: 0
+
+    LaunchedEffect(motion, artHeight) {
+        if (artHeight <= 0) return@LaunchedEffect
         // Arranca en la posición que ya llevaba el recorrido: al volver a componer
         // (otra pestaña, otra zona) no se repiten los clics anteriores.
         val walker = RouteClickWalker(initialSteps = pulses)
         var lastPosition = -1.0
+        // Altura de cámara expresada en alturas de arte: 1920 px de cámara son
+        // 1920/artHeight alturas del drawable.
+        val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / artHeight
 
         while (isActive) {
             withFrameNanos { now ->
@@ -528,7 +588,7 @@ internal fun RouteScrollingBackground(
                 // `DIRECTION` solo orienta el vertical; la fase puede quedar
                 // negativa y `floor` la vuelve a [0f, 1f) sin salto visible (el
                 // tile se repite con período exacto).
-                val vertical = motion.verticalDistanceAt(position)
+                val vertical = motion.verticalDistanceAt(position) * cameraPerArt
                 var nextV = RouteScrollDefaults.DIRECTION * vertical
                 nextV -= floor(nextV)
                 phaseV.floatValue = nextV.toFloat()
@@ -547,9 +607,14 @@ internal fun RouteScrollingBackground(
                 val srcH = bmp.height
                 if (srcW <= 0 || srcH <= 0) return@drawBehind
 
-                // Escala 1:1 al ancho: el arte mide justo una pantalla y el hueco
-                // lateral lo tapa la columna vecina, que es la misma loseta.
-                val scale = size.width / srcW
+                // La cámara mide siempre lo mismo en píxeles de arte ([CAMERA_WIDTH]
+                // × [CAMERA_HEIGHT]), así que la escala NO depende del drawable: con
+                // un PNG más grande se ve más grande, no más "world" per pantalla.
+                // `min` deja la cámara entera dentro de la pantalla sin deformar; en
+                // pantallas más altas que 1152:1920 se ve arte de más por arriba y
+                // por abajo, que es lo que tapa el bucle.
+                val scale = routeCameraScale(size.width, size.height)
+                if (scale <= 0f) return@drawBehind
                 val tileW = srcW * scale
                 val tileH = srcH * scale
                 if (tileH <= 1f || tileW <= 1f) return@drawBehind
@@ -560,17 +625,20 @@ internal fun RouteScrollingBackground(
                 // solo decide por dónde se empieza a ver el arte.
                 val shiftV = (phaseV.floatValue * tileH +
                     routeStartShift(tileH, size.height, startAnchor)) % tileH
-                // El lateral se mide en alturas de baldosa, así que se multiplica
-                // por el ALTO del arte: un clic de lado recorre los mismos píxeles
-                // que un clic recto aunque el dibujo no sea cuadrado. `startOffset`
+                // El lateral se mide en alturas de baldosa, así que se pasa a
+                // píxeles de **cámara** (no de arte): un clic de lado recorre los
+                // mismos píxeles que un clic recto aunque el dibujo no sea cuadrado
+                // y aunque el drawable mida más o menos que la cámara. `startOffset`
                 // viene en anchos de pantalla y se convierte aparte.
+                val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / srcH
                 val left0 = (size.width - tileW) / 2f
                 // El patrón horizontal se repite **como un tile**: a la derecha de
                 // una columna vuelve a empezar el borde izquierdo del arte, sin
                 // reflejarlo. Enrollar el desplazamiento en el ancho de una columna
                 // mantiene el número pequeño sin cambiar lo que se ve.
                 val period = tileW
-                var shiftH = (lateral.floatValue * tileH + startOffset * size.width) % period
+                var shiftH = (lateral.floatValue * cameraPerArt * tileH +
+                    startOffset * size.width) % period
                 if (shiftH < 0f) shiftH += period
 
                 // Primera columna que todavía toca la pantalla. Todas son la misma
