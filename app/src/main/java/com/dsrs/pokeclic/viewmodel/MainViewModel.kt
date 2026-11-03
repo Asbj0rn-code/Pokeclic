@@ -27,6 +27,7 @@ import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.model.TimingRing
+import com.dsrs.pokeclic.model.Voltorb
 import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advanceZone
@@ -233,6 +234,37 @@ class MainViewModel(
     }
 
     /**
+     * **Salto de zona (provisional, solo para testear).** Deja la partida en la
+     * zona [zoneId] con la barra ya llena, para poder entrar a su gimnasio sin
+     * recorrer las zonas anteriores. No forma parte del diseño final.
+     *
+     * También limpia `gymClearedRun`: si la zona ya se había ganado en esta run,
+     * su gimnasio dejaría de estar pendiente y `isGymReady` sería `false`.
+     */
+    fun onDebugJumpToZone(zoneId: String) {
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index < 0) return
+        gymIntroJob?.cancel()
+        gymJob?.cancel()
+        cancelFishing()
+        lastWalkTapMs = 0L
+        nextCombatId = 0L
+        mutate { state ->
+            state.copy(
+                zoneIndex = index,
+                zoneClicks = zones[index].clickRequirement,
+                gymClearedRun = emptySet(),
+                isTallGrass = false,
+                walkProgress = 0f,
+                encounter = null,
+                fishing = null,
+                gym = null,
+                gymIntro = null
+            )
+        }
+    }
+
+    /**
      * Cierra la introducción de la primera partida: fija el nombre del entrenador
      * (permanente) y el starter elegido en una sola operación. Se llama una vez,
      * cuando el jugador ya pasó el diálogo del Profesor Oak.
@@ -423,6 +455,31 @@ class MainViewModel(
         updateGym { current -> GymCombat.breakProjectile(current, projectileId) }
     }
 
+    /**
+     * Toque en una celda de la cuadrícula de Lt. Surge.
+     *
+     * Si esa celda tiene un Voltorb cargado lo apaga: acierto sin daño. Si está
+     * apagada, la descarga resta vida. En fase expuesta no hace nada: entonces el
+     * toque válido es sobre el sprite del líder ([onGymEnemyHit]).
+     */
+    fun onGymVoltorbTap(cell: Int) {
+        val state = _uiState.value
+        val gym = state.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.mechanic != GymMechanic.VOLTORB_GRID) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        val config = GymCatalog.require(gym.gymId)
+
+        updateGym { current ->
+            if (GymCombat.voltorbAt(current, cell) != null) {
+                GymCombat.defuseVoltorb(current, cell)
+            } else {
+                val shocked = GymCombat.registerShock(current, cell, config.voltorbShockDamage)
+                if (shocked.playerHp <= 0) shocked.copy(outcome = GymOutcome.LOST) else shocked
+            }
+        }
+    }
+
     private fun startGymCombat(config: Gym) {
         gymJob?.cancel()
         nextCombatId = 0L
@@ -445,6 +502,7 @@ class MainViewModel(
                         maxHp = maxHp,
                         mechanic = config.mechanic,
                         columns = config.columns,
+                        rows = config.rows,
                         ringWindowMs = config.ringWindowMs,
                         waveDurationMs = config.waveDurationMs,
                         waveRemainingMs = config.waveDurationMs,
@@ -462,9 +520,10 @@ class MainViewModel(
 
     /**
      * Bucle de combate. En fase de ataque corre la cuenta atrás de la oleada y
-     * aplica la mecánica del líder —ráfagas de proyectiles o anillos que se
-     * cierran—; en fase expuesta solo avanza la recuperación. Al bajar del 25 %
-     * de vida la mecánica se acelera (furia). Se detiene al ganar o perder.
+     * aplica la mecánica del líder —ráfagas de proyectiles, anillos que se
+     * cierran o Voltorb que se cargan—; en fase expuesta solo avanza la
+     * recuperación. Al bajar del 25 % de vida la mecánica se acelera (furia). Se
+     * detiene al ganar o perder.
      */
     private fun startGymLoop(config: Gym) {
         gymJob = viewModelScope.launch {
@@ -491,20 +550,32 @@ class MainViewModel(
 
                     // La stamina es el reloj de la oleada: baja aunque el jugador
                     // acierte todo. Al llegar a 0, el líder queda expuesto y se
-                    // limpian proyectiles y anillos.
+                    // limpian proyectiles, anillos y Voltorb.
                     val advanced = GymCombat.advanceWave(current, GYM_TICK_MS)
                     if (advanced.phase == GymPhase.EXPOSED) return@updateGym advanced
 
                     val now = nowMs()
                     val spawnDue = now >= nextSpawnMs
-                    if (spawnDue) nextSpawnMs += spawnIntervalMs(config, advanced)
 
+                    val idsBefore = nextCombatId
                     val next = when (advanced.mechanic) {
                         GymMechanic.PROJECTILES ->
                             tickProjectiles(config, advanced, now, spawnDue)
                         GymMechanic.TIMING_RINGS ->
                             tickRings(config, advanced, now, spawnDue)
+                        GymMechanic.VOLTORB_GRID ->
+                            tickVoltorbs(config, advanced, now, spawnDue)
                     }
+
+                    // La cadencia se cobra cuando la mecánica **coloca** su ataque.
+                    // La cuadrícula de Voltorb es la única que puede quedar
+                    // bloqueada —un Voltorb cargado a la vez—, así que si no
+                    // colocó, el turno sigue pendiente y entra en cuanto la celda
+                    // quede libre.
+                    val blocked = advanced.mechanic == GymMechanic.VOLTORB_GRID &&
+                        nextCombatId == idsBefore
+                    if (spawnDue && !blocked) nextSpawnMs += spawnIntervalMs(config, advanced)
+
                     if (next.outcome == GymOutcome.LOST) lost = true
                     next
                 }
@@ -525,6 +596,9 @@ class MainViewModel(
             GymMechanic.TIMING_RINGS ->
                 if (GymCombat.isRaging(state)) config.rageRingSpawnIntervalMs
                 else config.ringSpawnIntervalMs
+            GymMechanic.VOLTORB_GRID ->
+                if (GymCombat.isRaging(state)) config.rageVoltorbSpawnIntervalMs
+                else config.voltorbSpawnIntervalMs
         }
 
     /**
@@ -626,6 +700,43 @@ class MainViewModel(
         } else {
             damaged
         }
+    }
+
+    /**
+     * Tick de la cuadrícula de Lt. Surge: cobra los Voltorb que explotaron y
+     * carga uno nuevo si toca y queda celda libre.
+     *
+     * No hay tope de cargados a la vez: el único límite es el tablero, así que si
+     * el jugador se atrasa los Voltorb se apilan. Las cargas siguen escalonadas
+     * por [Gym.voltorbSpawnIntervalMs] —nunca dos en el mismo instante— y con el
+     * tablero lleno el turno queda pendiente y entra en cuanto se libera una
+     * celda.
+     */
+    private fun tickVoltorbs(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        var next = GymCombat.explodeVoltorbs(state, now, config.voltorbExplosionDamage)
+
+        val raging = GymCombat.isRaging(next)
+        val totalCells = (config.rows * config.columns).coerceAtLeast(1)
+        val freeCells = GymCombat.freeVoltorbCells(next, totalCells)
+
+        if (spawnDue && freeCells.isNotEmpty()) {
+            val window = if (raging) config.rageVoltorbWindowMs else config.voltorbWindowMs
+            next = next.copy(
+                voltorbs = next.voltorbs + Voltorb(
+                    id = nextCombatId++,
+                    cell = freeCells.random(random),
+                    chargedAtMs = now,
+                    windowMs = window
+                )
+            )
+        }
+
+        return if (next.playerHp <= 0) next.copy(outcome = GymOutcome.LOST) else next
     }
 
     /**
@@ -1019,7 +1130,7 @@ class MainViewModel(
         /** Tick del bucle de combate del gimnasio. */
         const val GYM_TICK_MS = 50L
 
-        /** Respiro antes del primer proyectil del combate. */
+        /** Respiro antes del primer ataque de la oleada (proyectil, anillo o Voltorb). */
         const val COMBAT_FIRST_SPAWN_MS = 800L
 
         /** Duración del cartel "que comience el combate" antes del combate. */

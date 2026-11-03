@@ -32,7 +32,8 @@ class CatalogTest {
                 "Ruta 4",
                 "Ciudad Celeste",
                 "Ruta 5 - Vía Subterránea",
-                "Ruta 6"
+                "Ruta 6",
+                "Ciudad Carmín"
             ),
             names
         )
@@ -66,24 +67,46 @@ class CatalogTest {
     }
 
     /**
-     * La Ruta 6 cierra el recorrido justo después de la Ruta 5. Al ser la última
-     * zona, ya no ofrece "Avanzar" (feature-40).
+     * Ciudad Carmín cierra el recorrido justo después de la Ruta 6 y aloja el
+     * gimnasio de Lt. Surge (feature-41). Al ser la última zona, ya no ofrece
+     * "Avanzar".
      */
     @Test
-    fun zoneCatalog_route6FollowsRoute5AndClosesTheRoute() {
+    fun zoneCatalog_cityCarminFollowsRoute6AndClosesTheRoute() {
         val zones = ZoneCatalog.zones
-        val route = zones.last()
+        val city = zones.last()
 
-        assertEquals("ruta6", route.id)
-        assertEquals("Ruta 6", route.name)
-        assertEquals("ruta5", zones[zones.lastIndex - 1].id)
+        assertEquals("ciudad_carmin", city.id)
+        assertEquals("Ciudad Carmín", city.name)
+        assertEquals("surge", city.gymId)
+        assertEquals("ruta6", zones[zones.lastIndex - 1].id)
     }
 
-    /** Cada líder conserva su mecánica: Brock rocas, Misty anillos. */
+    /** Cada líder conserva su mecánica: Brock rocas, Misty anillos, Surge Voltorb. */
     @Test
     fun gymCatalog_keepsTheMechanicOfEachLeader() {
         assertEquals(GymMechanic.PROJECTILES, GymCatalog.brock.mechanic)
         assertEquals(GymMechanic.TIMING_RINGS, GymCatalog.misty.mechanic)
+        assertEquals(GymMechanic.VOLTORB_GRID, GymCatalog.surge.mechanic)
+    }
+
+    /**
+     * El tablero de Surge es 4×4 y no tiene tope de Voltorb cargados: el límite
+     * son las 16 celdas. La ventana supera a la cadencia —las cargas se solapan y
+     * se apilan si el jugador se atrasa—, pero la cadencia sigue siendo mayor que
+     * cero, así que nunca empiezan dos a la vez.
+     */
+    @Test
+    fun surgeGym_usesAFourByFourGridWithoutConcurrencyCap() {
+        val surge = GymCatalog.surge
+
+        assertEquals(4, surge.rows)
+        assertEquals(4, surge.columns)
+        assertTrue(surge.voltorbSpawnIntervalMs > 0L)
+        assertTrue(surge.voltorbWindowMs > surge.voltorbSpawnIntervalMs)
+        assertEquals(PokemonType.ELECTRIC, surge.type)
+        assertTrue(surge.rageVoltorbSpawnIntervalMs < surge.voltorbSpawnIntervalMs)
+        assertTrue(surge.rageVoltorbWindowMs < surge.voltorbWindowMs)
     }
 
     /** Regla de progresión: cada zona pide más clics que la anterior. */

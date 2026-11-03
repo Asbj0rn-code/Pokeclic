@@ -2,12 +2,12 @@ package com.dsrs.pokeclic.model
 
 /**
  * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
- * de ritmo y las reglas puras del combate.
+ * de ritmo, Voltorb cargados y las reglas puras del combate.
  *
  * Todo aquí es independiente de Android y del reloj real (las funciones reciben
  * el tiempo transcurrido), para poder probar la mecánica en la JVM. El
- * ViewModel se encarga de los bucles, de crear proyectiles y anillos y de
- * persistir la victoria; la UI solo pinta el estado ya calculado.
+ * ViewModel se encarga de los bucles, de crear proyectiles, anillos y Voltorb y
+ * de persistir la victoria; la UI solo pinta el estado ya calculado.
  */
 
 /** Menos del 25 % de vida: el líder entra en furia y sus oleadas son más duras. */
@@ -78,16 +78,19 @@ fun typeDamageMultiplier(leadType: PokemonType?, gymType: PokemonType): Float =
     leadType?.effectiveness(gymType) ?: 1f
 
 /**
- * Mecánica de defensa de un gimnasio. Cada líder ataca a su manera, pero las dos
+ * Mecánica de defensa de un gimnasio. Cada líder ataca a su manera, pero todas
  * comparten las mismas fases ([GymPhase]) y la fase expuesta.
  *
  * - [PROJECTILES]: caen rocas por columnas y hay que romperlas (Brock).
  * - [TIMING_RINGS]: círculos que se cierran sobre el jugador y hay que aciertar
  *   el instante en que tocan el círculo fijo (Misty).
+ * - [VOLTORB_GRID]: una cuadrícula de Voltorb que se cargan de a uno y hay que
+ *   apagar antes de que exploten (Lt. Surge).
  */
 enum class GymMechanic {
     PROJECTILES,
-    TIMING_RINGS
+    TIMING_RINGS,
+    VOLTORB_GRID
 }
 
 /**
@@ -99,7 +102,8 @@ enum class GymMechanic {
  * Los campos `columns`, `spawnIntervalMs`, `projectileTravelMs`,
  * `projectileDamage`, `projectilesPerSpawn` y sus variantes `rage*` solo se usan
  * con [GymMechanic.PROJECTILES]. Los campos `ring*` solo se usan con
- * [GymMechanic.TIMING_RINGS].
+ * [GymMechanic.TIMING_RINGS]. Los campos `rows` y `voltorb*` solo se usan con
+ * [GymMechanic.VOLTORB_GRID].
  *
  * @param id clave estable para medallas y persistencia.
  * @param leaderName nombre del líder, mostrado en el overlay.
@@ -132,6 +136,16 @@ enum class GymMechanic {
  * @param rageRingSpawnIntervalMs cadencia de anillos durante la furia.
  * @param rageRingTravelMinMs cierre más rápido durante la furia.
  * @param rageRingTravelMaxMs cierre más lento durante la furia.
+ * @param rows número de filas de la cuadrícula de Voltorb. Con `columns` define
+ *   cuántas celdas tiene el tablero (`rows * columns`).
+ * @param voltorbWindowMs tiempo que tarda en explotar un Voltorb cargado, en ms.
+ * @param rageVoltorbWindowMs ventana (más corta) durante la furia.
+ * @param voltorbSpawnIntervalMs tiempo **mínimo** entre el inicio de una carga y
+ *   el de la siguiente, en ms. Si el tablero está ocupado, la carga pendiente
+ *   entra en cuanto se libera la celda.
+ * @param rageVoltorbSpawnIntervalMs margen mínimo durante la furia.
+ * @param voltorbExplosionDamage HP que resta un Voltorb que explota.
+ * @param voltorbShockDamage HP que resta tocar una celda apagada.
  */
 data class Gym(
     val id: String,
@@ -157,7 +171,14 @@ data class Gym(
     val ringMissDamage: Int = 1,
     val rageRingSpawnIntervalMs: Long = ringSpawnIntervalMs,
     val rageRingTravelMinMs: Long = ringTravelMinMs,
-    val rageRingTravelMaxMs: Long = ringTravelMaxMs
+    val rageRingTravelMaxMs: Long = ringTravelMaxMs,
+    val rows: Int = 1,
+    val voltorbWindowMs: Long = 1_400L,
+    val rageVoltorbWindowMs: Long = 850L,
+    val voltorbSpawnIntervalMs: Long = 900L,
+    val rageVoltorbSpawnIntervalMs: Long = 600L,
+    val voltorbExplosionDamage: Int = 1,
+    val voltorbShockDamage: Int = 1
 )
 
 /**
@@ -276,6 +297,63 @@ data class RingFeedback(
 )
 
 /**
+ * Un Voltorb cargado de la cuadrícula ([GymMechanic.VOLTORB_GRID]).
+ *
+ * Igual que [Projectile] y [TimingRing], no guarda animación: su "calor" se
+ * deriva del tiempo transcurrido desde [chargedAtMs], así que la vista lo pinta
+ * sin que el ViewModel actualice cada fotograma.
+ *
+ * @param id identificador único dentro del combate.
+ * @param cell celda de la cuadrícula, de `0` a `rows * columns - 1`, en orden de
+ *   filas.
+ * @param chargedAtMs instante en que empezó a cargarse.
+ * @param windowMs tiempo que tarda en explotar desde [chargedAtMs], en ms. Cada
+ *   Voltorb nace con la ventana de su oleada, así un cambio de furia a mitad de
+ *   vuelo no alarga ni acorta la que ya estaba corriendo.
+ */
+data class Voltorb(
+    val id: Long,
+    val cell: Int,
+    val chargedAtMs: Long,
+    val windowMs: Long
+) {
+    /** Calor acumulado, `0f` (recién cargado) a `1f` (a punto de explotar). */
+    fun progressAt(nowMs: Long): Float {
+        if (windowMs <= 0L) return 1f
+        return ((nowMs - chargedAtMs).toFloat() / windowMs).coerceIn(0f, 1f)
+    }
+
+    /** ¿Se le agotó la ventana? */
+    fun hasExploded(nowMs: Long): Boolean = nowMs - chargedAtMs >= windowMs
+}
+
+/** Resultado de un Voltorb de la cuadrícula. */
+enum class VoltorbOutcome {
+    /** Apagado a tiempo: no hubo daño. */
+    DEFUSED,
+
+    /** Se agotó su ventana y explotó. */
+    EXPLODED,
+
+    /** Tocado cuando su celda estaba apagada: descarga. */
+    SHOCK
+}
+
+/**
+ * Feedback visual del último Voltorb resuelto (estado **transitorio**).
+ *
+ * @param cell celda que produjo el resultado, para animar solo esa casilla.
+ * @param outcome apagado, explosión o descarga.
+ * @param count Voltorb cobrados en el mismo tick; solo puede ser mayor que 1
+ *   cuando varios explotan a la vez.
+ */
+data class VoltorbFeedback(
+    val cell: Int,
+    val outcome: VoltorbOutcome,
+    val count: Int = 1
+)
+
+/**
  * Estado **transitorio** del combate de gimnasio (no se persiste).
  *
  * Incluye las fracciones de barra ya calculadas para que la UI no haga cuentas
@@ -289,11 +367,15 @@ data class RingFeedback(
  * @param mechanic minijuego de defensa activo; decide qué pinta la escena y qué
  *   eventos acepta.
  * @param columns columnas por las que caen los proyectiles.
+ * @param rows filas de la cuadrícula de Voltorb.
  * @param projectiles proyectiles activos en este instante.
  * @param rings anillos activos del minijuego de ritmo.
  * @param ringWindowMs margen de acierto de los anillos, en ms. La UI lo usa para
  *   resaltar el anillo que está en su momento exacto.
  * @param ringFeedback último acierto o fallo, para la animación de la escena.
+ * @param voltorbs Voltorb cargados en este instante.
+ * @param voltorbFeedback último apagado, explosión o descarga, para la animación
+ *   de la escena.
  * @param waveDurationMs duración total de la oleada, en ms.
  * @param waveRemainingMs tiempo de oleada restante; la barra de stamina es este
  *   contador bajando por tiempo.
@@ -317,10 +399,13 @@ data class GymState(
     val maxHp: Int,
     val mechanic: GymMechanic = GymMechanic.PROJECTILES,
     val columns: Int,
+    val rows: Int = 1,
     val projectiles: List<Projectile> = emptyList(),
     val rings: List<TimingRing> = emptyList(),
     val ringWindowMs: Long = 0L,
     val ringFeedback: RingFeedback? = null,
+    val voltorbs: List<Voltorb> = emptyList(),
+    val voltorbFeedback: VoltorbFeedback? = null,
     val waveDurationMs: Long = 0L,
     val waveRemainingMs: Long = 0L,
     val exposureDurationMs: Long = 0L,
@@ -425,12 +510,75 @@ object GymCombat {
     fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
         state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
 
+    // --- cuadrícula de Voltorb (Lt. Surge) ---------------------------------
+
+    /** Voltorb de [cell], o `null` si esa celda está apagada. */
+    fun voltorbAt(state: GymState, cell: Int): Voltorb? =
+        state.voltorbs.firstOrNull { it.cell == cell }
+
+    /** Celdas del tablero que no tienen un Voltorb cargado. */
+    fun freeVoltorbCells(state: GymState, totalCells: Int): List<Int> =
+        (0 until totalCells).filter { cell -> state.voltorbs.none { it.cell == cell } }
+
+    /**
+     * Apaga el Voltorb de [cell] si estaba cargado: acierto sin daño.
+     *
+     * Tocar una celda apagada no se resuelve aquí porque la descarga necesita el
+     * daño del gimnasio; eso lo hace [registerShock].
+     */
+    fun defuseVoltorb(state: GymState, cell: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        val voltorb = voltorbAt(state, cell) ?: return state
+        return state.copy(
+            voltorbs = state.voltorbs.filterNot { it.id == voltorb.id },
+            voltorbFeedback = VoltorbFeedback(cell, VoltorbOutcome.DEFUSED)
+        )
+    }
+
+    /** Descarga por tocar una celda apagada: resta [damage] HP. */
+    fun registerShock(state: GymState, cell: Int, damage: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        return state.copy(
+            playerHp = (state.playerHp - damage).coerceAtLeast(0),
+            voltorbFeedback = VoltorbFeedback(cell, VoltorbOutcome.SHOCK)
+        )
+    }
+
+    /** Voltorb a los que ya se les agotó la ventana. */
+    fun explodedVoltorbs(state: GymState, nowMs: Long): List<Voltorb> =
+        state.voltorbs.filter { it.hasExploded(nowMs) }
+
+    /**
+     * Cobra los Voltorb que explotaron antes de [nowMs]: los retira del tablero y
+     * resta [damage] HP por cada uno. Sin explosiones no cambia nada.
+     */
+    fun explodeVoltorbs(state: GymState, nowMs: Long, damage: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        val exploded = explodedVoltorbs(state, nowMs)
+        if (exploded.isEmpty()) return state
+
+        val ids = exploded.map { it.id }.toSet()
+        return state.copy(
+            voltorbs = state.voltorbs.filterNot { it.id in ids },
+            playerHp = (state.playerHp - exploded.size * damage).coerceAtLeast(0),
+            voltorbFeedback = VoltorbFeedback(
+                cell = exploded.maxOf { it.cell },
+                outcome = VoltorbOutcome.EXPLODED,
+                count = exploded.size
+            )
+        )
+    }
+
     /**
      * Avanza el temporizador de la oleada.
      *
      * Al agotarse (la barra de stamina llega a 0) el líder queda
-     * [GymPhase.EXPOSED]: se vacían los proyectiles **y los anillos** y empieza
-     * la cuenta de exposición. Si no está en fase de ataque, no cambia nada.
+     * [GymPhase.EXPOSED]: se vacían los proyectiles, los anillos **y los
+     * Voltorb** y empieza la cuenta de exposición. Si no está en fase de ataque,
+     * no cambia nada.
      */
     fun advanceWave(state: GymState, elapsedMs: Long): GymState {
         if (state.phase != GymPhase.ATTACKING) return state
@@ -446,6 +594,7 @@ object GymCombat {
                 exposureRemainingMs = state.exposureDurationMs,
                 projectiles = emptyList(),
                 rings = emptyList(),
+                voltorbs = emptyList(),
                 rage = rage
             )
         } else {

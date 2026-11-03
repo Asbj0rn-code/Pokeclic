@@ -266,6 +266,123 @@ class ModelTest {
         assertEquals(emptyList<TimingRing>(), exposed.rings)
     }
 
+    // --- Minijuego de Voltorb (Lt. Surge) -------------------------------------
+
+    @Test
+    fun voltorbHeatsUpUntilItsWindowEnds() {
+        val voltorb = Voltorb(id = 1L, cell = 0, chargedAtMs = 1_000L, windowMs = 1_400L)
+
+        assertEquals(0f, voltorb.progressAt(1_000L))
+        assertEquals(0.5f, voltorb.progressAt(1_700L))
+        assertEquals(1f, voltorb.progressAt(2_400L))
+        assertFalse(voltorb.hasExploded(2_399L))
+        assertTrue(voltorb.hasExploded(2_400L))
+    }
+
+    @Test
+    fun voltorbProgressIsClamped() {
+        val voltorb = Voltorb(id = 1L, cell = 0, chargedAtMs = 1_000L, windowMs = 1_400L)
+
+        assertEquals(0f, voltorb.progressAt(0L))
+        assertEquals(1f, voltorb.progressAt(9_999L))
+    }
+
+    @Test
+    fun defusingAChargedVoltorbRemovesItWithoutDamage() {
+        val state = voltorbState(
+            voltorbs = listOf(Voltorb(1L, cell = 5, chargedAtMs = 0L, windowMs = 1_400L))
+        )
+
+        val next = GymCombat.defuseVoltorb(state, 5)
+
+        assertEquals(emptyList<Voltorb>(), next.voltorbs)
+        assertEquals(5, next.playerHp)
+        assertEquals(VoltorbOutcome.DEFUSED, next.voltorbFeedback?.outcome)
+        assertEquals(5, next.voltorbFeedback?.cell)
+    }
+
+    @Test
+    fun defusingAnEmptyCellDoesNothing() {
+        val state = voltorbState(
+            voltorbs = listOf(Voltorb(1L, cell = 5, chargedAtMs = 0L, windowMs = 1_400L))
+        )
+
+        assertEquals(state, GymCombat.defuseVoltorb(state, 3))
+    }
+
+    @Test
+    fun defusingWhileExposedDoesNothing() {
+        val state = voltorbState(
+            phase = GymPhase.EXPOSED,
+            voltorbs = listOf(Voltorb(1L, cell = 0, chargedAtMs = 0L, windowMs = 1_400L))
+        )
+
+        assertEquals(state, GymCombat.defuseVoltorb(state, 0))
+    }
+
+    @Test
+    fun touchingAnEmptyCellShocksThePlayer() {
+        val state = voltorbState(playerHp = 5)
+
+        val next = GymCombat.registerShock(state, cell = 7, damage = 1)
+
+        assertEquals(4, next.playerHp)
+        assertEquals(VoltorbOutcome.SHOCK, next.voltorbFeedback?.outcome)
+        assertEquals(7, next.voltorbFeedback?.cell)
+    }
+
+    @Test
+    fun explodedVoltorbsDamageThePlayerAndClearTheBoard() {
+        val state = voltorbState(
+            voltorbs = listOf(
+                Voltorb(1L, cell = 0, chargedAtMs = 0L, windowMs = 1_000L),
+                Voltorb(2L, cell = 6, chargedAtMs = 0L, windowMs = 1_000L)
+            )
+        )
+
+        val before = GymCombat.explodeVoltorbs(state, 999L, damage = 1)
+        assertEquals(state, before)
+
+        val after = GymCombat.explodeVoltorbs(state, 1_000L, damage = 1)
+        assertEquals(emptyList<Voltorb>(), after.voltorbs)
+        assertEquals(3, after.playerHp)
+        assertEquals(VoltorbOutcome.EXPLODED, after.voltorbFeedback?.outcome)
+        assertEquals(2, after.voltorbFeedback?.count)
+    }
+
+    @Test
+    fun freeVoltorbCellsAreTheOnesWithoutAVoltorb() {
+        val state = voltorbState(
+            voltorbs = listOf(Voltorb(1L, cell = 0, chargedAtMs = 0L, windowMs = 1_400L))
+        )
+
+        assertEquals((1 until 16).toList(), GymCombat.freeVoltorbCells(state, 16))
+    }
+
+    @Test
+    fun aFullBoardHasNoFreeCells() {
+        val state = voltorbState(
+            voltorbs = (0 until 16).map {
+                Voltorb(id = it.toLong(), cell = it, chargedAtMs = 0L, windowMs = 1_400L)
+            }
+        )
+
+        assertEquals(emptyList<Int>(), GymCombat.freeVoltorbCells(state, 16))
+    }
+
+    @Test
+    fun waveEndClearsVoltorbsAndExposesLeader() {
+        val state = voltorbState(
+            waveRemainingMs = 500L,
+            voltorbs = listOf(Voltorb(1L, cell = 0, chargedAtMs = 0L, windowMs = 1_400L))
+        )
+
+        val exposed = GymCombat.advanceWave(state, 500L)
+
+        assertEquals(GymPhase.EXPOSED, exposed.phase)
+        assertEquals(emptyList<Voltorb>(), exposed.voltorbs)
+    }
+
     // --- Minijuego de pesca ---------------------------------------------------
 
     /**
@@ -399,5 +516,28 @@ class ModelTest {
         waveDurationMs = 10_000L,
         waveRemainingMs = waveRemainingMs,
         exposureDurationMs = 2_500L
+    )
+
+    private fun voltorbState(
+        playerHp: Int = 5,
+        waveRemainingMs: Long = 10_000L,
+        phase: GymPhase = GymPhase.ATTACKING,
+        voltorbs: List<Voltorb> = emptyList()
+    ) = GymState(
+        gymId = "surge",
+        leaderName = "Lt. Surge",
+        gymType = PokemonType.ELECTRIC,
+        leaderHp = 120,
+        leaderMaxHp = 120,
+        playerHp = playerHp,
+        maxHp = 5,
+        mechanic = GymMechanic.VOLTORB_GRID,
+        columns = 4,
+        rows = 4,
+        voltorbs = voltorbs,
+        waveDurationMs = 10_000L,
+        waveRemainingMs = waveRemainingMs,
+        exposureDurationMs = 2_500L,
+        phase = phase
     )
 }

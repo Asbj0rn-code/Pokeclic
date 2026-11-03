@@ -1,11 +1,12 @@
 /**
  * Escena, HUD y sprites del combate de gimnasio.
  *
- * Cada mecánica tiene su escena: rocas por columnas (Brock) o anillos que se
- * cierran sobre el jugador (Misty). Ambas animan con un reloj de fotogramas y
- * reparten los toques entre el líder expuesto y el ataque en curso; el HUD pinta
- * las fracciones de vida y stamina ya calculadas por el modelo. No hay lógica de
- * combate aquí: solo presentación y eventos hacia el ViewModel.
+ * Cada mecánica tiene su escena: rocas por columnas (Brock), anillos que se
+ * cierran sobre el jugador (Misty) o una cuadrícula de Voltorb (Lt. Surge). Las
+ * tres animan con un reloj de fotogramas y reparten los toques entre el líder
+ * expuesto y el ataque en curso; el HUD pinta las fracciones de vida y stamina ya
+ * calculadas por el modelo. No hay lógica de combate aquí: solo presentación y
+ * eventos hacia el ViewModel.
  */
 package com.dsrs.pokeclic.ui
 
@@ -62,16 +63,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.GymMechanic
@@ -80,9 +86,13 @@ import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.RingOutcome
+import com.dsrs.pokeclic.model.Voltorb
+import com.dsrs.pokeclic.model.VoltorbFeedback
+import com.dsrs.pokeclic.model.VoltorbOutcome
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.shape.CircleShape
@@ -93,8 +103,8 @@ import androidx.compose.foundation.shape.CircleShape
  *
  * Combate por **fases excluyentes** (ver [GymPhase]):
  * - **Ataque**: corre la oleada y la stamina del líder baja **por tiempo**. La
- *   defensa depende de la mecánica: romper rocas (Brock) o acertar el círculo
- *   que converge (Misty).
+ *   defensa depende de la mecánica: romper rocas (Brock), acertar el círculo que
+ *   converge (Misty) o apagar el Voltorb cargado (Lt. Surge).
  * - **Expuesta**: sin ataque enemigo, tocar al líder le resta vida (con ventaja
  *   de tipo).
  *
@@ -111,12 +121,12 @@ fun GymOverlay(
     state: GymState,
     onProjectileHit: (Long) -> Unit,
     onRingTap: () -> Unit,
+    onVoltorbTap: (Int) -> Unit,
     onEnemyHit: () -> Unit,
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     modifier: Modifier = Modifier
-) {
-    val exposed = state.phase == GymPhase.EXPOSED
+) {    val exposed = state.phase == GymPhase.EXPOSED
 
     // El combate oculta el bottom menu, así que el `Scaffold` ya no reserva el
     // inset inferior: se aplica aquí para que el sprite del jugador no quede
@@ -166,6 +176,13 @@ fun GymOverlay(
             GymMechanic.TIMING_RINGS -> RingGymScene(
                 state = state,
                 exposed = exposed,
+                modifier = Modifier.fillMaxSize()
+            )
+            GymMechanic.VOLTORB_GRID -> VoltorbGridScene(
+                state = state,
+                exposed = exposed,
+                onVoltorbTap = onVoltorbTap,
+                onEnemyHit = onEnemyHit,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -712,6 +729,322 @@ private fun RingGymScene(
     }
 }
 
+// ─────────────────────────── Voltorb (Lt. Surge) ───────────────────────────
+
+/**
+ * Escena del minijuego de Voltorb de Lt. Surge.
+ *
+ * El tablero es una cuadrícula de `rows × columns` celdas; varios Voltorb pueden
+ * estar cargados a la vez y su calor crece con el tiempo. El jugador apaga los
+ * cargados tocándolos; las celdas apagadas devuelven una descarga. El modelo
+ * decide qué pasa —esta escena solo pinta y envía la celda tocada—, igual que las
+ * otras mecánicas.
+ *
+ * La capa de toque es una sola, como en [GymScene]: enemigo si está expuesto, y
+ * si no, la celda de la cuadrícula bajo el dedo.
+ */
+@Composable
+private fun VoltorbGridScene(
+    state: GymState,
+    exposed: Boolean,
+    onVoltorbTap: (Int) -> Unit,
+    onEnemyHit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Reloj de fotogramas: el calor de cada Voltorb sale de su progreso, así que
+    // la escena se repinta sola sin que el ViewModel actualice cada frame.
+    val clock = remember { mutableLongStateOf(nowMs()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+            clock.longValue = nowMs()
+        }
+    }
+    val now = clock.longValue
+
+    // Apagado, explosión o descarga: el ViewModel publica el resultado y aquí se
+    // convierte en un destello sobre esa celda.
+    val feedback = state.voltorbFeedback
+    val feedbackProgress = remember { Animatable(1f) }
+    LaunchedEffect(feedback) {
+        if (feedback == null) return@LaunchedEffect
+        feedbackProgress.snapTo(0f)
+        feedbackProgress.animateTo(1f, tween(durationMillis = VOLTORB_FEEDBACK_MS))
+    }
+
+    // Latido del enemigo mientras está expuesto.
+    val pulse = rememberInfiniteTransition(label = "voltorbExposed")
+    val pulseScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.07f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 600), RepeatMode.Reverse),
+        label = "voltorbPulseScale"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        val rows = state.rows.coerceAtLeast(1)
+        val cols = state.columns.coerceAtLeast(1)
+
+        // Frames del Voltorb: reposo, carga progresiva y resolución. Se decodifican
+        // una vez por combate y se reutilizan en las 16 celdas.
+        val context = LocalContext.current
+        val frames = remember {
+            VOLTORB_FRAME_RES.map { res ->
+                BitmapFactory.decodeResource(context.resources, res).asImageBitmap()
+            }
+        }
+
+        // La cuadrícula vive entre la barra del líder y la cabeza del jugador: se
+        // mide ese hueco y la celda se escala para caber.
+        val gridAreaTop = ENEMY_TOP + ENEMY_HEIGHT + VOLTORB_BAR_RESERVE
+        val playerTop = maxHeight - PLAYER_BOTTOM - PLAYER_HEIGHT
+        val available = (playerTop - gridAreaTop).coerceAtLeast(VOLTORB_MIN_AREA)
+        val cellSide = ((available - VOLTORB_GAP * (rows - 1)) / rows)
+            .coerceIn(VOLTORB_MIN_CELL, VOLTORB_MAX_CELL)
+        val gridWidth = cellSide * cols + VOLTORB_GAP * (cols - 1)
+        val gridHeight = cellSide * rows + VOLTORB_GAP * (rows - 1)
+        val gridLeft = (maxWidth - gridWidth) / 2f
+        val gridTop = gridAreaTop + (available - gridHeight) / 2f
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val side = cellSide.toPx()
+            val gapPx = VOLTORB_GAP.toPx()
+            val left = gridLeft.toPx()
+            val top = gridTop.toPx()
+
+            for (row in 0 until rows) {
+                for (column in 0 until cols) {
+                    val cell = row * cols + column
+                    drawVoltorbCell(
+                        center = Offset(
+                            x = left + column * (side + gapPx) + side / 2f,
+                            y = top + row * (side + gapPx) + side / 2f
+                        ),
+                        radius = side / 2f,
+                        voltorb = state.voltorbs.firstOrNull { it.cell == cell },
+                        feedback = feedback?.takeIf { it.cell == cell },
+                        flash = feedbackProgress.value,
+                        now = now,
+                        frames = frames
+                    )
+                }
+            }
+        }
+
+        // Enemigo, con pulso mientras está expuesto.
+        GymSpriteBox(
+            gifRes = enemyGifFor(state.gymId),
+            name = state.leaderName,
+            type = state.gymType,
+            contentDescription = stringResource(R.string.gym_title, state.leaderName),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ENEMY_TOP)
+                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .graphicsLayer {
+                    val scale = if (exposed) pulseScale else 1f
+                    scaleX = scale
+                    scaleY = scale
+                }
+        )
+
+        // Jugador; placeholder por tipo si aún no hay back.
+        GymSpriteBox(
+            gifRes = backGifFor(state.leadSpeciesId),
+            name = state.leadName,
+            type = state.leadType,
+            contentDescription = state.leadName,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = -PLAYER_BOTTOM)
+                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+        )
+
+        GymStaminaBar(
+            state = state,
+            exposed = exposed,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(gridLeft, gridTop, cellSide, rows, cols, exposed) {
+                    val left = gridLeft.toPx()
+                    val top = gridTop.toPx()
+                    val side = cellSide.toPx()
+                    val gapPx = VOLTORB_GAP.toPx()
+
+                    val enemyLeft = (size.width - ENEMY_WIDTH.toPx()) / 2f
+                    val enemyTop = ENEMY_TOP.toPx()
+                    val enemyRight = enemyLeft + ENEMY_WIDTH.toPx()
+                    val enemyBottom = enemyTop + ENEMY_HEIGHT.toPx()
+
+                    detectTapGestures { tap ->
+                        if (
+                            exposed &&
+                            tap.x in enemyLeft..enemyRight &&
+                            tap.y in enemyTop..enemyBottom
+                        ) {
+                            onEnemyHit()
+                            return@detectTapGestures
+                        }
+
+                        val column = ((tap.x - left) / (side + gapPx)).toInt()
+                        val row = ((tap.y - top) / (side + gapPx)).toInt()
+                        if (row !in 0 until rows || column !in 0 until cols) {
+                            return@detectTapGestures
+                        }
+
+                        // El hueco entre celdas no es tocable: solo cuenta el
+                        // interior de la celda, no la franja que la separa.
+                        val cellLeft = left + column * (side + gapPx)
+                        val cellTop = top + row * (side + gapPx)
+                        if (
+                            tap.x in cellLeft..(cellLeft + side) &&
+                            tap.y in cellTop..(cellTop + side)
+                        ) {
+                            onVoltorbTap(row * cols + column)
+                        }
+                    }
+                }
+        )
+    }
+}
+
+/**
+ * Pinta una celda con los frames del Voltorb.
+ *
+ * El frame sale del estado de la celda: reposo ([VOLTORB_IDLE_FRAME]) si no hay
+ * nada cargado, progresión de carga según su calor, y el último frame —el de
+ * resolución— mientras dura el [feedback] de esa celda. A partir de
+ * [VOLTORB_WOBBLE_FROM_FRAME] el sprite se balancea a los lados: es el aviso de
+ * que está por explotar.
+ */
+private fun DrawScope.drawVoltorbCell(
+    center: Offset,
+    radius: Float,
+    voltorb: Voltorb?,
+    feedback: VoltorbFeedback?,
+    flash: Float,
+    now: Long,
+    frames: List<ImageBitmap>
+) {
+    // `flash` llega a 1f cuando la animación de feedback terminó: hasta entonces
+    // la celda muestra el frame de resolución y después vuelve a reposo. Si la
+    // celda ya volvió a cargarse, manda el Voltorb nuevo: el destello no puede
+    // taparlo. Una descarga (clic en celda apagada) no resuelve el Voltorb, así
+    // que no reproduce el frame de resolución.
+    val resolvesCell = feedback != null &&
+        (feedback.outcome == VoltorbOutcome.DEFUSED ||
+            feedback.outcome == VoltorbOutcome.EXPLODED)
+    val resolving = resolvesCell && flash < 1f && voltorb == null
+    val heat = voltorb?.progressAt(now) ?: 0f
+
+    // La progresión de carga usa todos los frames menos el último, que está
+    // reservado para la resolución (apagado a tiempo o explosión).
+    val lastChargeFrame =
+        (frames.lastIndex - 1).coerceAtLeast(VOLTORB_FIRST_CHARGE_FRAME)
+    val frameIndex = when {
+        resolving -> frames.lastIndex
+        voltorb != null -> VOLTORB_FIRST_CHARGE_FRAME +
+            ((lastChargeFrame - VOLTORB_FIRST_CHARGE_FRAME) * heat).roundToInt()
+        else -> VOLTORB_IDLE_FRAME
+    }.coerceIn(0, frames.lastIndex)
+
+    // Vaivén lateral desde el frame de aviso: más amplitud cuanto más cerca de
+    // explotar. Es el único movimiento de la celda, así que no compite con el HUD.
+    val wobble = if (!resolving && frameIndex >= VOLTORB_WOBBLE_FROM_FRAME) {
+        val span = (frames.lastIndex - VOLTORB_WOBBLE_FROM_FRAME).coerceAtLeast(1)
+        val strength = (frameIndex - VOLTORB_WOBBLE_FROM_FRAME + 1).toFloat() / span
+        sin(now / VOLTORB_WOBBLE_PERIOD_MS) * radius * VOLTORB_WOBBLE_FRACTION * strength
+    } else {
+        0f
+    }
+
+    if (voltorb != null && !resolving) {
+        // Halo de calor por detrás del sprite: a tamaño de celda los frames se
+        // parecen entre sí y esto marca cuál está armado.
+        val glow = lerp(VOLTORB_CHARGE_COLD, VOLTORB_CHARGE_HOT, heat)
+        drawCircle(
+            color = glow.copy(alpha = 0.14f + 0.28f * heat),
+            radius = radius * (1.05f + 0.20f * heat),
+            center = center
+        )
+    }
+
+    val frame = frames[frameIndex]
+    val scale = minOf(
+        (radius * 2f) / frame.width,
+        (radius * 2f) / frame.height
+    )
+    val dstWidth = (frame.width * scale).roundToInt().coerceAtLeast(1)
+    val dstHeight = (frame.height * scale).roundToInt().coerceAtLeast(1)
+    drawImage(
+        image = frame,
+        srcOffset = IntOffset.Zero,
+        srcSize = IntSize(frame.width, frame.height),
+        dstOffset = IntOffset(
+            (center.x - dstWidth / 2f + wobble).roundToInt(),
+            (center.y - dstHeight / 2f).roundToInt()
+        ),
+        dstSize = IntSize(dstWidth, dstHeight),
+        filterQuality = FilterQuality.None
+    )
+
+    if (feedback != null && flash < 1f) {
+        val fade = (1f - flash).coerceIn(0f, 1f)
+        when (feedback.outcome) {
+            VoltorbOutcome.DEFUSED -> drawCircle(
+                color = Color.White.copy(alpha = fade),
+                radius = radius * (1f + 0.55f * flash),
+                center = center,
+                style = Stroke(width = radius * 0.18f)
+            )
+
+            VoltorbOutcome.SHOCK -> {
+                drawCircle(
+                    color = MISS_RED.copy(alpha = fade * 0.75f),
+                    radius = radius * (1f + 0.35f * flash),
+                    center = center,
+                    style = Stroke(width = radius * 0.16f)
+                )
+                repeat(3) { index ->
+                    val angle = (index * (2.0 * PI / 3.0)).toFloat()
+                    drawLine(
+                        color = MISS_RED.copy(alpha = fade),
+                        start = Offset(
+                            x = center.x + cos(angle) * radius * 0.35f,
+                            y = center.y + sin(angle) * radius * 0.35f
+                        ),
+                        end = Offset(
+                            x = center.x + cos(angle) * radius * 1.5f,
+                            y = center.y + sin(angle) * radius * 1.5f
+                        ),
+                        strokeWidth = radius * 0.12f
+                    )
+                }
+            }
+
+            VoltorbOutcome.EXPLODED -> {
+                drawCircle(
+                    color = VOLTORB_CHARGE_HOT.copy(alpha = fade),
+                    radius = radius * (1f + 1.5f * flash),
+                    center = center,
+                    style = Stroke(width = radius * 0.22f)
+                )
+                drawCircle(
+                    color = VOLTORB_GLOW.copy(alpha = fade * 0.6f),
+                    radius = radius * (0.7f + 0.9f * flash),
+                    center = center
+                )
+            }
+        }
+    }
+}
+
 /**
  * Barra de stamina del líder bajo su sprite: es el reloj de la oleada (baja por
  * tiempo) y, en furia, se tiñe de rojo. La comparten las dos mecánicas de
@@ -824,6 +1157,7 @@ private fun GymHud(
                         when {
                             exposed -> R.string.gym_enemy_hint
                             state.mechanic == GymMechanic.TIMING_RINGS -> R.string.gym_ring_hint
+                            state.mechanic == GymMechanic.VOLTORB_GRID -> R.string.gym_voltorb_hint
                             else -> R.string.gym_projectile_hint
                         }
                     ),
@@ -967,6 +1301,55 @@ private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
 private val MISS_RED = Color(0xFFFF5252)
 
 /**
+ * Cuadrícula de Voltorb de Lt. Surge: separación entre celdas, tamaño mínimo y
+ * máximo de celda, y el hueco que se reserva bajo el sprite del líder para su
+ * barra de stamina (así el tablero no la pisa).
+ */
+private val VOLTORB_GAP = 7.dp
+private val VOLTORB_MIN_CELL = 26.dp
+private val VOLTORB_MAX_CELL = 56.dp
+private val VOLTORB_BAR_RESERVE = 34.dp
+
+/** Altura mínima del hueco del tablero, para pantallas muy bajas. */
+private val VOLTORB_MIN_AREA = 124.dp
+
+/** Frames del Voltorb: reposo, carga y resolución, en orden de reproducción. */
+private val VOLTORB_FRAME_RES = intArrayOf(
+    R.drawable.voltorb_capa1,
+    R.drawable.voltorb_capa2,
+    R.drawable.voltorb_capa3,
+    R.drawable.voltorb_capa4,
+    R.drawable.voltorb_capa5,
+    R.drawable.voltorb_capa6,
+    R.drawable.voltorb_capa7,
+    R.drawable.voltorb_capa8,
+    R.drawable.voltorb_capa9
+)
+
+/** Índice del frame de reposo: la celda sin cargar. */
+private const val VOLTORB_IDLE_FRAME = 0
+
+/** Primer frame de la progresión de carga (el segundo del set). */
+private const val VOLTORB_FIRST_CHARGE_FRAME = 1
+
+/** Frame desde el que el Voltorb se balancea: a partir de aquí está por explotar. */
+private const val VOLTORB_WOBBLE_FROM_FRAME = 4
+
+/** Amplitud del vaivén como fracción del radio de la celda. Ajustable: más alto, balanceo más marcado. */
+private const val VOLTORB_WOBBLE_FRACTION = 0.12f
+
+/** Velocidad del vaivén: el seno divide el reloj por este valor. Más bajo = más nervioso. */
+private const val VOLTORB_WOBBLE_PERIOD_MS = 90f
+
+/** Duración del destello de apagado, explosión o descarga. Ajustable: cuánto dura el frame de resolución antes de volver a reposo. */
+private const val VOLTORB_FEEDBACK_MS = 420
+
+/** Del amarillo al rojo según el calor: es la cuenta atrás visible. */
+private val VOLTORB_CHARGE_COLD = Color(0xFFFFB300)
+private val VOLTORB_CHARGE_HOT = Color(0xFFFF3D00)
+private val VOLTORB_GLOW = Color(0xFFFFEB3B)
+
+/**
  * Radio de acierto como fracción del ancho de columna (tolerante al toque), con
  * un mínimo absoluto para dedos: el radio efectivo es el mayor de los dos.
  */
@@ -984,11 +1367,12 @@ private val PROJECTILE_MIN_HIT_RADIUS = 28.dp
  * un gimnasio o el back de otra especie es añadir una línea aquí.
  */
 
-/** Sprite del líder, o `null` si todavía no hay GIF para ese gimnasio. */
+/** Sprite del líder, o `null` si todavía no hay arte para ese gimnasio. */
 @DrawableRes
 fun enemyGifFor(gymId: String): Int? = when (gymId) {
     "brock" -> R.drawable.golem
     "misty" -> R.drawable.starmie
+    "surge" -> R.drawable.raichu
     else -> null
 }
 

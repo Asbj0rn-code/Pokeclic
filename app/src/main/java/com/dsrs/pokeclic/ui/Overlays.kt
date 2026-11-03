@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import com.dsrs.pokeclic.data.loadKantoMapData
+import com.dsrs.pokeclic.dbg.isDebugBuild
 import com.dsrs.pokeclic.dbg.isMapEditorAvailable
 import com.dsrs.pokeclic.dbg.openMapEditor
 import com.dsrs.pokeclic.model.LeadOption
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -184,12 +186,15 @@ private fun LeadRow(option: LeadOption, selected: Boolean, onClick: () -> Unit) 
  *   botón atrás). El estado lo actualiza el `MainViewModel`.
  * @param onWipeGame borra toda la partida (provisional: fila de test que vive
  *   aquí de momento, ver `MainViewModel.onWipeGame`).
+ * @param onDebugJumpToZone salta a una zona concreta (provisional: fila de test,
+ *   ver `MainViewModel.onDebugJumpToZone`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OptionsSheet(
     onDismiss: () -> Unit,
-    onWipeGame: () -> Unit
+    onWipeGame: () -> Unit,
+    onDebugJumpToZone: (String) -> Unit
 ) {
     // Sin estado intermedio: se abre directamente al contenido, como hacía el
     // fragment con STATE_EXPANDED.
@@ -200,7 +205,10 @@ fun OptionsSheet(
         sheetState = sheetState
     ) {
         ImmersiveModalWindow()
-        OptionsContent(onWipeGame = onWipeGame)
+        OptionsContent(
+            onWipeGame = onWipeGame,
+            onDebugJumpToZone = onDebugJumpToZone
+        )
     }
 }
 
@@ -237,16 +245,24 @@ private fun ImmersiveModalWindow() {
     }
 }
 
+/** Zona a la que salta la fila de desarrollo de la hoja de opciones. */
+private const val DEBUG_ZONE_CARMIN = "ciudad_carmin"
+
 /**
  * Contenido de la hoja de opciones: título, separador y dos filas decorativas
- * sin acción asociada, más la fila provisional de borrado de partida (test),
- * que pide confirmación explícita antes de destruir la partida.
+ * sin acción asociada, la fila provisional de borrado de partida (test) —que pide
+ * confirmación explícita antes de destruir la partida— y, solo en compilaciones
+ * de desarrollo, el salto directo a Ciudad Carmín.
  */
 @Composable
-fun OptionsContent(onWipeGame: () -> Unit = {}) {
+fun OptionsContent(
+    onWipeGame: () -> Unit = {},
+    onDebugJumpToZone: (String) -> Unit = {}
+) {
     // Confirmación del borrado: un toque accidental no debe poder destruir la
     // partida directamente.
     var showWipeConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
         Text(
@@ -274,6 +290,19 @@ fun OptionsContent(onWipeGame: () -> Unit = {}) {
             leadingContent = { Icon(Icons.Filled.Delete, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().clickable(onClick = { showWipeConfirm = true })
         )
+
+        // Fila de desarrollo: deja la partida en Ciudad Carmín con la barra llena
+        // para probar el gimnasio de Lt. Surge sin recorrer Kanto. Solo se compone
+        // en compilaciones depurables, igual que el botón del editor del mapa.
+        if (context.isDebugBuild()) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.options_debug_carmin)) },
+                leadingContent = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onDebugJumpToZone(DEBUG_ZONE_CARMIN)
+                }
+            )
+        }
     }
 
     if (showWipeConfirm) {

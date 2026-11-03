@@ -7,7 +7,9 @@
  */
 package com.dsrs.pokeclic.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -20,11 +22,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.annotation.DrawableRes
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Direction
@@ -90,6 +96,8 @@ import kotlin.random.Random
  * @param onTallGrassToggle entra o sale del modo hierba alta.
  * @param onReset reinicia la run conservando la meta.
  * @param onWipeGame borra toda la partida (provisional, para testear la intro).
+ * @param onDebugJumpToZone salta a una zona concreta (provisional, para testear
+ *   contenido sin recorrer el mapa; ver `MainViewModel.onDebugJumpToZone`).
  * @param onEnterGym / @param onLeaveGym entran o abandonan el gimnasio.
  * @param onWatchGymTutorial "Ver tutorial" de la entrada al gimnasio.
  * @param onGymIntroSkip "Omitir" de la entrada al gimnasio.
@@ -97,6 +105,7 @@ import kotlin.random.Random
  * @param onAdvanceZone pulsa el botón Avanzar al llenarse la barra de la zona.
  * @param onGymRetry reintenta el combate; @param onGymProjectileHit rompe un
  *   proyectil; @param onGymRingTap intenta acertar el anillo más cercano;
+ *   @param onGymVoltorbTap apaga el Voltorb de una celda (o sufre su descarga);
  *   @param onGymEnemyHit golpea al líder expuesto.
  * @param onFishingHold notifica si el jugador mantiene pulsada la pantalla
  *   durante la partida de pesca (true: pulsado; false: soltado).
@@ -116,6 +125,7 @@ fun AppRoot(
     onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
     onWipeGame: () -> Unit,
+    onDebugJumpToZone: (String) -> Unit,
     onEnterGym: () -> Unit,
     onLeaveGym: () -> Unit,
     onWatchGymTutorial: () -> Unit,
@@ -125,6 +135,7 @@ fun AppRoot(
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
     onGymRingTap: () -> Unit,
+    onGymVoltorbTap: (Int) -> Unit,
     onGymEnemyHit: () -> Unit,
     onFishingHold: (Boolean) -> Unit,
     onFishingResultContinue: () -> Unit,
@@ -181,16 +192,11 @@ fun AppRoot(
         // Cada mecánica tiene su arte: cueva de roca para Brock y piscina para
         // Misty. Está detrás de todo y el `Scaffold` se vuelve transparente.
         if (gymScene) {
-            val gymBackground = when (state.gymMechanic) {
-                GymMechanic.PROJECTILES -> R.drawable.rock_gym
-                GymMechanic.TIMING_RINGS -> R.drawable.water_gym
+            when (state.gymMechanic) {
+                GymMechanic.PROJECTILES -> GymBackground(R.drawable.rock_gym)
+                GymMechanic.TIMING_RINGS -> GymBackground(R.drawable.water_gym)
+                GymMechanic.VOLTORB_GRID -> ElectricGymBackdrop()
             }
-            Image(
-                painter = painterResource(gymBackground),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
         } else if (showRouteBackground) {
             // Fondo de ruta: bucle vertical con deriva lateral por tramos, movido
             // con las pulsaciones de la Pokéball. Va detrás del `Scaffold`, que
@@ -291,6 +297,7 @@ fun AppRoot(
                         state = activeGym,
                         onProjectileHit = onGymProjectileHit,
                         onRingTap = onGymRingTap,
+                        onVoltorbTap = onGymVoltorbTap,
                         onEnemyHit = onGymEnemyHit,
                         onRetry = onGymRetry,
                         onLeave = onLeaveGym
@@ -340,7 +347,11 @@ fun AppRoot(
     if (state.isOptionsOpen) {
         OptionsSheet(
             onDismiss = onCloseOptions,
-            onWipeGame = onWipeGame
+            onWipeGame = onWipeGame,
+            onDebugJumpToZone = { zoneId ->
+                onCloseOptions()
+                onDebugJumpToZone(zoneId)
+            }
         )
     }
 }
@@ -403,6 +414,64 @@ private fun previewGameState(
 )
 
 /**
+ * Fondo del gimnasio: arte de cada mecánica a pantalla completa.
+ */
+@Composable
+private fun GymBackground(@DrawableRes resId: Int) {
+    Image(
+        painter = painterResource(resId),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+/**
+ * Fondo provisional del gimnasio eléctrico (Lt. Surge).
+ *
+ * Todavía no hay arte de gimnasio para Ciudad Carmín, así que se dibuja un
+ * degradado oscuro con rayos estáticos. Cuando exista `R.drawable.electric_gym`,
+ * basta con cambiar la llamada por `GymBackground(R.drawable.electric_gym)`.
+ */
+@Composable
+private fun ElectricGymBackdrop() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(ELECTRIC_GYM_SKY, ELECTRIC_GYM_FLOOR)
+                )
+            )
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val boltCount = 6
+            val segments = 6
+            repeat(boltCount) { index ->
+                val baseX = size.width * (index + 0.5f) / boltCount
+                val path = Path()
+                path.moveTo(baseX, 0f)
+                for (step in 1..segments) {
+                    val y = size.height * step / segments
+                    val jitter = if (step % 2 == 0) size.width * 0.03f else -size.width * 0.03f
+                    path.lineTo(baseX + jitter, y)
+                }
+                drawPath(
+                    path = path,
+                    color = ELECTRIC_GYM_BOLT,
+                    style = Stroke(width = 3f)
+                )
+            }
+        }
+    }
+}
+
+/** Paleta del fondo eléctrico provisional. */
+private val ELECTRIC_GYM_SKY = Color(0xFF1B2436)
+private val ELECTRIC_GYM_FLOOR = Color(0xFF3A2C0A)
+private val ELECTRIC_GYM_BOLT = Color(0x33FFEB3B)
+
+/**
  * Montaje completo de la app para los previews ([AppRoot] con sus overlays). El
  * shell ya no conoce ViewModels ni Fragments, así que reproduce la composición
  * real.
@@ -415,6 +484,7 @@ private fun AppRootStage(state: GameUiState) {
         onTallGrassToggle = {},
         onReset = {},
         onWipeGame = {},
+        onDebugJumpToZone = {},
         onEnterGym = {},
         onLeaveGym = {},
         onWatchGymTutorial = {},
@@ -424,6 +494,7 @@ private fun AppRootStage(state: GameUiState) {
         onGymRetry = {},
         onGymProjectileHit = {},
         onGymRingTap = {},
+        onGymVoltorbTap = {},
         onGymEnemyHit = {},
         onFishingHold = {},
         onFishingResultContinue = {},

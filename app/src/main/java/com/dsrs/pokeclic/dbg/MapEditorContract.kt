@@ -31,12 +31,20 @@ import android.content.pm.ApplicationInfo
 const val ACTION_OPEN_MAP_EDITOR = "com.dsrs.pokeclic.dbg.action.OPEN_MAP_EDITOR"
 
 /**
- * Indica si esta compilación puede abrir el editor: la marca de depurado
- * (`FLAG_DEBUGGABLE`) la decide el tipo de variante, no el compilador, así
- * que es la comprobación más fiable en tiempo de ejecución.
+ * Indica si esta compilación es de desarrollo: la marca de depurado
+ * (`FLAG_DEBUGGABLE`) la decide el tipo de variante, no el compilador, así que es
+ * la comprobación más fiable en tiempo de ejecución. Es la barrera que usan las
+ * ayudas de desarrollo para no componerse en release.
  */
-fun Context.isMapEditorAvailable(): Boolean =
+fun Context.isDebugBuild(): Boolean =
     applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+
+/**
+ * Indica si esta compilación puede abrir el editor del mapa. Hoy coincide con
+ * [isDebugBuild]; se mantiene como nombre propio porque la condición del editor
+ * podría estrecharse sin tocar el resto de ayudas de desarrollo.
+ */
+fun Context.isMapEditorAvailable(): Boolean = isDebugBuild()
 
 /**
  * Abre el editor visual del mapa en las compilaciones de desarrollo.

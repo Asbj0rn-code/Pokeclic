@@ -197,11 +197,19 @@ private val ringTutorialSteps = listOf(
     TutorialStep(R.string.gym_ring_tutorial_step3_title, R.string.gym_ring_tutorial_step3_text)
 )
 
+/** Pasos del gimnasio de Voltorb (Lt. Surge). */
+private val voltorbTutorialSteps = listOf(
+    TutorialStep(R.string.gym_voltorb_tutorial_step1_title, R.string.gym_voltorb_tutorial_step1_text),
+    TutorialStep(R.string.gym_voltorb_tutorial_step2_title, R.string.gym_voltorb_tutorial_step2_text),
+    TutorialStep(R.string.gym_voltorb_tutorial_step3_title, R.string.gym_voltorb_tutorial_step3_text)
+)
+
 /** Tutorial del líder: cada mecánica se explica con sus propias reglas. */
 private fun tutorialStepsFor(mechanic: GymMechanic): List<TutorialStep> =
     when (mechanic) {
         GymMechanic.PROJECTILES -> projectileTutorialSteps
         GymMechanic.TIMING_RINGS -> ringTutorialSteps
+        GymMechanic.VOLTORB_GRID -> voltorbTutorialSteps
     }
 
 /**

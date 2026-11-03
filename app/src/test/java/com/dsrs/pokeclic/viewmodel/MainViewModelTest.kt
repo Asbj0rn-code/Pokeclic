@@ -104,6 +104,40 @@ class MainViewModelTest {
         Zone("z3", "Z3", 4L, listOf("caterpie"))
     )
 
+    /**
+     * Salto de desarrollo a una zona: deja el índice ahí, la barra llena y el
+     * gimnasio listo para entrar aunque ya se hubiera ganado en esta run.
+     */
+    @Test
+    fun debugJump_leavesTheZoneFullAndItsGymReady() {
+        val zones = listOf(
+            Zone("z1", "Z1", 2L, listOf("pidgey")),
+            Zone("z_carmin", "Carmín", 3L, emptyList(), gymId = "surge")
+        )
+        val vm = viewModel(
+            zones = zones,
+            saved = GameSnapshot(zoneIndex = 0, gymClearedRun = setOf("surge"))
+        )
+
+        vm.onDebugJumpToZone("z_carmin")
+
+        val state = vm.uiState.value
+        assertEquals(1, state.zoneIndex)
+        assertEquals("z_carmin", state.zoneId)
+        assertEquals(3L, state.zoneClicks)
+        assertTrue(state.isGymReady)
+    }
+
+    /** Un id de zona desconocido no mueve la partida. */
+    @Test
+    fun debugJump_toUnknownZoneDoesNothing() {
+        val vm = viewModel()
+
+        vm.onDebugJumpToZone("no-existe")
+
+        assertEquals(0, vm.uiState.value.zoneIndex)
+    }
+
     @Test
     fun blankName_doesNotFinishIntro() {
         val vm = viewModel()
