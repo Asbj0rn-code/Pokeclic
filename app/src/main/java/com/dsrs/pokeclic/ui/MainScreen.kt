@@ -482,7 +482,7 @@ object MainLayout {
     val TRAINER_SIZE = 80.dp
 
     /** Trainer pegado a la parte alta de la zona de contenido. */
-    const val TRAINER_BIAS = -0.0f
+    const val TRAINER_BIAS = 0f
 
     /** Botón de hierba alta: junto al trainer, arriba a la derecha. */
     val TALL_GRASS_SIZE = 80.dp

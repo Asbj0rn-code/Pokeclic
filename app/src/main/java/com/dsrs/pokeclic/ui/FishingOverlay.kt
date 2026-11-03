@@ -57,7 +57,6 @@ private val RAIL_COLOR = Color(0xFF0E2340)
 private val BAR_COLOR = Color(0xFFFFD75A)
 private val GAUGE_COLOR = Color(0xFF334033)
 private val GAUGE_FILL_COLOR = Color(0xFF66BB6A)
-private val WILD_GIF_DIALOGUE = "WildSprite"
 
 /**
  * Escena completa de la partida de pesca.

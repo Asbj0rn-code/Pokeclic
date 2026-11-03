@@ -28,9 +28,6 @@ import com.dsrs.pokeclic.model.TrainerState
  * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [fishing],
  *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
- *
- * @param clicksPerSecond producción pasiva; hoy 0, pero el bucle del ViewModel ya
- *   la aplica, así que conectar una mejora no requerirá tocar la UI.
  */
 data class GameUiState(
     // --- meta permanente ---
@@ -80,7 +77,6 @@ data class GameUiState(
     /** Especies en posesión incluyendo al starter, igual que la potencia de clic. */
     val ownedCount: Int = 0,
     val clickPower: Long = 1L,
-    val clicksPerSecond: Long = 0L,
     val maxHp: Int = 1,
     val leadName: String? = null,
     val leadType: PokemonType? = null,

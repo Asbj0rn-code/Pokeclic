@@ -47,13 +47,9 @@ object ContentZoneDefaults {
  * 0f = pegado a la guía superior, 0.5f = centrado, 1f = pegado a la inferior.
  */
 class PercentageLayoutScope internal constructor() {
-    /** Coloca el elemento dentro de la zona de contenido con un sesgo vertical. */
+    /** Coloca el elemento con un sesgo vertical respecto a la zona de contenido. */
     fun Modifier.anchorVertically(bias: Float = 0.5f): Modifier =
         this.then(AnchorData(verticalBias = bias))
-
-    /** Coloca el elemento con un sesgo horizontal respecto a los bordes de la pantalla. */
-    fun Modifier.anchorHorizontally(bias: Float = 0.5f): Modifier =
-        this.then(AnchorData(horizontalBias = bias))
 
     /** Coloca el elemento en ambas dimensiones de una vez. */
     fun Modifier.anchor(verticalBias: Float = 0.5f, horizontalBias: Float = 0.5f): Modifier =

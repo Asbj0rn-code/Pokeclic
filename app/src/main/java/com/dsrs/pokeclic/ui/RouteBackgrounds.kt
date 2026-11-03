@@ -105,6 +105,31 @@ internal object RouteBackgrounds {
 
     /** Un fondo propio por zona. Las que falten aquí usan [DEFAULT]. */
     private val byZone: Map<String, ZoneBackground> = mapOf(
+        // Pueblo Paleta: arte y trayectoria propios; los clics y las direcciones
+        // se ajustan en esta entrada.
+        //
+        // Los tramos rectos suman 31 clics y el arte mide 3072 px de alto, así
+        // que una vuelta al dibujo pediría 40 clics rectos (3072 × 25 / 1920).
+        // Con 31 el ciclo no cierra en el mismo píxel: la vuelta siguiente
+        // empieza corrida 0,775 de baldosa. Los laterales sí están balanceados
+        // (9 a cada lado), así que el personaje vuelve a la línea central.
+        "pueblo_paleta" to ZoneBackground(
+            imageRes = R.drawable.background_pallet_town,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 3f),
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 13f),
+                    RouteLeg(clicks = 9f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 12f),
+                    RouteLeg(clicks = 3f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 12f)
+                )
+            ),
+            // El borde inferior del arte cae un poco por debajo del centro de la
+            // pantalla, así que se empieza viendo la parte baja de la escena.
+            startAnchor = 0.6f
+        ),
         // Bosque Verde: arte y trayectoria propios. Los clics y las direcciones
         // salen de esta lista, en orden y contados en clics:
         //   2 recto · 3 derecha · 2 recto · 2 derecha · 6 recto ·
@@ -143,6 +168,15 @@ internal object RouteBackgrounds {
 
     /** Fondo de [zoneId]; nunca es nulo. */
     fun forZone(zoneId: String): ZoneBackground = byZone[zoneId] ?: DEFAULT
+
+    /**
+     * `true` si [zoneId] tiene arte propio.
+     *
+     * Lo usa `AppRoot` para mostrar el fondo animado en zonas sin fauna: una
+     * ciudad con arte propio (Pueblo Paleta) también lo enseña, mientras que las
+     * que no tienen entrada siguen con el fondo liso de siempre.
+     */
+    fun hasOwnArtwork(zoneId: String): Boolean = zoneId in byZone
 
     /**
      * Ids con entrada propia. Lo usa [RouteBackgroundsTest] para detectar un id
