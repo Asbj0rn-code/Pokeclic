@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local AI tooling artifacts
+/.atl/
+/.opencode/skills/
+/odd/
