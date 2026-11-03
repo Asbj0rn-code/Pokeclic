@@ -4,6 +4,7 @@ import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.ZoneCatalog
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -99,6 +100,25 @@ class RouteBackgroundsTest {
         RouteBackgrounds.configuredZoneIds.forEach { id ->
             assertTrue("'$id' no es una zona del catálogo", id in zoneIds)
         }
+    }
+
+    @Test
+    fun puebloPaleta_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_pallet_town,
+            RouteBackgrounds.forZone("pueblo_paleta").imageRes
+        )
+    }
+
+    @Test
+    fun onlyZonesWithAnEntry_showTheAnimatedBackground() {
+        // El fondo animado se muestra en zonas con fauna y, además, en las que
+        // tienen arte propio: Pueblo Paleta no tiene encuentros y aun así lo
+        // enseña. Las ciudades sin entrada siguen con el fondo liso.
+        assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
     }
 
     @Test
