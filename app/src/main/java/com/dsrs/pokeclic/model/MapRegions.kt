@@ -12,7 +12,7 @@
  *
  * - El **catálogo** (`assets/kanto_locations.json`, copia derivada de
  *   `ubicaciones.json`) es la única fuente de identificadores, nombres y tipos
- *   de las 46 ubicaciones de Kanto. Sus ids numéricos son **estables**: son la
+ *   de las 47 ubicaciones de Kanto. Sus ids numéricos son **estables**: son la
  *   referencia que el resto del sistema usa para enlazar sin duplicar textos.
  * - El **mapeo** (`assets/kanto_regions.json`) solo guarda geografía: qué
  *   región (círculo, rectángulo o polígono) ocupa cada ubicación ya dibujada.
@@ -181,6 +181,57 @@ fun KantoRegionMap.regionAt(
     regions.sortedByDescending { it.effectivePriority(locations) }
         .asIterable()
         .firstOrNull { it.contains(u, v) }
+
+/**
+ * Orden de presentación del indicador del mapa: ciudad, ruta y, al final,
+ * especiales. **No** es la prioridad de solape del hit-testing
+ * ([MapRegion.effectivePriority], donde SPECIAL supera a ROUTE): aquí manda
+ * la jerarquía de lectura del cuadro informativo.
+ */
+private fun MapRegion.displayRank(locations: List<MapLocation>): Int =
+    when (resolvedType(locations)) {
+        MapRegionType.CITY -> 3
+        MapRegionType.ROUTE -> 2
+        MapRegionType.SPECIAL -> 1
+        null -> 2 // Enlace roto: convención de [MapRegion.effectivePriority] (ruta).
+    }
+
+/**
+ * Resultado multi-zona del punto pulsado: las regiones ya **ordenadas**
+ * (ciudad > ruta > especial, empates por orden del JSON) para presentarlas
+ * tal cual. [primary] es la destacada y [secondary] el resto.
+ */
+data class MapRegionSelection(private val regions: List<MapRegion>) {
+    init {
+        require(regions.isNotEmpty()) { "MapRegionSelection sin regiones" }
+    }
+
+    /** Zona destacada del cuadro: la primera del orden de presentación. */
+    val primary: MapRegion get() = regions.first()
+
+    /** Resto de zonas que también contienen el punto, tras la destacada. */
+    val secondary: List<MapRegion> get() = regions.drop(1)
+}
+
+/**
+ * ¿Qué zonas hay bajo el punto `(u, v)` de la imagen? **Todas** las que
+ * contienen realmente el punto (mismo hit-testing inclusivo que
+ * [KantoRegionMap.regionAt]), ordenadas por categoría CITY > ROUTE >
+ * SPECIAL y, dentro de cada categoría, por el orden estable del JSON, de
+ * modo que el resultado depende solo del fichero. Sin zonas devuelve `null`
+ * (la UI limpia el indicador); nunca devuelve una selección vacía.
+ */
+fun KantoRegionMap.selectAt(
+    u: Float,
+    v: Float,
+    locations: List<MapLocation> = emptyList()
+): MapRegionSelection? {
+    val hits = regions.filter { it.contains(u, v) }
+    if (hits.isEmpty()) return null
+    // sortedWith es estable en Kotlin: los empates conservan el orden de regions.
+    val ordered = hits.sortedByDescending { it.displayRank(locations) }
+    return MapRegionSelection(ordered)
+}
 
 /**
  * Referencias cruzadas: comprueba que [locations] cubre los enlaces de este

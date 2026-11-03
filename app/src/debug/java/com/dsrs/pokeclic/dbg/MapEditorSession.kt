@@ -6,7 +6,7 @@
  * [com.dsrs.pokeclic.dbg.MapEditorStore] y la UI en [MapEditorScreen]:
  * aquí solo se valida y se transforma el estado.
  *
- * - El editor carga el **catálogo** (46 ubicaciones) y mantiene en memoria las
+ * - El editor carga el **catálogo** (47 ubicaciones) y mantiene en memoria las
  *   zonas confirmadas de la sesión; la persistencia en fichero la hace la
  *   capa de I/O (autoguardado, recuperación, exportar/importar), nunca aquí.
  * - Una zona se dibuja siempre **sobre un objetivo** ([MapEditorTarget]): o
@@ -145,7 +145,7 @@ data class MapEditorResult(
  * alteran [regions], así que jamás se autoguardan solos.
  */
 data class MapEditorState(
-    /** Ubicaciones del catálogo (46 con el JSON actual). */
+    /** Ubicaciones del catálogo (47 con el JSON actual). */
     val catalog: List<com.dsrs.pokeclic.model.MapLocation>,
 
     /** Zonas confirmadas en la sesión, en orden de creación. */
@@ -670,7 +670,7 @@ private fun distanceOf(a: UvPoint, b: UvPoint): Float = hypot(b.u - a.u, b.v - a
  * - Círculo con radio positivo; rectángulo con área; polígono con al menos
  *   [MapEditorMinPolygonVertices] vértices.
  * - Zona enlazada: el `catalogId` debe existir en el catálogo actual (la
- *   documentación de los 46 ids es la validación de referencias rotas).
+ *   documentación de los 47 ids es la validación de referencias rotas).
  * - Zona libre: `name` no vacío y `type` presente (el parseo del esquema ya
  *   lo exige; se revalida por robustez al aceptar datos directos).
  *

@@ -45,6 +45,7 @@
     {"id": 43, "nombre": "Zona Safari", "tipo": "ubicacion_especial"},
     {"id": 44, "nombre": "Mansión Pokémon", "tipo": "ubicacion_especial"},
     {"id": 45, "nombre": "Calle Victoria", "tipo": "ubicacion_especial"},
-    {"id": 46, "nombre": "Cueva Celeste", "tipo": "ubicacion_especial"}
+    {"id": 46, "nombre": "Cueva Celeste", "tipo": "ubicacion_especial"},
+    {"id": 47, "nombre": "Liga Pokémon", "tipo": "ciudad_pueblo"}
   ]
 }
