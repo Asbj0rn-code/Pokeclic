@@ -348,6 +348,7 @@ class ModelTest {
         assertEquals(3, after.playerHp)
         assertEquals(VoltorbOutcome.EXPLODED, after.voltorbFeedback?.outcome)
         assertEquals(2, after.voltorbFeedback?.count)
+        assertEquals(listOf(0, 6), after.voltorbFeedback?.cells)
     }
 
     @Test

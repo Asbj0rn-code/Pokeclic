@@ -342,15 +342,20 @@ enum class VoltorbOutcome {
 /**
  * Feedback visual del último Voltorb resuelto (estado **transitorio**).
  *
- * @param cell celda que produjo el resultado, para animar solo esa casilla.
+ * @param cell celda principal del resultado; en una explosión múltiple es la de
+ *   mayor índice, pero la UI debe usar [cells] para pintar todas.
  * @param outcome apagado, explosión o descarga.
  * @param count Voltorb cobrados en el mismo tick; solo puede ser mayor que 1
  *   cuando varios explotan a la vez.
+ * @param cells todas las celdas que produjeron el resultado. Un solo apagado o
+ *   una descarga traen una; varias explosiones en el mismo tick traen todas, de
+ *   modo que la escena puede pintar una explosión por celda.
  */
 data class VoltorbFeedback(
     val cell: Int,
     val outcome: VoltorbOutcome,
-    val count: Int = 1
+    val count: Int = 1,
+    val cells: List<Int> = listOf(cell)
 )
 
 /**
@@ -567,7 +572,8 @@ object GymCombat {
             voltorbFeedback = VoltorbFeedback(
                 cell = exploded.maxOf { it.cell },
                 outcome = VoltorbOutcome.EXPLODED,
-                count = exploded.size
+                count = exploded.size,
+                cells = exploded.map { it.cell }
             )
         )
     }

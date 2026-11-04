@@ -59,7 +59,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -740,6 +742,11 @@ private fun RingGymScene(
  * decide qué pasa —esta escena solo pinta y envía la celda tocada—, igual que las
  * otras mecánicas.
  *
+ * La cuadrícula se dimensiona por **ancho**: ocupa de extremo a extremo de la
+ * pantalla y el líder se dibuja más bajo para cederle altura. Si el alto no
+ * alcanza (pantallas muy bajas), la celda se encoge y el tablero deja de llegar a
+ * los bordes antes que desbordarse sobre el jugador o la barra de vida.
+ *
  * La capa de toque es una sola, como en [GymScene]: enemigo si está expuesto, y
  * si no, la celda de la cuadrícula bajo el dedo.
  */
@@ -794,17 +801,59 @@ private fun VoltorbGridScene(
             }
         }
 
-        // La cuadrícula vive entre la barra del líder y la cabeza del jugador: se
-        // mide ese hueco y la celda se escala para caber.
-        val gridAreaTop = ENEMY_TOP + ENEMY_HEIGHT + VOLTORB_BAR_RESERVE
-        val playerTop = maxHeight - PLAYER_BOTTOM - PLAYER_HEIGHT
-        val available = (playerTop - gridAreaTop).coerceAtLeast(VOLTORB_MIN_AREA)
-        val cellSide = ((available - VOLTORB_GAP * (rows - 1)) / rows)
-            .coerceIn(VOLTORB_MIN_CELL, VOLTORB_MAX_CELL)
+        // Hoja de la aurora eléctrica (pixelfx: lightning/voltorb-aura). 30 frames
+        // de 160x160 en una rejilla de 6 columnas.
+        val auraSheet = remember {
+            BitmapFactory.decodeResource(context.resources, R.drawable.voltorb_aura)
+                .asImageBitmap()
+        }
+
+        // Explosión de un Voltorb (pixelfx: explosions/voltorb-blast), recortada a
+        // los 32 frames que se ven.
+        val blastSheet = remember {
+            BitmapFactory.decodeResource(context.resources, R.drawable.voltorb_blast)
+                .asImageBitmap()
+        }
+
+        // Una entrada por celda afectada, con su instante de arranque y su
+        // duración: así dos explosiones en el mismo tick se pintan las dos, cada
+        // una con su reloj, y el fallo por tocar una celda apagada puede correr
+        // más rápido que la explosión real.
+        var blasts by remember { mutableStateOf(emptyList<VoltorbBlast>()) }
+        LaunchedEffect(feedback) {
+            if (feedback == null) return@LaunchedEffect
+            val start = nowMs()
+            val (cells, duration) = when (feedback.outcome) {
+                VoltorbOutcome.EXPLODED -> feedback.cells to VOLTORB_BLAST_MS
+                // Clic en una celda apagada: misma animación, sin bamboleo y más
+                // corta, como castigo inmediato por el error.
+                VoltorbOutcome.SHOCK -> listOf(feedback.cell) to VOLTORB_SHOCK_BLAST_MS
+                VoltorbOutcome.DEFUSED -> return@LaunchedEffect
+            }
+            blasts = blasts.filter { start - it.startMs < it.durationMs } +
+                cells.map { VoltorbBlast(it, start, duration) }
+        }
+
+        // La cuadrícula manda el layout: se dimensiona por **ancho** para llegar de
+        // extremo a extremo de la pantalla. El alto disponible —entre la barra del
+        // líder y la barra de vida del jugador— actúa solo como techo de seguridad:
+        // si la pantalla es demasiado baja, la celda se encoge y la cuadrícula deja
+        // de ocupar todo el ancho en vez de desbordarse.
+        val cellFromWidth = (maxWidth - VOLTORB_GAP * (cols - 1)) / cols
+        val gridTop = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + VOLTORB_BAR_RESERVE
+        val bottomReserved = PLAYER_HEIGHT + VOLTORB_PLAYER_GAP + VOLTORB_HP_BAR_RESERVE
+        val maxGridHeight =
+            (maxHeight - gridTop - bottomReserved).coerceAtLeast(VOLTORB_MIN_AREA)
+        val cellFromHeight = (maxGridHeight - VOLTORB_GAP * (rows - 1)) / rows
+        val cellSide = minOf(cellFromWidth, cellFromHeight)
+            .coerceAtLeast(VOLTORB_MIN_CELL)
+
         val gridWidth = cellSide * cols + VOLTORB_GAP * (cols - 1)
         val gridHeight = cellSide * rows + VOLTORB_GAP * (rows - 1)
         val gridLeft = (maxWidth - gridWidth) / 2f
-        val gridTop = gridAreaTop + (available - gridHeight) / 2f
+        // El jugador se ancla debajo de la cuadrícula, no al borde inferior: así el
+        // tablero puede crecer sin taparlo.
+        val playerTop = gridTop + gridHeight + VOLTORB_PLAYER_GAP
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val side = cellSide.toPx()
@@ -812,26 +861,92 @@ private fun VoltorbGridScene(
             val left = gridLeft.toPx()
             val top = gridTop.toPx()
 
+            // Tablero oscuro difuminado detrás de la cuadrícula: el fondo del
+            // gimnasio es arte cargado y sin esto los frames de reposo y de carga
+            // se confunden entre sí. Va como una sola pieza y no por celda porque
+            // el sprite ocupa casi toda la celda: un halo individual quedaría
+            // tapado por el propio Voltorb.
+            //
+            // El borde se difumina con pasos concéntricos (no hay `blur` fiable en
+            // el Canvas por debajo de API 31). Pocos pasos bastan: negro sobre arte
+            // no deja bandas visibles.
+            val boardPad = VOLTORB_BOARD_PAD.toPx()
+            val feather = VOLTORB_BOARD_FEATHER.toPx()
+            val boardLeft = left - boardPad
+            val boardTop = top - boardPad
+            val boardWidth = (gridWidth.toPx() + boardPad * 2f)
+            val boardHeight = (gridHeight.toPx() + boardPad * 2f)
+            val boardCorner = VOLTORB_BOARD_CORNER.toPx()
+            val stepAlpha = VOLTORB_BOARD_ALPHA / VOLTORB_BOARD_STEPS
+
+            for (step in 0 until VOLTORB_BOARD_STEPS) {
+                val grow = feather * (VOLTORB_BOARD_STEPS - step) / VOLTORB_BOARD_STEPS
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = stepAlpha),
+                    topLeft = Offset(boardLeft - grow, boardTop - grow),
+                    size = Size(boardWidth + grow * 2f, boardHeight + grow * 2f),
+                    cornerRadius = CornerRadius(boardCorner + grow)
+                )
+            }
+
             for (row in 0 until rows) {
                 for (column in 0 until cols) {
                     val cell = row * cols + column
+                    val center = Offset(
+                        x = left + column * (side + gapPx) + side / 2f,
+                        y = top + row * (side + gapPx) + side / 2f
+                    )
+                    val voltorb = state.voltorbs.firstOrNull { it.cell == cell }
+
+                    // Aurora eléctrica solo mientras la celda está cargándose: es
+                    // el aviso de que ese Voltorb está armado. Va detrás del sprite
+                    // para no taparle la cara.
+                    if (voltorb != null && !exposed) {
+                        drawVoltorbAura(
+                            sheet = auraSheet,
+                            center = center,
+                            cellSide = side,
+                            now = now,
+                            phaseOffsetMs = cell * VOLTORB_AURA_PHASE_STEP_MS
+                        )
+                    }
+
                     drawVoltorbCell(
+                        center = center,
+                        radius = side / 2f,
+                        voltorb = voltorb,
+                        feedback = feedback?.takeIf { it.cell == cell },
+                        flash = feedbackProgress.value,
+                        now = now,
+                        frames = frames,
+                        exposed = exposed
+                    )
+                }
+            }
+
+            // Los estallidos van por encima de todas las celdas: la celda afectada
+            // queda tapada por su propia animación, no al revés.
+            blasts.forEach { blast ->
+                val progress = ((now - blast.startMs).toFloat() / blast.durationMs)
+                    .coerceIn(0f, 1f)
+                if (progress < 1f) {
+                    val column = blast.cell % cols
+                    val row = blast.cell / cols
+                    drawVoltorbBlast(
+                        sheet = blastSheet,
                         center = Offset(
                             x = left + column * (side + gapPx) + side / 2f,
                             y = top + row * (side + gapPx) + side / 2f
                         ),
-                        radius = side / 2f,
-                        voltorb = state.voltorbs.firstOrNull { it.cell == cell },
-                        feedback = feedback?.takeIf { it.cell == cell },
-                        flash = feedbackProgress.value,
-                        now = now,
-                        frames = frames
+                        cellSide = side,
+                        progress = progress
                     )
                 }
             }
         }
 
-        // Enemigo, con pulso mientras está expuesto.
+        // Enemigo, con pulso mientras está expuesto. Se estrecha en este gimnasio
+        // para dejarle la altura a la cuadrícula.
         GymSpriteBox(
             gifRes = enemyGifFor(state.gymId),
             name = state.leaderName,
@@ -840,7 +955,7 @@ private fun VoltorbGridScene(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .size(ENEMY_WIDTH, VOLTORB_ENEMY_HEIGHT)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
@@ -848,15 +963,16 @@ private fun VoltorbGridScene(
                 }
         )
 
-        // Jugador; placeholder por tipo si aún no hay back.
+        // Jugador; placeholder por tipo si aún no hay back. Va debajo de la
+        // cuadrícula, así que se posiciona desde arriba y no desde el borde.
         GymSpriteBox(
             gifRes = backGifFor(state.leadSpeciesId),
             name = state.leadName,
             type = state.leadType,
             contentDescription = state.leadName,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = -PLAYER_BOTTOM)
+                .align(Alignment.TopStart)
+                .offset(x = (maxWidth - PLAYER_WIDTH) / 2f, y = playerTop)
                 .size(PLAYER_WIDTH, PLAYER_HEIGHT)
         )
 
@@ -865,7 +981,7 @@ private fun VoltorbGridScene(
             exposed = exposed,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
+                .offset(y = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + 6.dp)
         )
 
         Box(
@@ -880,7 +996,7 @@ private fun VoltorbGridScene(
                     val enemyLeft = (size.width - ENEMY_WIDTH.toPx()) / 2f
                     val enemyTop = ENEMY_TOP.toPx()
                     val enemyRight = enemyLeft + ENEMY_WIDTH.toPx()
-                    val enemyBottom = enemyTop + ENEMY_HEIGHT.toPx()
+                    val enemyBottom = enemyTop + VOLTORB_ENEMY_HEIGHT.toPx()
 
                     detectTapGestures { tap ->
                         if (
@@ -915,6 +1031,92 @@ private fun VoltorbGridScene(
 }
 
 /**
+ * Pinta la aurora eléctrica de una celda cargada usando la hoja exportada por
+ * pixelfx (`lightning/voltorb-aura`): 30 frames de 160x160 en una rejilla de 6
+ * columnas a 30 fps.
+ *
+ * Se dibuja más grande que la celda para que los arcos caigan por fuera de la
+ * silueta del Voltorb. Cada celda recibe un desfase propio: si compartieran fase,
+ * las dieciséis irían al unísono y parecería un patrón, no electricidad.
+ */
+private fun DrawScope.drawVoltorbAura(
+    sheet: ImageBitmap,
+    center: Offset,
+    cellSide: Float,
+    now: Long,
+    phaseOffsetMs: Long
+) {
+    val frameMs = 1_000L / VOLTORB_AURA_FPS
+    val frame = (((now + phaseOffsetMs) / frameMs) % VOLTORB_AURA_FRAMES).toInt()
+    val column = frame % VOLTORB_AURA_COLUMNS
+    val row = frame / VOLTORB_AURA_COLUMNS
+
+    val sidePx = cellSide * VOLTORB_AURA_SCALE
+    drawImage(
+        image = sheet,
+        srcOffset = IntOffset(
+            x = column * VOLTORB_AURA_FRAME_PX,
+            y = row * VOLTORB_AURA_FRAME_PX
+        ),
+        srcSize = IntSize(VOLTORB_AURA_FRAME_PX, VOLTORB_AURA_FRAME_PX),
+        dstOffset = IntOffset(
+            x = (center.x - sidePx / 2f).roundToInt(),
+            y = (center.y - sidePx / 2f).roundToInt()
+        ),
+        dstSize = IntSize(sidePx.roundToInt(), sidePx.roundToInt()),
+        filterQuality = FilterQuality.None
+    )
+}
+
+/**
+ * Un estallido en curso sobre una celda: cuándo arrancó y cuánto dura. La
+ * explosión real dura [VOLTORB_BLAST_MS]; la descarga por tocar una celda apagada
+ * usa la misma hoja con [VOLTORB_SHOCK_BLAST_MS], más corta.
+ */
+private data class VoltorbBlast(
+    val cell: Int,
+    val startMs: Long,
+    val durationMs: Long
+)
+
+/**
+ * Pinta la explosión de una celda a partir de la hoja exportada por pixelfx
+ * (`explosions/voltorb-blast`), un one-shot: [progress] va de 0 a 1 una sola vez y
+ * el frame sale de ahí.
+ *
+ * El humo de la hoja cubre el cuerpo entero del Voltorb, así que el estallido tapa
+ * la celda en vez de dejar que se vea el sprite de reposo por debajo.
+ */
+private fun DrawScope.drawVoltorbBlast(
+    sheet: ImageBitmap,
+    center: Offset,
+    cellSide: Float,
+    progress: Float
+) {
+    val frame = (progress * VOLTORB_BLAST_FRAMES).toInt()
+        .coerceIn(0, VOLTORB_BLAST_FRAMES - 1)
+    val column = frame % VOLTORB_BLAST_COLUMNS
+    val row = frame / VOLTORB_BLAST_COLUMNS
+
+    val widthPx = cellSide * VOLTORB_BLAST_SCALE
+    val heightPx = widthPx * VOLTORB_BLAST_FRAME_H / VOLTORB_BLAST_FRAME_W
+    drawImage(
+        image = sheet,
+        srcOffset = IntOffset(
+            x = column * VOLTORB_BLAST_FRAME_W,
+            y = row * VOLTORB_BLAST_FRAME_H
+        ),
+        srcSize = IntSize(VOLTORB_BLAST_FRAME_W, VOLTORB_BLAST_FRAME_H),
+        dstOffset = IntOffset(
+            x = (center.x - widthPx / 2f).roundToInt(),
+            y = (center.y - heightPx / 2f).roundToInt()
+        ),
+        dstSize = IntSize(widthPx.roundToInt(), heightPx.roundToInt()),
+        filterQuality = FilterQuality.None
+    )
+}
+
+/**
  * Pinta una celda con los frames del Voltorb.
  *
  * El frame sale del estado de la celda: reposo ([VOLTORB_IDLE_FRAME]) si no hay
@@ -930,7 +1132,8 @@ private fun DrawScope.drawVoltorbCell(
     feedback: VoltorbFeedback?,
     flash: Float,
     now: Long,
-    frames: List<ImageBitmap>
+    frames: List<ImageBitmap>,
+    exposed: Boolean
 ) {
     // `flash` llega a 1f cuando la animación de feedback terminó: hasta entonces
     // la celda muestra el frame de resolución y después vuelve a reposo. Si la
@@ -944,11 +1147,14 @@ private fun DrawScope.drawVoltorbCell(
     val heat = voltorb?.progressAt(now) ?: 0f
 
     // La progresión de carga usa todos los frames menos el último, que está
-    // reservado para la resolución (apagado a tiempo o explosión).
+    // reservado para la resolución (apagado a tiempo o explosión). Durante la
+    // ventana de golpeo al líder el tablero entero se queda en ese último frame:
+    // no hay Voltorb armado y la cuadrícula deja de competir con el sprite al que
+    // hay que tocar.
     val lastChargeFrame =
         (frames.lastIndex - 1).coerceAtLeast(VOLTORB_FIRST_CHARGE_FRAME)
     val frameIndex = when {
-        resolving -> frames.lastIndex
+        exposed || resolving -> frames.lastIndex
         voltorb != null -> VOLTORB_FIRST_CHARGE_FRAME +
             ((lastChargeFrame - VOLTORB_FIRST_CHARGE_FRAME) * heat).roundToInt()
         else -> VOLTORB_IDLE_FRAME
@@ -956,7 +1162,7 @@ private fun DrawScope.drawVoltorbCell(
 
     // Vaivén lateral desde el frame de aviso: más amplitud cuanto más cerca de
     // explotar. Es el único movimiento de la celda, así que no compite con el HUD.
-    val wobble = if (!resolving && frameIndex >= VOLTORB_WOBBLE_FROM_FRAME) {
+    val wobble = if (!resolving && !exposed && frameIndex >= VOLTORB_WOBBLE_FROM_FRAME) {
         val span = (frames.lastIndex - VOLTORB_WOBBLE_FROM_FRAME).coerceAtLeast(1)
         val strength = (frameIndex - VOLTORB_WOBBLE_FROM_FRAME + 1).toFloat() / span
         sin(now / VOLTORB_WOBBLE_PERIOD_MS) * radius * VOLTORB_WOBBLE_FRACTION * strength
@@ -965,11 +1171,11 @@ private fun DrawScope.drawVoltorbCell(
     }
 
     if (voltorb != null && !resolving) {
-        // Halo de calor por detrás del sprite: a tamaño de celda los frames se
+        // Halo de calor sobre el tablero oscuro: a tamaño de celda los frames se
         // parecen entre sí y esto marca cuál está armado.
         val glow = lerp(VOLTORB_CHARGE_COLD, VOLTORB_CHARGE_HOT, heat)
         drawCircle(
-            color = glow.copy(alpha = 0.14f + 0.28f * heat),
+            color = glow.copy(alpha = 0.20f + 0.38f * heat),
             radius = radius * (1.05f + 0.20f * heat),
             center = center
         )
@@ -1004,43 +1210,10 @@ private fun DrawScope.drawVoltorbCell(
                 style = Stroke(width = radius * 0.18f)
             )
 
-            VoltorbOutcome.SHOCK -> {
-                drawCircle(
-                    color = MISS_RED.copy(alpha = fade * 0.75f),
-                    radius = radius * (1f + 0.35f * flash),
-                    center = center,
-                    style = Stroke(width = radius * 0.16f)
-                )
-                repeat(3) { index ->
-                    val angle = (index * (2.0 * PI / 3.0)).toFloat()
-                    drawLine(
-                        color = MISS_RED.copy(alpha = fade),
-                        start = Offset(
-                            x = center.x + cos(angle) * radius * 0.35f,
-                            y = center.y + sin(angle) * radius * 0.35f
-                        ),
-                        end = Offset(
-                            x = center.x + cos(angle) * radius * 1.5f,
-                            y = center.y + sin(angle) * radius * 1.5f
-                        ),
-                        strokeWidth = radius * 0.12f
-                    )
-                }
-            }
-
-            VoltorbOutcome.EXPLODED -> {
-                drawCircle(
-                    color = VOLTORB_CHARGE_HOT.copy(alpha = fade),
-                    radius = radius * (1f + 1.5f * flash),
-                    center = center,
-                    style = Stroke(width = radius * 0.22f)
-                )
-                drawCircle(
-                    color = VOLTORB_GLOW.copy(alpha = fade * 0.6f),
-                    radius = radius * (0.7f + 0.9f * flash),
-                    center = center
-                )
-            }
+            // La explosión y la descarga las pinta `drawVoltorbBlast` con la hoja
+            // de pixelfx: aquí solo queda el aviso de apagado.
+            VoltorbOutcome.SHOCK,
+            VoltorbOutcome.EXPLODED -> Unit
         }
     }
 }
@@ -1300,19 +1473,6 @@ private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
 /** Rojo del fallo. */
 private val MISS_RED = Color(0xFFFF5252)
 
-/**
- * Cuadrícula de Voltorb de Lt. Surge: separación entre celdas, tamaño mínimo y
- * máximo de celda, y el hueco que se reserva bajo el sprite del líder para su
- * barra de stamina (así el tablero no la pisa).
- */
-private val VOLTORB_GAP = 7.dp
-private val VOLTORB_MIN_CELL = 26.dp
-private val VOLTORB_MAX_CELL = 56.dp
-private val VOLTORB_BAR_RESERVE = 34.dp
-
-/** Altura mínima del hueco del tablero, para pantallas muy bajas. */
-private val VOLTORB_MIN_AREA = 124.dp
-
 /** Frames del Voltorb: reposo, carga y resolución, en orden de reproducción. */
 private val VOLTORB_FRAME_RES = intArrayOf(
     R.drawable.voltorb_capa1,
@@ -1335,6 +1495,45 @@ private const val VOLTORB_FIRST_CHARGE_FRAME = 1
 /** Frame desde el que el Voltorb se balancea: a partir de aquí está por explotar. */
 private const val VOLTORB_WOBBLE_FROM_FRAME = 4
 
+/**
+ * Cuadrícula de Voltorb de Lt. Surge: separación entre celdas, tamaño mínimo de
+ * celda, altura del sprite del líder en este gimnasio y los márgenes verticales
+ * que reservan la barra de stamina y la de vida del jugador.
+ *
+ * La celda se calcula por **ancho** para que el tablero llegue de extremo a
+ * extremo; el alto disponible solo limita cuando la pantalla es demasiado baja.
+ */
+private val VOLTORB_GAP = 7.dp
+private val VOLTORB_MIN_CELL = 26.dp
+private val VOLTORB_BAR_RESERVE = 40.dp
+
+/** El líder se dibuja más bajo aquí para dejarle la altura a la cuadrícula. */
+private val VOLTORB_ENEMY_HEIGHT = 116.dp
+
+/**
+ * Tablero oscuro difuminado detrás de la cuadrícula: margen alrededor de las
+ * celdas, grosor del borde difuminado, radio de las esquinas, opacidad total del
+ * centro y pasos del degradado.
+ *
+ * El tablero da contraste contra el arte del fondo, sin el cual los frames de
+ * reposo y de carga se confunden. Subir [VOLTORB_BOARD_ALPHA] oscurece más y
+ * separa mejor; bajarlo devuelve protagonismo al escenario.
+ */
+private val VOLTORB_BOARD_PAD = 10.dp
+private val VOLTORB_BOARD_FEATHER = 16.dp
+private val VOLTORB_BOARD_CORNER = 18.dp
+private const val VOLTORB_BOARD_ALPHA = 0.66f
+private const val VOLTORB_BOARD_STEPS = 6
+
+/** Separación entre la cuadrícula y el sprite del jugador. */
+private val VOLTORB_PLAYER_GAP = 8.dp
+
+/** Reserva inferior para la barra de vida que pinta `GymOverlay`. */
+private val VOLTORB_HP_BAR_RESERVE = 50.dp
+
+/** Altura mínima del hueco del tablero, para pantallas muy bajas. */
+private val VOLTORB_MIN_AREA = 124.dp
+
 /** Amplitud del vaivén como fracción del radio de la celda. Ajustable: más alto, balanceo más marcado. */
 private const val VOLTORB_WOBBLE_FRACTION = 0.12f
 
@@ -1344,10 +1543,50 @@ private const val VOLTORB_WOBBLE_PERIOD_MS = 90f
 /** Duración del destello de apagado, explosión o descarga. Ajustable: cuánto dura el frame de resolución antes de volver a reposo. */
 private const val VOLTORB_FEEDBACK_MS = 420
 
+/**
+ * Hoja de la aurora eléctrica (`lightning/voltorb-aura` de pixelfx): 30 frames de
+ * 160x160 en 6 columnas a 30 fps, en bucle.
+ */
+private const val VOLTORB_AURA_FRAMES = 30
+private const val VOLTORB_AURA_FPS = 30
+private const val VOLTORB_AURA_COLUMNS = 6
+private const val VOLTORB_AURA_FRAME_PX = 160
+
+/**
+ * Escala del frame respecto a la celda. El cuerpo de la aurora ocupa 0.42 del
+ * frame; con 2,55 el anillo de arcos cae por fuera de la silueta del Voltorb en
+ * vez de quedar tapado por el sprite.
+ */
+private const val VOLTORB_AURA_SCALE = 2.55f
+
+/** Desfase entre celdas (ms) para que las auroras no vayan sincronizadas. */
+private const val VOLTORB_AURA_PHASE_STEP_MS = 67L
+
+/**
+ * Explosión de un Voltorb (`explosions/voltorb-blast` de pixelfx), recortada a 32
+ * frames de 192x192 en 7 columnas. Se reproduce una vez en ~1,07 s.
+ */
+private const val VOLTORB_BLAST_FRAMES = 32
+private const val VOLTORB_BLAST_COLUMNS = 7
+private const val VOLTORB_BLAST_FRAME_W = 192
+private const val VOLTORB_BLAST_FRAME_H = 192
+private const val VOLTORB_BLAST_MS = 1_070L
+
+/**
+ * Duración de la misma animación cuando el jugador toca una celda apagada. Corre
+ * más rápido: es un castigo por el error, no el estallido real del Voltorb.
+ */
+private const val VOLTORB_SHOCK_BLAST_MS = 700L
+
+/**
+ * Escala del estallido respecto a la celda. La bola de humo ocupa ~0.36 del frame,
+ * así que 2,75 hace que cubra la celda entera; los arcos y ascuas salen más allá.
+ */
+private const val VOLTORB_BLAST_SCALE = 2.75f
+
 /** Del amarillo al rojo según el calor: es la cuenta atrás visible. */
 private val VOLTORB_CHARGE_COLD = Color(0xFFFFB300)
 private val VOLTORB_CHARGE_HOT = Color(0xFFFF3D00)
-private val VOLTORB_GLOW = Color(0xFFFFEB3B)
 
 /**
  * Radio de acierto como fracción del ancho de columna (tolerante al toque), con

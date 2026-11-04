@@ -7,9 +7,7 @@
  */
 package com.dsrs.pokeclic.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -22,10 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -189,13 +184,14 @@ fun AppRoot(
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
         // modo que al caducar el cartel el combate arranque sin salto de fondo.
-        // Cada mecánica tiene su arte: cueva de roca para Brock y piscina para
-        // Misty. Está detrás de todo y el `Scaffold` se vuelve transparente.
+        // Cada mecánica tiene su arte: cueva de roca para Brock, piscina para
+        // Misty y sala eléctrica para Lt. Surge. Está detrás de todo y el
+        // `Scaffold` se vuelve transparente.
         if (gymScene) {
             when (state.gymMechanic) {
                 GymMechanic.PROJECTILES -> GymBackground(R.drawable.rock_gym)
                 GymMechanic.TIMING_RINGS -> GymBackground(R.drawable.water_gym)
-                GymMechanic.VOLTORB_GRID -> ElectricGymBackdrop()
+                GymMechanic.VOLTORB_GRID -> GymBackground(R.drawable.electric_gym)
             }
         } else if (showRouteBackground) {
             // Fondo de ruta: bucle vertical con deriva lateral por tramos, movido
@@ -425,51 +421,6 @@ private fun GymBackground(@DrawableRes resId: Int) {
         modifier = Modifier.fillMaxSize()
     )
 }
-
-/**
- * Fondo provisional del gimnasio eléctrico (Lt. Surge).
- *
- * Todavía no hay arte de gimnasio para Ciudad Carmín, así que se dibuja un
- * degradado oscuro con rayos estáticos. Cuando exista `R.drawable.electric_gym`,
- * basta con cambiar la llamada por `GymBackground(R.drawable.electric_gym)`.
- */
-@Composable
-private fun ElectricGymBackdrop() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(ELECTRIC_GYM_SKY, ELECTRIC_GYM_FLOOR)
-                )
-            )
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val boltCount = 6
-            val segments = 6
-            repeat(boltCount) { index ->
-                val baseX = size.width * (index + 0.5f) / boltCount
-                val path = Path()
-                path.moveTo(baseX, 0f)
-                for (step in 1..segments) {
-                    val y = size.height * step / segments
-                    val jitter = if (step % 2 == 0) size.width * 0.03f else -size.width * 0.03f
-                    path.lineTo(baseX + jitter, y)
-                }
-                drawPath(
-                    path = path,
-                    color = ELECTRIC_GYM_BOLT,
-                    style = Stroke(width = 3f)
-                )
-            }
-        }
-    }
-}
-
-/** Paleta del fondo eléctrico provisional. */
-private val ELECTRIC_GYM_SKY = Color(0xFF1B2436)
-private val ELECTRIC_GYM_FLOOR = Color(0xFF3A2C0A)
-private val ELECTRIC_GYM_BOLT = Color(0x33FFEB3B)
 
 /**
  * Montaje completo de la app para los previews ([AppRoot] con sus overlays). El

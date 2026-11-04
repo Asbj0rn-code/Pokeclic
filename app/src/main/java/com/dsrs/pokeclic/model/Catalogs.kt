@@ -246,12 +246,12 @@ object GymCatalog {
         // Ventana de un Voltorb cargado: desde que se enciende hasta que explota.
         voltorbWindowMs = 1_500L,
         // La misma ventana durante la furia (bajo el 25 % de vida).
-        rageVoltorbWindowMs = 900L,
+        rageVoltorbWindowMs = 950L,
         // Cadencia entre encendidos: nunca dos empiezan en el mismo instante.
         // Con el tablero lleno el turno queda pendiente y entra al liberarse.
-        voltorbSpawnIntervalMs = 400L,
+        voltorbSpawnIntervalMs = 520L,
         // La misma cadencia durante la furia: es la palanca de dificultad real.
-        rageVoltorbSpawnIntervalMs = 260L,
+        rageVoltorbSpawnIntervalMs = 340L,
         // HP que resta cada Voltorb que explota.
         voltorbExplosionDamage = 1,
         // HP que resta tocar una celda apagada.
