@@ -296,7 +296,10 @@ fun AppRoot(
                         onVoltorbTap = onGymVoltorbTap,
                         onEnemyHit = onGymEnemyHit,
                         onRetry = onGymRetry,
-                        onLeave = onLeaveGym
+                        onLeave = onLeaveGym,
+                        // Con una capa de entrada encima (al reintentar), el panel
+                        // de derrota se superponía al cartel de arranque.
+                        showDefeat = state.gymIntro == null
                     )
                 }
 

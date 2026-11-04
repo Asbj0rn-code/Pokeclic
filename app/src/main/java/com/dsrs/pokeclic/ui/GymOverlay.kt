@@ -117,6 +117,10 @@ import androidx.compose.foundation.shape.CircleShape
  * gestos: primero al enemigo si está expuesto y el toque cae sobre él, y si no,
  * la mecánica del líder (la roca más cercana para Brock, el anillo más cercano
  * para Misty). Así la Pokéball del menú deja de ser el pulsador de ataque.
+ *
+ * @param showDefeat si el panel de derrota debe dibujarse. Se apaga mientras haya
+ *   una capa de entrada al gimnasio encima: al reintentar, el cartel de arranque y
+ *   el panel de derrota se superponían.
  */
 @Composable
 fun GymOverlay(
@@ -127,8 +131,10 @@ fun GymOverlay(
     onEnemyHit: () -> Unit,
     onRetry: () -> Unit,
     onLeave: () -> Unit,
+    showDefeat: Boolean = true,
     modifier: Modifier = Modifier
-) {    val exposed = state.phase == GymPhase.EXPOSED
+) {
+    val exposed = state.phase == GymPhase.EXPOSED
 
     // El combate oculta el bottom menu, así que el `Scaffold` ya no reserva el
     // inset inferior: se aplica aquí para que el sprite del jugador no quede
@@ -205,7 +211,7 @@ fun GymOverlay(
                 .padding(bottom = PLAYER_HP_BOTTOM_PADDING)
         )
 
-        if (state.outcome == GymOutcome.LOST) {
+        if (state.outcome == GymOutcome.LOST && showDefeat) {
             DefeatPanel(
                 onRetry = onRetry,
                 onLeave = onLeave,
