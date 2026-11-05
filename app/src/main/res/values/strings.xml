@@ -88,6 +88,15 @@
     <string name="gym_ring_tutorial_step3_title">Ataca cuando se agote</string>
     <string name="gym_ring_tutorial_step3_text">La stamina del líder baja sola: cuando llegue a cero quedará expuesto y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece y los círculos van más rápido.</string>
 
+    <!-- Minijuego de Voltorb (Lt. Surge) -->
+    <string name="gym_voltorb_hint">Apaga el Voltorb cargado antes de que explote</string>
+    <string name="gym_voltorb_tutorial_step1_title">Una cuadrícula de Voltorb</string>
+    <string name="gym_voltorb_tutorial_step1_text">Cuatro filas y cuatro columnas de Voltorb esperan. Se encienden sin parar y sin tope: si no los apagas rápido se te van a juntar varios cargados a la vez.</string>
+    <string name="gym_voltorb_tutorial_step2_title">Apágalo a tiempo</string>
+    <string name="gym_voltorb_tutorial_step2_text">Toca el Voltorb cargado para apagarlo. Si su cuenta atrás termina, explota y pierdes vida. Si tocas una celda apagada, la descarga también te daña.</string>
+    <string name="gym_voltorb_tutorial_step3_title">Ataca cuando se agote</string>
+    <string name="gym_voltorb_tutorial_step3_text">La stamina del líder baja sola: cuando llegue a cero los Voltorb se apagan y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece: se encienden más rápido y más a la vez.</string>
+
     <!-- HUD -->
     <string name="hud_medals">Medallas: %d</string>
     <string name="hud_trainer">Entrenador: %s</string>
@@ -97,6 +106,7 @@
     <string name="action_advance">Avanzar</string>
     <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
     <string name="action_wipe">Borrar partida (test)</string>
+    <string name="options_debug_carmin">Ir a Ciudad Carmín (test)</string>
     <string name="wipe_confirm_title">¿Borrar partida?</string>
     <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>
     <string name="wipe_confirm_accept">Borrar</string>

@@ -135,14 +135,22 @@ object ZoneCatalog {
             name = "Ruta 6",
             clickRequirement = 380L,
             wildSpeciesIds = listOf("pidgey", "rattata", "oddish")
+        ),
+        Zone(
+            id = "ciudad_carmin",
+            name = "Ciudad Carmín",
+            clickRequirement = 440L,
+            wildSpeciesIds = emptyList(),
+            gymId = "surge"
         )
     )
 }
 
 /**
- * Catálogo de gimnasios. Brock (Ciudad Plateada) usa la lluvia de rocas y Misty
- * (Ciudad Celeste, feature-35) el minijuego de anillos rítmicos; los seis
- * restantes llegarán con el contenido de Kanto.
+ * Catálogo de gimnasios. Brock (Ciudad Plateada) usa la lluvia de rocas, Misty
+ * (Ciudad Celeste, feature-35) el minijuego de anillos rítmicos y Lt. Surge
+ * (Ciudad Carmín, feature-41) la cuadrícula de Voltorb; los cinco restantes
+ * llegarán con el contenido de Kanto.
  */
 object GymCatalog {
 
@@ -193,7 +201,69 @@ object GymCatalog {
         rageRingTravelMaxMs = 1_200L
     )
 
-    private val byId: Map<String, Gym> = listOf(brock, misty).associateBy { it.id }
+    /**
+     * Lt. Surge: cuadrícula 4×4 de Voltorb que se encienden sin parar. No hay
+     * tope de cargados a la vez —el único límite son las 16 celdas—, así que si
+     * el jugador se atrasa los Voltorb se le apilan. Nunca empiezan dos en el
+     * mismo instante: la cadencia los escalona. Apagar uno a tiempo evita el
+     * daño; tocar una celda apagada descarga. En furia suben cadencia y calor.
+     *
+     * Los valores están sin equilibrar a propósito: se ajustan jugando.
+     */
+    val surge = Gym(
+        // Clave estable de la medalla y del guardado. No cambiar sin migrar.
+        id = "surge",
+        // Mecánica de defensa: es el único gimnasio que usa la cuadrícula.
+        mechanic = GymMechanic.VOLTORB_GRID,
+        // Nombre que sale en el HUD y en el overlay de entrada al gimnasio.
+        leaderName = "Lt. Surge",
+        // Tipo del líder: decide el multiplicador de daño en la fase expuesta.
+        type = PokemonType.ELECTRIC,
+        // Monedas que paga la primera victoria.
+        coinReward = 80L,
+        // Vida total: cuántas exposiciones hacen falta para ganarle.
+        leaderHp = 120,
+        // Columnas de la cuadrícula. Con rows da las 16 celdas del tablero.
+        columns = 4,
+        // Filas de la cuadrícula.
+        rows = 4,
+        // Duración de la oleada: cuánto tarda Surge en quedar expuesto.
+        waveDurationMs = 10_000L,
+        // Cuánto dura la fase expuesta, la única ventana para golpearle.
+        exposureDurationMs = 2_500L,
+
+        // ── Tiempos del Voltorb ────────────────────────────────────────────
+        // ADVERTENCIA: la ventana debe quedar SIEMPRE por encima de la cadencia
+        // (voltorbWindowMs > voltorbSpawnIntervalMs, y lo mismo en furia). Si se
+        // igualan o se invierten, las cargas dejan de solaparse y el tablero
+        // vuelve a tener un solo Voltorb encendido; además falla el test
+        // `surgeGym_usesAFourByFourGridWithoutConcurrencyCap`.
+        //
+        // Regla práctica: ventana / cadencia = Voltorb encendidos a la vez si el
+        // jugador va al día. Hoy 1500/400 ≈ 3,75 en normal y 900/260 ≈ 3,5 en
+        // furia. Si no llega a apagarlos, se le apilan hasta llenar las 16 celdas.
+
+        // Ventana de un Voltorb cargado: desde que se enciende hasta que explota.
+        voltorbWindowMs = 1_500L,
+        // La misma ventana durante la furia (bajo el 25 % de vida).
+        rageVoltorbWindowMs = 950L,
+        // Cadencia entre encendidos: nunca dos empiezan en el mismo instante.
+        // Con el tablero lleno el turno queda pendiente y entra al liberarse.
+        voltorbSpawnIntervalMs = 520L,
+        // La misma cadencia durante la furia: es la palanca de dificultad real.
+        rageVoltorbSpawnIntervalMs = 340L,
+        // HP que resta cada Voltorb que explota.
+        voltorbExplosionDamage = 1,
+        // HP que resta tocar una celda apagada.
+        voltorbShockDamage = 1,
+
+        // Campos que esta mecánica no lee: los usan proyectiles y anillos.
+        spawnIntervalMs = 0L,
+        projectileTravelMs = 0L,
+        projectileDamage = 0
+    )
+
+    private val byId: Map<String, Gym> = listOf(brock, misty, surge).associateBy { it.id }
 
     fun byId(id: String): Gym? = byId[id]
 

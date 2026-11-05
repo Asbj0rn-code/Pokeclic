@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 import android.graphics.Color as AndroidColor
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
@@ -312,13 +313,19 @@ fun AnimatedGifImage(
     val context = LocalContext.current
     val drawable: Drawable = remember(resId) {
         runCatching {
-            ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, resId)).also {
-                if (it is AnimatedImageDrawable) {
-                    it.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-                    it.setFilterBitmap(false)
-                    it.start()
+            ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, resId))
+                .also { decoded ->
+                    if (decoded is AnimatedImageDrawable) {
+                        decoded.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+                        decoded.setFilterBitmap(false)
+                        decoded.start()
+                    }
+                    // Los PNG estáticos (líderes sin GIF) también son pixel-art:
+                    // sin esto, el escalado del ImageView los emborrona.
+                    if (decoded is BitmapDrawable) {
+                        decoded.setFilterBitmap(false)
+                    }
                 }
-            }
         }.getOrElse { ColorDrawable(AndroidColor.TRANSPARENT) }
     }
 
