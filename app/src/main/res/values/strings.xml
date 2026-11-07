@@ -31,11 +31,13 @@
 
     <!-- Minijuego de captura -->
     <string name="catch_title">¡Ha aparecido %1$s!</string>
-    <string name="catch_type">Tipo: %s</string>
-    <string name="catching_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
+    <string name="catching_hint">Mantén pulsado para subir la Pokébola y atrapar a %1$s. ¡Si la captura se vacía, escapará!</string>
     <string name="catching_captured">¡Genial! ¡%1$s fue capturado!</string>
     <string name="catching_escaped">¡Oh, no! ¡%1$s se escapó!</string>
     <string name="catching_continue">Continuar</string>
+    <string name="catching_gauge">CAPTURA</string>
+    <string name="catching_dex">N.º %1$03d</string>
+    <string name="catching_wild">SALVAJE</string>
 
     <!-- Starter y principal -->
     <string name="starter_type">Tipo: %s</string>
