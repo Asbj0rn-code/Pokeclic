@@ -213,7 +213,7 @@ class MainViewModelTest {
         assertFalse(state.isTallGrass)
         assertEquals(0f, state.walkProgress)
         assertNull(state.encounter)
-        assertNull(state.fishing)
+        assertNull(state.catching)
     }
 
     @Test
@@ -827,7 +827,7 @@ class MainViewModelTest {
 
         with(vm.uiState.value) {
             assertNull(encounter)
-            assertNull(fishing)
+            assertNull(catching)
             assertEquals(0, zoneIndex)
         }
 
@@ -847,7 +847,7 @@ class MainViewModelTest {
 
         val afterMeadow = vm.uiState.value
         assertNotNull(afterMeadow.encounter)
-        assertNotNull(afterMeadow.fishing)
+        assertNotNull(afterMeadow.catching)
     }
 
     /**
@@ -866,7 +866,7 @@ class MainViewModelTest {
     }
 
     /**
-     * Modo captura: con el encuentro (partida de pesca) en pantalla, un
+     * Modo captura: con el encuentro (partida de captura) en pantalla, un
      * toque que alcanzara la Pokébola tampoco cuenta para el avance.
      */
     @Test

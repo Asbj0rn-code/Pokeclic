@@ -29,13 +29,13 @@
     <string name="hud_zone_power">Potencia: %d</string>
     <string name="action_reset">Reset</string>
 
-    <!-- Minijuego de pesca -->
+    <!-- Minijuego de captura -->
     <string name="catch_title">¡Ha aparecido %1$s!</string>
     <string name="catch_type">Tipo: %s</string>
-    <string name="fishing_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
-    <string name="fishing_captured">¡Genial! ¡%1$s fue capturado!</string>
-    <string name="fishing_escaped">¡Oh, no! ¡%1$s se escapó!</string>
-    <string name="fishing_continue">Continuar</string>
+    <string name="catching_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
+    <string name="catching_captured">¡Genial! ¡%1$s fue capturado!</string>
+    <string name="catching_escaped">¡Oh, no! ¡%1$s se escapó!</string>
+    <string name="catching_continue">Continuar</string>
 
     <!-- Starter y principal -->
     <string name="starter_type">Tipo: %s</string>

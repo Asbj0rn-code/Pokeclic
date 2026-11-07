@@ -63,7 +63,7 @@ data class TrainerState(
  * @param name nombre mostrado.
  * @param type tipo elemental, decide ventajas y desventajas.
  * @param captureDifficulty 0f (trivial) a 1f (muy difícil); alimenta la
- *   dificultad del minijuego de pesca (`FishingDefaults.configFor`).
+ *   dificultad del minijuego de captura (`CatchingDefaults.configFor`).
  * @param coinReward monedas otorgadas la **primera vez** que se captura la
  *   especie (una sola vez para siempre).
  */
@@ -79,8 +79,8 @@ data class Species(
  * Un Pokémon salvaje que ha aparecido en la hierba alta y espera a ser capturado.
  *
  * Es estado **transitorio**: no se persiste mientras está abierto. La captura
- * se juega con el minijuego de pesca (`FishingGame`); su estado en curso vive
- * en `GameUiState.fishing`, así que aquí solo viaja la especie en liza.
+ * se juega con el minijuego de captura (`CatchingGame`); su estado en curso vive
+ * en `GameUiState.catching`, así que aquí solo viaja la especie en liza.
  *
  * @param speciesId clave del catálogo (SpriteRepository y recompensas).
  * @param speciesName nombre mostrado, ya resuelto para la UI.

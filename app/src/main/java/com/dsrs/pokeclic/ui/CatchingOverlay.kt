@@ -1,11 +1,11 @@
 /**
- * Escena del minijuego de pesca (Etapa 3): el salvaje nada por un riel vertical,
+ * Escena del minijuego de captura (Etapa 3): el salvaje nada por un riel vertical,
  * el jugador mantiene pulsado para subir su barra de captura y el medidor
  * lateral mide el progreso de la misma.
  *
  * Es full-screen takeover como el gimnasio: cuando hay partida, la escena
  * sustituye al contenido y al bottom menu. **Sin lógica de juego**: pinta el
- * `FishingState` ya calculado por el ViewModel y le notifica la pulsación
+ * `CatchingState` ya calculado por el ViewModel y le notifica la pulsación
  * (mantener/soltar) y la salida del panel de resultado.
  */
 package com.dsrs.pokeclic.ui
@@ -44,10 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.Encounter
-import com.dsrs.pokeclic.model.FishingDefaults
-import com.dsrs.pokeclic.model.FishingGame
-import com.dsrs.pokeclic.model.FishingPhase
-import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.CatchingDefaults
+import com.dsrs.pokeclic.model.CatchingGame
+import com.dsrs.pokeclic.model.CatchingPhase
+import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.PokemonType
 import kotlin.random.Random
 
@@ -59,7 +59,7 @@ private val GAUGE_COLOR = Color(0xFF334033)
 private val GAUGE_FILL_COLOR = Color(0xFF66BB6A)
 
 /**
- * Escena completa de la partida de pesca.
+ * Escena completa de la partida de captura.
  *
  * El gesto de pulsación se captura en **todo** el fondo (cualquier parte de la
  * pantalla sirve, como se acordó en el diseño); el botón del panel de resultado
@@ -67,14 +67,14 @@ private val GAUGE_FILL_COLOR = Color(0xFF66BB6A)
  * la partida ya terminó.
  *
  * @param encounter especie en liza (nombre y tipo para HUD y resultado).
- * @param fishing estado del minijuego (barra, sprite, progreso y fase).
+ * @param catching estado del minijuego (barra, sprite, progreso y fase).
  * @param onHoldChanged avisa al ViewModel de que la pantalla está pulsada.
  * @param onContinue cierra el panel de resultado.
  */
 @Composable
-fun FishingOverlay(
+fun CatchingOverlay(
     encounter: Encounter,
-    fishing: FishingState,
+    catching: CatchingState,
     onHoldChanged: (Boolean) -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier
@@ -93,7 +93,7 @@ fun FishingOverlay(
                 )
             }
     ) {
-        FishingHud(
+        CatchingHud(
             encounter = encounter,
             modifier = Modifier
                 .align(UiAlignment.TopCenter)
@@ -101,33 +101,33 @@ fun FishingOverlay(
         )
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val railHeight = min(maxHeight * FishingSceneDefaults.RAIL_HEIGHT_FRACTION, FishingSceneDefaults.RAIL_MAX_HEIGHT)
+            val railHeight = min(maxHeight * CatchingSceneDefaults.RAIL_HEIGHT_FRACTION, CatchingSceneDefaults.RAIL_MAX_HEIGHT)
 
             // Riel central del minijuego.
             Box(
                 modifier = Modifier
                     .align(UiAlignment.Center)
-                    .width(FishingSceneDefaults.RAIL_WIDTH)
+                    .width(CatchingSceneDefaults.RAIL_WIDTH)
                     .height(railHeight)
                     .clip(RoundedCornerShape(20.dp))
                     .background(RAIL_COLOR)
             ) {
                 // Barra de captura: posiciones normalizadas del modelo, donde
                 // `barPos` es el centro y `0f` es la parte baja del riel.
-                val halfBar = fishing.config.barSize / 2f
-                val barTop = railHeight * (1f - (fishing.barPos + halfBar))
+                val halfBar = catching.config.barSize / 2f
+                val barTop = railHeight * (1f - (catching.barPos + halfBar))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = FishingSceneDefaults.BAR_INSET)
+                        .padding(horizontal = CatchingSceneDefaults.BAR_INSET)
                         .offset(y = barTop)
-                        .height(railHeight * fishing.config.barSize)
+                        .height(railHeight * catching.config.barSize)
                         .clip(RoundedCornerShape(6.dp))
                         .background(BAR_COLOR)
                 )
 
                 // Sprite del salvaje, animado o placeholder según el arte actual.
-                val spriteTop = railHeight * (1f - fishing.spritePos) - FishingSceneDefaults.SPRITE_SIZE / 2
+                val spriteTop = railHeight * (1f - catching.spritePos) - CatchingSceneDefaults.SPRITE_SIZE / 2
                 WildSpriteBox(
                     speciesId = encounter.speciesId,
                     name = encounter.speciesName,
@@ -135,7 +135,7 @@ fun FishingOverlay(
                     modifier = Modifier
                         .align(UiAlignment.TopCenter)
                         .offset(y = spriteTop)
-                        .size(FishingSceneDefaults.SPRITE_SIZE)
+                        .size(CatchingSceneDefaults.SPRITE_SIZE)
                 )
             }
 
@@ -143,8 +143,8 @@ fun FishingOverlay(
             Box(
                 modifier = Modifier
                     .align(UiAlignment.Center)
-                    .offset(x = FishingSceneDefaults.RAIL_WIDTH / 2 + FishingSceneDefaults.GAUGE_GAP)
-                    .width(FishingSceneDefaults.GAUGE_WIDTH)
+                    .offset(x = CatchingSceneDefaults.RAIL_WIDTH / 2 + CatchingSceneDefaults.GAUGE_GAP)
+                    .width(CatchingSceneDefaults.GAUGE_WIDTH)
                     .height(railHeight)
                     .clip(RoundedCornerShape(6.dp))
                     .background(GAUGE_COLOR)
@@ -154,16 +154,16 @@ fun FishingOverlay(
                     modifier = Modifier
                         .align(UiAlignment.BottomCenter)
                         .fillMaxWidth()
-                        .fillMaxHeight(fishing.progress)
+                        .fillMaxHeight(catching.progress)
                         .clip(RoundedCornerShape(4.dp))
                         .background(GAUGE_FILL_COLOR)
                 )
             }
 
-            if (fishing.phase == FishingPhase.CAPTURED || fishing.phase == FishingPhase.ESCAPED) {
-                FishingResultPanel(
+            if (catching.phase == CatchingPhase.CAPTURED || catching.phase == CatchingPhase.ESCAPED) {
+                CatchingResultPanel(
                     encounter = encounter,
-                    captured = fishing.phase == FishingPhase.CAPTURED,
+                    captured = catching.phase == CatchingPhase.CAPTURED,
                     onContinue = onContinue,
                     modifier = Modifier.align(UiAlignment.Center)
                 )
@@ -174,7 +174,7 @@ fun FishingOverlay(
 
 /** HUD superior: salvaje, tipo y la instrucción del minijuego. */
 @Composable
-private fun FishingHud(
+private fun CatchingHud(
     encounter: Encounter,
     modifier: Modifier = Modifier
 ) {
@@ -195,7 +195,7 @@ private fun FishingHud(
             )
             Text(text = stringResource(R.string.catch_type, encounter.speciesType.name))
             Text(
-                text = stringResource(R.string.fishing_hint, encounter.speciesName),
+                text = stringResource(R.string.catching_hint, encounter.speciesName),
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -207,7 +207,7 @@ private fun FishingHud(
  * de sobrio que el panel de derrota del gimnasio.
  */
 @Composable
-private fun FishingResultPanel(
+private fun CatchingResultPanel(
     encounter: Encounter,
     captured: Boolean,
     onContinue: () -> Unit,
@@ -225,14 +225,14 @@ private fun FishingResultPanel(
         ) {
             Text(
                 text = stringResource(
-                    if (captured) R.string.fishing_captured else R.string.fishing_escaped,
+                    if (captured) R.string.catching_captured else R.string.catching_escaped,
                     encounter.speciesName
                 ),
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center
             )
             Button(onClick = onContinue) {
-                Text(text = stringResource(R.string.fishing_continue))
+                Text(text = stringResource(R.string.catching_continue))
             }
         }
     }
@@ -263,7 +263,7 @@ private fun WildSpriteBox(
 
 /**
  * Sprite del salvaje, o `null` si esa especie aún no tiene GIF. Único punto
- * donde se mapea la especie de pesca a su recurso, como `enemyGifFor`.
+ * donde se mapea la especie de captura a su recurso, como `enemyGifFor`.
  */
 @DrawableRes
 private fun wildGifFor(speciesId: String): Int? = when (speciesId) {
@@ -273,8 +273,8 @@ private fun wildGifFor(speciesId: String): Int? = when (speciesId) {
     else -> null
 }
 
-/** Tamaños y posiciones fijas de la escena de pesca. */
-private object FishingSceneDefaults {
+/** Tamaños y posiciones fijas de la escena de captura. */
+private object CatchingSceneDefaults {
     val RAIL_WIDTH = 72.dp
 
     /** Alto del riel como fracción de la pantalla, con tope para tablets. */
@@ -294,18 +294,18 @@ private object FishingSceneDefaults {
 
 // ─────────────────────────── Previews ───────────────────────────
 
-private const val FISHING_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
+private const val CATCHING_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 
 /**
- * Estado de pesca de ejemplo, determinista (semilla fija) para que el preview
+ * Estado de captura de ejemplo, determinista (semilla fija) para que el preview
  * no cambie de una compilación a otra.
  */
-private fun previewFishingState(
+private fun previewCatchingState(
     captureDifficulty: Float,
     progress: Float = 0f
-): FishingState {
-    val config = FishingDefaults.configFor(captureDifficulty)
-    val base = FishingGame.initialState(config, Random(42))
+): CatchingState {
+    val config = CatchingDefaults.configFor(captureDifficulty)
+    val base = CatchingGame.initialState(config, Random(42))
     return base.copy(progress = progress)
 }
 
@@ -316,17 +316,17 @@ private val previewEncounter = Encounter(
 )
 
 @Preview(
-    name = "Fishing · Partida en curso",
-    device = FISHING_PREVIEW_DEVICE,
+    name = "Catching · Partida en curso",
+    device = CATCHING_PREVIEW_DEVICE,
     showSystemUi = true,
     showBackground = true
 )
 @Composable
-private fun FishingOverlayPreview() {
+private fun CatchingOverlayPreview() {
     MaterialTheme {
-        FishingOverlay(
+        CatchingOverlay(
             encounter = previewEncounter,
-            fishing = previewFishingState(captureDifficulty = 0.15f),
+            catching = previewCatchingState(captureDifficulty = 0.15f),
             onHoldChanged = {},
             onContinue = {}
         )
@@ -334,17 +334,17 @@ private fun FishingOverlayPreview() {
 }
 
 @Preview(
-    name = "Fishing · Resultado",
-    device = FISHING_PREVIEW_DEVICE,
+    name = "Catching · Resultado",
+    device = CATCHING_PREVIEW_DEVICE,
     showSystemUi = true,
     showBackground = true
 )
 @Composable
-private fun FishingOverlayCapturedPreview() {
+private fun CatchingOverlayCapturedPreview() {
     MaterialTheme {
-        FishingOverlay(
+        CatchingOverlay(
             encounter = previewEncounter,
-            fishing = previewFishingState(captureDifficulty = 0.15f, progress = 1f),
+            catching = previewCatchingState(captureDifficulty = 0.15f, progress = 1f),
             onHoldChanged = {},
             onContinue = {}
         )
