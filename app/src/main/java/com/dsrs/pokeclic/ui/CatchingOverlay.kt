@@ -8,8 +8,9 @@
  * `CatchingState` ya calculado por el ViewModel y le notifica la pulsación
  * (mantener/soltar) y la salida del panel de resultado.
  *
- * La piel imita la pantalla de captura de los juegos de Pokémon: campo de
- * batalla plano, columna de energía como riel, Pokébola como barra, medidor
+ * La piel imita la pantalla de captura de los juegos de Pokémon: la ruta actual
+ * queda de fondo (la escena es transparente y `AppRoot` compone el fondo de la
+ * zona detrás), columna de energía como riel, Pokébola como barra, medidor
  * clásico y cajas de diálogo GBA con borde doble y sombra dura.
  */
 package com.dsrs.pokeclic.ui
@@ -66,11 +67,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -95,17 +99,7 @@ import kotlin.random.Random
 
 // ─────────────────────── Paleta de la escena ───────────────────────
 
-private val SkyTop = Color(0xFF2B4C7E)
-private val SkyBottom = Color(0xFF6A9FD4)
-private val SunColor = Color(0xFFFFF0B8)
-private val HillFar = Color(0xFF3C6E4A)
-private val HorizonLine = Color(0xFF26405C)
-private val GrassDark = Color(0xFF2F5E38)
-private val GrassLight = Color(0xFF3E7644)
-private val PlatformEdge = Color(0xFF24482A)
-private val PlatformFill = Color(0xFF5C9A50)
-private val GrassBlade = Color(0xFF6FB35C)
-
+private val RailBase = Color(0x99101A24)
 private val RailFill = Color(0x4422C8F0)
 private val RailEdge = Color(0xFF8FE8FF)
 private val RailTick = Color(0x88BFF4FF)
@@ -161,8 +155,6 @@ fun CatchingOverlay(
                 )
             }
     ) {
-        CatchingBackdrop(Modifier.fillMaxSize())
-
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val railHeight = min(
                 maxHeight * CatchingSceneDefaults.RAIL_HEIGHT_FRACTION,
@@ -216,88 +208,6 @@ fun CatchingOverlay(
     }
 }
 
-// ─────────────────────── Fondo de batalla ───────────────────────
-
-/**
- * Campo de batalla plano: cielo en dos bandas, colinas lejanas, suelo y la
- * plataforma elíptica bajo el salvaje. Sin degradados difusos ni sombras
- * suaves: todo rectángulos y óvalos de color plano.
- */
-@Composable
-private fun CatchingBackdrop(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val horizon = h * 0.58f
-
-        drawRect(color = SkyTop, size = Size(w, horizon * 0.55f))
-        drawRect(
-            color = SkyBottom,
-            topLeft = Offset(0f, horizon * 0.55f),
-            size = Size(w, horizon * 0.45f)
-        )
-
-        drawCircle(
-            color = SunColor,
-            radius = w * 0.055f,
-            center = Offset(w * 0.80f, h * 0.15f)
-        )
-
-        val hills = Path().apply {
-            moveTo(0f, horizon)
-            lineTo(0f, horizon - h * 0.06f)
-            lineTo(w * 0.22f, horizon - h * 0.13f)
-            lineTo(w * 0.48f, horizon - h * 0.05f)
-            lineTo(w * 0.72f, horizon - h * 0.12f)
-            lineTo(w, horizon - h * 0.04f)
-            lineTo(w, horizon)
-            close()
-        }
-        drawPath(hills, color = HillFar)
-
-        drawRect(
-            color = HorizonLine,
-            topLeft = Offset(0f, horizon),
-            size = Size(w, 2.dp.toPx())
-        )
-
-        drawRect(color = GrassDark, topLeft = Offset(0f, horizon), size = Size(w, h - horizon))
-        drawRect(
-            color = GrassLight,
-            topLeft = Offset(0f, horizon + (h - horizon) * 0.10f),
-            size = Size(w, (h - horizon) * 0.90f)
-        )
-
-        val platformW = w * 0.66f
-        val platformH = h * 0.085f
-        val platformCenter = Offset(w * 0.5f, h * 0.80f)
-        drawOval(
-            color = PlatformEdge,
-            topLeft = Offset(platformCenter.x - platformW / 2f, platformCenter.y - platformH / 2f),
-            size = Size(platformW, platformH)
-        )
-        drawOval(
-            color = PlatformFill,
-            topLeft = Offset(platformCenter.x - platformW * 0.46f, platformCenter.y - platformH * 0.34f),
-            size = Size(platformW * 0.92f, platformH * 0.68f)
-        )
-
-        // Matas de hierba en el borde inferior: rompen la banda plana.
-        val blade = 10.dp.toPx()
-        var x = w * 0.06f
-        while (x < w * 0.94f) {
-            val tall = if ((x / blade).toInt() % 2 == 0) blade else blade * 0.6f
-            drawLine(
-                color = GrassBlade,
-                start = Offset(x, h - 6.dp.toPx()),
-                end = Offset(x, h - 6.dp.toPx() - tall),
-                strokeWidth = 2.dp.toPx()
-            )
-            x += blade * 2.2f
-        }
-    }
-}
-
 // ─────────────────────── Riel y Pokébola ───────────────────────
 
 /**
@@ -324,6 +234,8 @@ private fun CaptureRail(
     Box(modifier) {
         Canvas(Modifier.matchParentSize()) {
             val radius = CornerRadius(18.dp.toPx())
+            // Base oscura: el riel tiene que leerse sobre cualquier ruta.
+            drawRoundRect(color = RailBase, cornerRadius = radius)
             drawRoundRect(color = RailFill, cornerRadius = radius)
             drawRoundRect(
                 color = RailEdge,
@@ -525,12 +437,19 @@ private fun CaptureGauge(progress: Float, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = stringResource(R.string.catching_gauge),
-            color = RetroColors.LcdText,
+            color = Color.White,
             fontSize = 7.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
             maxLines = 1,
-            softWrap = false
+            softWrap = false,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color(0xCC000000),
+                    offset = Offset(0f, 1f),
+                    blurRadius = 0f
+                )
+            )
         )
         Spacer(Modifier.height(3.dp))
         Box(
@@ -859,6 +778,22 @@ private val previewEncounter = Encounter(
     speciesDexNumber = 19
 )
 
+/** La escena es transparente: el preview le pone el fondo de ruta real detrás. */
+@Composable
+private fun CatchingPreview(content: @Composable () -> Unit) {
+    MaterialTheme {
+        Box(Modifier.fillMaxSize()) {
+            PixelImage(
+                res = R.drawable.background_ruta,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            content()
+        }
+    }
+}
+
 @Preview(
     name = "Catching · Partida en curso",
     device = CATCHING_PREVIEW_DEVICE,
@@ -867,7 +802,7 @@ private val previewEncounter = Encounter(
 )
 @Composable
 private fun CatchingOverlayPreview() {
-    MaterialTheme {
+    CatchingPreview {
         CatchingOverlay(
             encounter = previewEncounter,
             catching = previewCatchingState(captureDifficulty = 0.15f, progress = 0.45f),
@@ -885,7 +820,7 @@ private fun CatchingOverlayPreview() {
 )
 @Composable
 private fun CatchingOverlayCapturedPreview() {
-    MaterialTheme {
+    CatchingPreview {
         CatchingOverlay(
             encounter = previewEncounter,
             catching = previewCatchingState(
@@ -907,7 +842,7 @@ private fun CatchingOverlayCapturedPreview() {
 )
 @Composable
 private fun CatchingOverlayEscapedPreview() {
-    MaterialTheme {
+    CatchingPreview {
         CatchingOverlay(
             encounter = previewEncounter,
             catching = previewCatchingState(

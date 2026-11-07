@@ -166,9 +166,13 @@ fun AppRoot(
     // Fondo de ruta animado: solo en la pantalla de juego, en zonas con fauna
     // (rutas, bosque y cueva) o con arte propio (Pueblo Paleta). Las ciudades sin
     // fondo propio y la pestaña Mapa conservan el fondo liso de siempre.
+    //
+    // La captura es la excepción: la escena del minijuego es transparente y
+    // quiere la ruta congelada detrás, así que el fondo se compone también con
+    // `catchingActive`. El gimnasio sigue apagándolo porque tiene su propio arte.
     val showRouteBackground = state.contentTab == AppTab.Home &&
         (state.hasWilds || RouteBackgrounds.hasOwnArtwork(state.zoneId)) &&
-        !sceneActive && !state.needsStarter
+        (!sceneActive || catchingActive) && !state.needsStarter
     // Fondo de océano del mapa: misma técnica que el fondo de ruta (capa detrás
     // del Scaffold transparente) para que el océano llegue hasta la zona flotante
     // de la Pokéball sin franja blanca. Solo con la pestaña Mapa visible.
