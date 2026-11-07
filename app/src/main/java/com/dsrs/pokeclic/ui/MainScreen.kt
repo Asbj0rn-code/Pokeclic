@@ -20,7 +20,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -30,15 +29,12 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -51,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -341,31 +338,6 @@ private fun PlateCell(
 }
 
 /**
- * LedReader estilo LCD integrada en el chasis: banda profunda con texto claro
- * y líneas de barrido.
- */
-@Composable
-private fun LcdCell(text: String, modifier: Modifier = Modifier) {
-    RetroLcdPanel(modifier = modifier) {
-        Text(
-            text = text,
-            color = RetroColors.LcdText,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
-            maxLines = 1,
-            style = TextStyle(
-                shadow = Shadow(
-                    color = RetroColors.HardShadow,
-                    offset = Offset(0f, 1f),
-                    blurRadius = 0f
-                )
-            )
-        )
-    }
-}
-
-/**
  * Placa de monedas: pide pulso al cambiar el número, clásico idle juice.
  */
 @Composable
@@ -405,69 +377,34 @@ private fun CoinPlate(coins: Long, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Cabecera de dispositivo: banda rojaPokédex con lente grande y LEDs de
- * estado. Parte del chasis, no de la pantalla de juego.
- */
-@Composable
-private fun DeviceLeds(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .clip(CellShape)
-            .background(RetroColors.PokedexRed)
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(14.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFF4F8F8))
-                .border(2.dp, RetroColors.PokedexDarkRed, CircleShape)
-        )
-        LedDot(Color(0xFF4FA8E8))
-        LedDot(RetroColors.HpGreen)
-        LedDot(RetroColors.HpYellow)
-        Spacer(modifier = Modifier.weight(1f))
-        repeat(3) {
-            Box(
-                modifier = Modifier
-                    .size(width = 4.dp, height = 11.dp)
-                    .background(RetroColors.PokedexDarkRed)
-            )
-        }
-    }
-}
-
-@Composable
-private fun LedDot(color: Color) {
-    Box(
-        modifier = Modifier
-            .size(7.dp)
-            .clip(CircleShape)
-            .background(color)
-            .border(1.dp, RetroColors.PokedexDarkRed, CircleShape)
-    )
-}
-
 // ─────────────────────────── Pantalla ───────────────────────────
 
 /**
  * Ajustes de posición de la pantalla. Todos los valores `bias` van de 0f (arriba)
- * a 1f (abajo) dentro de la zona de contenido.
+ * a 1f (abajo) dentro de la zona de contenido, que desde la remodelación del HUD
+ * abarca **toda** el área de la pantalla principal —el HUD flota encima—: así el
+ * mundo no cambia de sitio cuando el panel crece o encoge.
  *
  * La Pokéball **no** se posiciona aquí: vive en el bottom menu.
  */
 object MainLayout {
     val TRAINER_SIZE = 80.dp
 
-    /** Trainer pegado a la parte alta de la zona de contenido. */
-    const val TRAINER_BIAS = 0f
+    /**
+     * Trainer algo por debajo del centro de la zona. Reproduce la altura a la
+     * que caminaba con el HUD antiguo (mucho más alto): antes anclaba a 0f del
+     * hueco que quedaba bajo el panel, y al compactarlo ese hueco creció y el
+     * sprite subió casi hasta la barra de estado, desajustado del fondo de ruta.
+     * Anclar a toda el área lo deja inmune a la altura del HUD.
+     */
+    const val TRAINER_BIAS = 0.54f
 
-    /** Botón de hierba alta: junto al trainer, arriba a la derecha. */
+    /**
+     * Botón de hierba alta: esquina inferior derecha de la zona, sobre la zona
+     * flotante de la Pokébola.
+     */
     val TALL_GRASS_SIZE = 80.dp
-    const val TALL_GRASS_BIAS = 0.8f
+    const val TALL_GRASS_BIAS = 0.95f
     const val TALL_GRASS_H_BIAS = 0.9f
 
     /**
@@ -490,8 +427,13 @@ object MainLayout {
 }
 
 /**
- * Pantalla principal: HUD arriba y zona de juego debajo, sin marco ni fondo:
- * el entrenador y la hierba alta viven directamente sobre el fondo de la app.
+ * Pantalla principal: el mundo (entrenador y hierba alta) ancla a **toda** el
+ * área de contenido y el HUD flota encima como capa superior.
+ *
+ * Antes el mundo se anclaba al hueco que dejaba el HUD debajo suyo, así que
+ * cualquier cambio de altura del panel (como la remodelación compacta)
+ * desplazaba al entrenador y lo desajustaba del camino del fondo de ruta. Con
+ * el HUD superpuesto, el mundo es inmune a su altura.
  *
  * A cada clic de zona (toque de la Pokéball) responde con números de ganancia
  * flotantes (+potencia) que suben y se desvanecen. Es el **único** feedback: el
@@ -505,10 +447,8 @@ object MainLayout {
 fun MainScreen(
     state: GameUiState,
     onTallGrassToggle: () -> Unit,
-    onReset: () -> Unit,
     onEnterGym: () -> Unit,
     onAdvanceZone: () -> Unit,
-    onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // "Juice" efímero: cada incremento real de zoneClicks dispara pop flotante.
@@ -531,54 +471,58 @@ fun MainScreen(
     }
     val removeLcdPop: (Long) -> Unit = { id -> lcdPops = lcdPops.filterNot { it.id == id } }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        GameHud(
-            state = state,
-            onReset = onReset,
-            onOpenLead = onOpenLead,
+    // El mundo ancla a toda el área de contenido (no al hueco bajo el HUD) y el
+    // HUD flota encima: cambiar la altura del panel ya no mueve al entrenador.
+    Box(modifier = modifier.fillMaxSize()) {
+        PercentageLayout(
+            modifier = Modifier.matchParentSize(),
+            applyInsets = false
+        ) {
+            TrainerGrassStack(
+                trainerFrameRes = state.trainerFrameRes,
+                showTallGrass = state.isTallGrass,
+                modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
+            )
+
+            // Solo las zonas con hierba alta (rutas, bosque, cueva) pueden
+            // entrar: las ciudades no tienen fauna y la hierba se oculta.
+            if (state.hasWilds) {
+                TallGrassButton(
+                    onClick = onTallGrassToggle,
+                    modifier = Modifier
+                        .size(MainLayout.TALL_GRASS_SIZE)
+                        .anchor(
+                            verticalBias = MainLayout.TALL_GRASS_BIAS,
+                            horizontalBias = MainLayout.TALL_GRASS_H_BIAS
+                        )
+                )
+            }
+        }
+
+        PopLayer(
+            pops = lcdPops,
+            onRemove = removeLcdPop,
+            modifier = Modifier.matchParentSize(),
+            // Reproduce la altura de aparición que tenían con el HUD antiguo
+            // (~70% de la zona): debajo del entrenador, no sobre él.
+            baseAlignment = BiasAlignment(verticalBias = 0.42f, horizontalBias = 0f)
+        )
+
+        // Capa superior: HUD y, pegado debajo de su barra de clics, el CTA de
+        // progresión. Ambos flotan sobre el mundo sin moverlo (el mundo ancla a
+        // toda el área de contenido).
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(MainLayout.HUD_PADDING)
-        )
-
-        // Espacio restante (por debajo del HUD): entrenador y hierba alta sin
-        // marco ni fondo, directamente sobre la app.
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            PercentageLayout(
-                modifier = Modifier.matchParentSize(),
-                applyInsets = false
-            ) {
-                TrainerGrassStack(
-                    trainerFrameRes = state.trainerFrameRes,
-                    showTallGrass = state.isTallGrass,
-                    modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
-                )
-
-                // Solo las zonas con hierba alta (rutas, bosque, cueva) pueden
-                // entrar: las ciudades no tienen fauna y la hierba se oculta.
-                if (state.hasWilds) {
-                    TallGrassButton(
-                        onClick = onTallGrassToggle,
-                        modifier = Modifier
-                            .size(MainLayout.TALL_GRASS_SIZE)
-                            .anchor(
-                                verticalBias = MainLayout.TALL_GRASS_BIAS,
-                                horizontalBias = MainLayout.TALL_GRASS_H_BIAS
-                            )
-                    )
-                }
-            }
-
-            PopLayer(
-                pops = lcdPops,
-                onRemove = removeLcdPop,
-                modifier = Modifier.matchParentSize()
+        ) {
+            GameHud(
+                state = state,
+                modifier = Modifier.fillMaxWidth()
             )
 
-            // CTA de progresión, flotando sobre el fondo junto a la Pokéball.
-            // Vive fuera del HUD a propósito: dentro del panel, su aparición
-            // cambiaba la altura del HUD y desplazaba al entrenador hacia abajo.
-            // Aquí no toca el layout, así que el sprite queda siempre quieto.
+            // Fuera del panel para que aparecer o desaparecer no cambie su
+            // altura; el pequeño hueco de arriba lo separa del cartel de zona.
             ProgressionAction(
                 isGymReady = state.isGymReady,
                 canAdvanceZone = state.canAdvanceZone,
@@ -586,9 +530,8 @@ fun MainScreen(
                 onEnterGym = onEnterGym,
                 onAdvanceZone = onAdvanceZone,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(MainLayout.HUD_PADDING)
+                    .padding(top = 8.dp)
             )
         }
     }
@@ -599,10 +542,8 @@ fun MainScreen(
  *
  * Es **un solo hueco** porque las dos acciones son excluyentes: el avance exige,
  * en zonas con gimnasio, haberlo ganado en la run. Se compone fuera del HUD para
- * que aparecer o desaparecer no cambie la altura del panel: si viviera dentro,
- * empujaría al entrenador hacia abajo (está anclado arriba de la zona de
- * contenido). Como bonus queda a mano sobre la Pokéball, que es donde está el
- * pulgar.
+ * que aparecer o desaparecer no cambie la altura del panel: flota justo debajo
+ * de su barra de clics, sobre el fondo de la zona.
  */
 @Composable
 private fun ProgressionAction(
@@ -686,7 +627,8 @@ private fun TallGrassLayer(drawableRes: Int, size: Dp, offsetX: Dp = 0.dp, offse
 }
 
 /**
- * Botón de hierba alta, situado arriba a la derecha del trainer.
+ * Botón de hierba alta, situado en la esquina inferior derecha de la zona, sobre
+ * la zona flotante de la Pokébola.
  * Entra o sale del modo hierba alta (que también muestra/oculta las capas).
  *
  * Usa `anchor(...)` con los dos sesgos en una sola llamada: encadenar
@@ -790,10 +732,8 @@ private fun MainScreenStage(state: GameUiState) {
         MainScreen(
             state = state,
             onTallGrassToggle = {},
-            onReset = {},
             onEnterGym = {},
             onAdvanceZone = {},
-            onOpenLead = {},
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -826,26 +766,23 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
 // ─────────────────────────── HUD ───────────────────────────
 
 /**
- * HUD de juego de la pantalla principal con estética de consola portátil:
- * chasis de acero biselado con sombra dura, cabecera a la roja Pokédex con
- * LEDs, placas de diálogo crema para entrenador/monedas/zona/principal,
- * lecturas LCD para estadísticas rápidas y barra EXP cuadrada con contador
- * superpuesto. Los botones de reset y
- * cambio de principal se hunden físicamente al pulsarlos; los CTA de gimnasio y
- * avance **no** viven aquí (ver `ProgressionAction`), para que su aparición no
- * cambie la altura del panel ni mueva al entrenador.
+ * HUD compacto de la pantalla principal con estética de consola portátil:
+ * chasis de acero biselado con sombra dura y solo dos líneas de contenido —
+ * cartel de zona y monedas en una fila, barra EXP cuadrada con el contador de
+ * clics superpuesto debajo. Entrenador, principal, estadísticas y los botones
+ * de reset y cambio de principal se retiraron a la hoja desplegable de la
+ * Pokédex (ver `OptionsSheet`); los CTA de gimnasio y avance **no** viven aquí
+ * (ver `ProgressionAction`), para que su aparición no cambie la altura del
+ * panel.
  *
  * Cada vez que ganan monedas (p. ej. tras una captura), un número dorado
  * flotante aparece junto a la placa de monedas y se desvanece.
  *
- * Es **sin estado**: recibe el [GameUiState] ya calculado y reenvía las
- * interacciones como lambdas.
+ * Es **sin estado**: recibe el [GameUiState] ya calculado.
  */
 @Composable
 fun GameHud(
     state: GameUiState,
-    onReset: () -> Unit,
-    onOpenLead: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var coinPops by remember { mutableStateOf(emptyList<RetroPop>()) }
@@ -878,43 +815,29 @@ fun GameHud(
             borderWidth = 3.dp,
             innerGap = 1.dp,
             shadowOffset = 4.dp,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                DeviceLeds(modifier = Modifier.fillMaxWidth())
-
-                // Entrenador a la izquierda, monedas a la derecha.
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                // Cartel de zona a la izquierda y monedas a la derecha: la única
+                // fila de datos del HUD compacto.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    state.playerName?.let { name ->
-                        PlateCell { Text(
-                            text = stringResource(R.string.hud_trainer, name),
-                            color = RetroColors.InkBlack,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        ) }
-                    } ?: Spacer(modifier = Modifier.width(24.dp))
+                    // Placa crema con texto negro, estilo letrero de ruta.
+                    PlateCell { Text(
+                        text = state.zoneName,
+                        color = RetroColors.InkBlack,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                        maxLines = 1
+                    ) }
 
                     CoinPlate(coins = state.coins)
                 }
-
-                // Cartel de zona: placa crema con texto negro, estilo letrero de ruta.
-                PlateCell(
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) { Text(
-                    text = state.zoneName,
-                    color = RetroColors.InkBlack,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                    maxLines = 1
-                ) }
 
                 // Progreso de la zona: barra EXP cuadrada con el contador superpuesto.
                 RetroBar(
@@ -945,57 +868,9 @@ fun GameHud(
                     }
                 )
 
-                PlateCell(
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) { Text(
-                    text = stringResource(
-                        R.string.hud_lead,
-                        state.leadName ?: stringResource(R.string.hud_lead_none)
-                    ),
-                    color = RetroColors.InkBlack,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                ) }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                ) {
-                    LcdCell(text = stringResource(R.string.hud_owned, state.ownedCount))
-                    LcdCell(text = stringResource(R.string.hud_zone_power, state.clickPower))
-                    LcdCell(text = stringResource(R.string.hud_medals, state.medals.size))
-                }
-
                 // El CTA de progresión (gimnasio / avanzar) **no** vive aquí: ver
                 // `ProgressionAction`. Si estuviera en esta columna, su aparición
                 // cambiaría la altura del HUD y empujaría al entrenador.
-
-                // Reset y cambio de principal comparten fila: encajan juntos y dejan la
-                // mitad inferior del HUD más despejada.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    RetroButton(
-                        label = stringResource(R.string.action_reset),
-                        base = RetroColors.ResetBase,
-                        edge = RetroColors.ResetEdge,
-                        fontSize = 12.sp,
-                        onClick = onReset,
-                        modifier = Modifier.weight(1f)
-                    )
-                    RetroButton(
-                        label = stringResource(R.string.lead_change),
-                        base = RetroColors.ButtonBlue,
-                        edge = RetroColors.ButtonBlueEdge,
-                        fontSize = 12.sp,
-                        onClick = onOpenLead,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
             }
         }
 

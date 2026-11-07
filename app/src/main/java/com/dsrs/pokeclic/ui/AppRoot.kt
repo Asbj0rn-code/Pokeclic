@@ -284,10 +284,8 @@ fun AppRoot(
                         AppTab.Home -> MainScreen(
                             state = state,
                             onTallGrassToggle = onTallGrassToggle,
-                            onReset = onReset,
                             onEnterGym = onEnterGym,
-                            onAdvanceZone = onAdvanceZone,
-                            onOpenLead = onOpenLead
+                            onAdvanceZone = onAdvanceZone
                         )
                         AppTab.Map -> MapScreen(
                             bottomReserved = innerPadding.calculateBottomPadding()
@@ -353,6 +351,17 @@ fun AppRoot(
     if (state.isOptionsOpen) {
         OptionsSheet(
             onDismiss = onCloseOptions,
+            // La hoja se cierra antes de ejecutar la acción: el reset deja ver el
+            // juego ya reiniciado y el selector de principal (`LeadOverlay`)
+            // necesita la hoja fuera de en medio.
+            onReset = {
+                onCloseOptions()
+                onReset()
+            },
+            onOpenLead = {
+                onCloseOptions()
+                onOpenLead()
+            },
             onWipeGame = onWipeGame,
             onDebugJumpToZone = { zoneId ->
                 onCloseOptions()

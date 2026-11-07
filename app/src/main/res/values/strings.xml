@@ -105,6 +105,8 @@
     <string name="action_advance">Avanzar</string>
     <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
     <string name="action_wipe">Borrar partida (test)</string>
+    <string name="options_debug_plateada">Ir a Ciudad Plateada (test)</string>
+    <string name="options_debug_celeste">Ir a Ciudad Celeste (test)</string>
     <string name="options_debug_carmin">Ir a Ciudad Carmín (test)</string>
     <string name="wipe_confirm_title">¿Borrar partida?</string>
     <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>

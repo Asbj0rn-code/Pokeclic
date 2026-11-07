@@ -8,6 +8,7 @@
  */
 package com.dsrs.pokeclic.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +44,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -184,6 +187,10 @@ private fun LeadRow(option: LeadOption, selected: Boolean, onClick: () -> Unit) 
  *
  * @param onDismiss se invoca al cerrar (arrastre hacia abajo, toque fuera o
  *   botón atrás). El estado lo actualiza el `MainViewModel`.
+ * @param onReset reinicia la run conservando la meta: el botón que antes
+ *   vivía en el HUD se retiró aquí al compactarlo.
+ * @param onOpenLead abre el selector de Pokémon principal: también provenía
+ *   del HUD antes de la remodelación compacta.
  * @param onWipeGame borra toda la partida (provisional: fila de test que vive
  *   aquí de momento, ver `MainViewModel.onWipeGame`).
  * @param onDebugJumpToZone salta a una zona concreta (provisional: fila de test,
@@ -193,6 +200,8 @@ private fun LeadRow(option: LeadOption, selected: Boolean, onClick: () -> Unit) 
 @Composable
 fun OptionsSheet(
     onDismiss: () -> Unit,
+    onReset: () -> Unit,
+    onOpenLead: () -> Unit,
     onWipeGame: () -> Unit,
     onDebugJumpToZone: (String) -> Unit
 ) {
@@ -206,6 +215,8 @@ fun OptionsSheet(
     ) {
         ImmersiveModalWindow()
         OptionsContent(
+            onReset = onReset,
+            onOpenLead = onOpenLead,
             onWipeGame = onWipeGame,
             onDebugJumpToZone = onDebugJumpToZone
         )
@@ -245,17 +256,34 @@ private fun ImmersiveModalWindow() {
     }
 }
 
-/** Zona a la que salta la fila de desarrollo de la hoja de opciones. */
-private const val DEBUG_ZONE_CARMIN = "ciudad_carmin"
+/**
+ * Atajo de desarrollo: salta a [zoneId] con la barra de la zona ya llena para
+ * probar su gimnasio sin recorrer Kanto.
+ */
+private data class DebugZoneJump(val zoneId: String, @param:StringRes val labelRes: Int)
 
 /**
- * Contenido de la hoja de opciones: título, separador y dos filas decorativas
- * sin acción asociada, la fila provisional de borrado de partida (test) —que pide
- * confirmación explícita antes de destruir la partida— y, solo en compilaciones
- * de desarrollo, el salto directo a Ciudad Carmín.
+ * Zonas de los atajos de desarrollo, en orden de progresión: los tres gimnasios
+ * implementados (Brock, Misty y Lt. Surge).
+ */
+private val DEBUG_ZONE_JUMPS: List<DebugZoneJump> = listOf(
+    DebugZoneJump("ciudad_plateada", R.string.options_debug_plateada),
+    DebugZoneJump("ciudad_celeste", R.string.options_debug_celeste),
+    DebugZoneJump("ciudad_carmin", R.string.options_debug_carmin)
+)
+
+/**
+ * Contenido de la hoja de opciones: título, separador, dos filas decorativas
+ * sin acción asociada, cambio de Pokémon principal y reset de run (retirados
+ * del HUD al compactarlo), la fila provisional de borrado de partida (test)
+ * —que pide confirmación explícita antes de destruir la partida— y, solo en
+ * compilaciones de desarrollo, los saltos directos a las zonas de los
+ * gimnasios implementados.
  */
 @Composable
 fun OptionsContent(
+    onReset: () -> Unit = {},
+    onOpenLead: () -> Unit = {},
     onWipeGame: () -> Unit = {},
     onDebugJumpToZone: (String) -> Unit = {}
 ) {
@@ -285,23 +313,39 @@ fun OptionsContent(
             modifier = Modifier.fillMaxWidth()
         )
 
+        // Cambio de Pokémon principal y reset de run: antes eran botones del
+        // HUD; al compactarlo se movieron a esta hoja (ver `GameHud`).
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.lead_change)) },
+            leadingContent = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLead)
+        )
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.action_reset)) },
+            leadingContent = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onReset)
+        )
+
         ListItem(
             headlineContent = { Text(stringResource(R.string.action_wipe)) },
             leadingContent = { Icon(Icons.Filled.Delete, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().clickable(onClick = { showWipeConfirm = true })
         )
 
-        // Fila de desarrollo: deja la partida en Ciudad Carmín con la barra llena
-        // para probar el gimnasio de Lt. Surge sin recorrer Kanto. Solo se compone
+        // Filas de desarrollo: dejan la partida en la zona del gimnasio elegido
+        // con la barra llena, para probarlo sin recorrer Kanto. Solo se componen
         // en compilaciones depurables, igual que el botón del editor del mapa.
         if (context.isDebugBuild()) {
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.options_debug_carmin)) },
-                leadingContent = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth().clickable {
-                    onDebugJumpToZone(DEBUG_ZONE_CARMIN)
-                }
-            )
+            DEBUG_ZONE_JUMPS.forEach { jump ->
+                ListItem(
+                    headlineContent = { Text(stringResource(jump.labelRes)) },
+                    leadingContent = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onDebugJumpToZone(jump.zoneId)
+                    }
+                )
+            }
         }
     }
 
