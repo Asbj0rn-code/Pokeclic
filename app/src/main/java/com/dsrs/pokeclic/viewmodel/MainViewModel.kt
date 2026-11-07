@@ -389,6 +389,11 @@ class MainViewModel(
      * Golpea al líder. Solo cuenta si está **expuesto**: en fase de ataque no se
      * le puede hacer daño, que es lo que cierra el exploit de atacar y defender a
      * la vez. El daño combina la potencia de clic con la ventaja de tipo.
+     *
+     * La primera vez que un golpe fuese a cruzar el umbral de furia (o a matarlo)
+     * sin haber jugado una ronda de furia, [GymCombat.gateFirstRage] frena el daño
+     * en el umbral y devuelve al líder a [GymPhase.ATTACKING]: la furia es
+     * obligatoria al menos una vez por combate.
      */
     fun onGymEnemyHit() {
         val state = _uiState.value
@@ -398,26 +403,40 @@ class MainViewModel(
 
         val multiplier = typeDamageMultiplier(state.leadType, config.type)
         val damage = (state.clickPower * multiplier).roundToLong().coerceAtLeast(1L).toInt()
-        val newLeaderHp = (gym.leaderHp - damage).coerceAtLeast(0)
 
-        if (newLeaderHp <= 0) winGym(config)
-        else updateGym {
-            it.copy(
-                leaderHp = newLeaderHp,
-                rage = GymCombat.isRaging(newLeaderHp, it.leaderMaxHp)
-            )
+        var won = false
+        // Un solo `updateGym`: golpe, puerta de furia y victoria se deciden sobre
+        // el estado más reciente.
+        updateGym { current ->
+            if (current.outcome != GymOutcome.ACTIVE || current.phase != GymPhase.EXPOSED) {
+                return@updateGym current
+            }
+            val newLeaderHp = (current.leaderHp - damage).coerceAtLeast(0)
+            val gated = GymCombat.gateFirstRage(current, newLeaderHp)
+            when {
+                gated != null -> gated
+                newLeaderHp <= 0 -> {
+                    won = true
+                    current.copy(leaderHp = 0)
+                }
+                else -> current.copy(
+                    leaderHp = newLeaderHp,
+                    rage = GymCombat.isRaging(newLeaderHp, current.leaderMaxHp)
+                )
+            }
         }
+        if (won) winGym(config)
     }
 
     /**
      * Pulsación en el minijuego de anillos de Misty.
      *
      * Juzga el anillo **más cercano** a su convergencia: dentro de la ventana es
-     * acierto y el anillo desaparece; fuera, fallo, resta vida y el anillo
-     * también desaparece. Un anillo se cobra una sola vez, de modo que pulsar
-     * repetidamente no permite encadenar aciertos ni acumula daño sobre el mismo
-     * anillo. En fase expuesta no hace nada: entonces el toque válido es sobre el
-     * sprite del líder ([onGymEnemyHit]).
+     * acierto y el anillo desaparece **sumando postura**; fuera, fallo, resta
+     * vida, no suma y el anillo también desaparece. Un anillo se cobra una sola
+     * vez, de modo que pulsar repetidamente no permite encadenar aciertos ni
+     * acumula daño sobre el mismo anillo. En fase expuesta no hace nada: entonces
+     * el toque válido es sobre el sprite del líder ([onGymEnemyHit]).
      */
     fun onGymRingTap() {
         val state = _uiState.value
@@ -438,7 +457,8 @@ class MainViewModel(
                     outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
                 )
             )
-            if (onBeat) resolved else applyRingMiss(resolved, config.ringMissDamage)
+            if (onBeat) GymCombat.addPosture(resolved)
+            else applyRingMiss(resolved, config.ringMissDamage)
         }
     }
 
@@ -503,8 +523,8 @@ class MainViewModel(
                         columns = config.columns,
                         rows = config.rows,
                         ringWindowMs = config.ringWindowMs,
-                        waveDurationMs = config.waveDurationMs,
-                        waveRemainingMs = config.waveDurationMs,
+                        postureMax = config.postureHits,
+                        posture = 0,
                         exposureDurationMs = config.exposureDurationMs,
                         // El principal efectivo es el elegido o, si no hay, el starter.
                         leadSpeciesId = current.leadSpeciesId ?: current.starterSpeciesId,
@@ -518,11 +538,11 @@ class MainViewModel(
     }
 
     /**
-     * Bucle de combate. En fase de ataque corre la cuenta atrás de la oleada y
-     * aplica la mecánica del líder —ráfagas de proyectiles, anillos que se
-     * cierran o Voltorb que se cargan—; en fase expuesta solo avanza la
-     * recuperación. Al bajar del 25 % de vida la mecánica se acelera (furia). Se
-     * detiene al ganar o perder.
+     * Bucle de combate. En fase de ataque aplica la mecánica del líder —ráfagas
+     * de proyectiles, anillos que se cierran o Voltorb que se cargan—; la postura
+     * solo sube con los aciertos del jugador, nunca por tiempo. En fase expuesta
+     * avanza la recuperación por tiempo. Al bajar del 25 % de vida la mecánica se
+     * acelera (furia). Se detiene al ganar o perder.
      */
     private fun startGymLoop(config: Gym) {
         gymJob = viewModelScope.launch {
@@ -540,30 +560,25 @@ class MainViewModel(
                 updateGym { current ->
                     if (current.outcome != GymOutcome.ACTIVE) return@updateGym current
 
-                    // Fase expuesta: no hay ataque enemigo y la barra se rellena sola.
+                    // Fase expuesta: no hay ataque enemigo y la ventana corre por
+                    // tiempo. Al terminar, la postura vuelve a cero.
                     if (current.phase == GymPhase.EXPOSED) {
                         val advanced = GymCombat.advanceExposure(current, GYM_TICK_MS)
                         resumed = advanced.phase == GymPhase.ATTACKING
                         return@updateGym advanced
                     }
 
-                    // La stamina es el reloj de la oleada: baja aunque el jugador
-                    // acierte todo. Al llegar a 0, el líder queda expuesto y se
-                    // limpian proyectiles, anillos y Voltorb.
-                    val advanced = GymCombat.advanceWave(current, GYM_TICK_MS)
-                    if (advanced.phase == GymPhase.EXPOSED) return@updateGym advanced
-
                     val now = nowMs()
                     val spawnDue = now >= nextSpawnMs
 
                     val idsBefore = nextCombatId
-                    val next = when (advanced.mechanic) {
+                    val next = when (current.mechanic) {
                         GymMechanic.PROJECTILES ->
-                            tickProjectiles(config, advanced, now, spawnDue)
+                            tickProjectiles(config, current, now, spawnDue)
                         GymMechanic.TIMING_RINGS ->
-                            tickRings(config, advanced, now, spawnDue)
+                            tickRings(config, current, now, spawnDue)
                         GymMechanic.VOLTORB_GRID ->
-                            tickVoltorbs(config, advanced, now, spawnDue)
+                            tickVoltorbs(config, current, now, spawnDue)
                     }
 
                     // La cadencia se cobra cuando la mecánica **coloca** su ataque.
@@ -571,16 +586,16 @@ class MainViewModel(
                     // bloqueada —un Voltorb cargado a la vez—, así que si no
                     // colocó, el turno sigue pendiente y entra en cuanto la celda
                     // quede libre.
-                    val blocked = advanced.mechanic == GymMechanic.VOLTORB_GRID &&
+                    val blocked = current.mechanic == GymMechanic.VOLTORB_GRID &&
                         nextCombatId == idsBefore
-                    if (spawnDue && !blocked) nextSpawnMs += spawnIntervalMs(config, advanced)
+                    if (spawnDue && !blocked) nextSpawnMs += spawnIntervalMs(config, current)
 
                     if (next.outcome == GymOutcome.LOST) lost = true
                     next
                 }
 
                 if (lost) break
-                // Al recuperarse, un respiro antes de la siguiente oleada.
+                // Al recuperarse, un respiro antes del siguiente ataque.
                 if (resumed) nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
             }
         }

@@ -1,5 +1,7 @@
 package com.dsrs.pokeclic.model
 
+import kotlin.math.ceil
+
 /**
  * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
  * de ritmo, Voltorb cargados y las reglas puras del combate.
@@ -117,9 +119,11 @@ enum class GymMechanic {
  * @param projectileTravelMs tiempo que tarda un proyectil en caer de arriba a
  *   abajo, en ms.
  * @param projectileDamage HP que resta cada proyectil que impacta en el jugador.
- * @param waveDurationMs duración de la oleada: el jugador debe aguantarla entera
- *   (la barra de stamina baja por tiempo) para dejar al líder expuesto.
- * @param exposureDurationMs duración de la fase expuesta, en ms.
+ * @param postureHits aciertos seguidos que hacen falta para **romper la postura**
+ *   del líder y abrir su ventana de vulnerabilidad. Cada acierto de la mecánica
+ *   suma uno; los fallos no suman y además restan HP al jugador.
+ * @param exposureDurationMs duración de la fase expuesta, en ms. Es la ventana
+ *   para castigar al líder y sigue funcionando **por tiempo**.
  * @param projectilesPerSpawn máximo de proyectiles por ráfaga (la ráfaga real
  *   elige al azar entre 1 y este valor).
  * @param rageSpawnIntervalMs cadencia de las ráfagas durante la furia (por
@@ -158,7 +162,7 @@ data class Gym(
     val spawnIntervalMs: Long,
     val projectileTravelMs: Long,
     val projectileDamage: Int,
-    val waveDurationMs: Long,
+    val postureHits: Int,
     val exposureDurationMs: Long,
     val projectilesPerSpawn: Int = 1,
     val rageSpawnIntervalMs: Long = spawnIntervalMs,
@@ -185,12 +189,14 @@ data class Gym(
  * Fase del combate de gimnasio.
  *
  * Las dos fases son **mutuamente excluyentes**: mientras el líder ataca no se le
- * puede hacer daño, y mientras está expuesto no lanza proyectiles. Eso evita que
+ * puede hacer daño, y mientras está expuesto no lanza ataques. Eso evita que
  * el jugador pueda atacar y defenderse a la vez (el antiguo exploit de dos manos).
  *
- * - [ATTACKING]: cae una oleada de proyectiles; la stamina del líder baja por
- *   tiempo y hay que aguantarla entera rompiendo rocas.
- * - [EXPOSED]: sin proyectiles; tocar al líder le resta vida mientras se recupera.
+ * - [ATTACKING]: el líder ataca con su mecánica; cada acierto del jugador llena
+ *   la barra de **postura** y cada fallo le resta HP. Al llenarla, la postura se
+ *   rompe y el líder pasa a [EXPOSED].
+ * - [EXPOSED]: sin ataques enemigos; tocar al líder le resta vida mientras se
+ *   recupera. La ventana sigue funcionando **por tiempo**.
  */
 enum class GymPhase { ATTACKING, EXPOSED }
 
@@ -363,7 +369,7 @@ data class VoltorbFeedback(
  *
  * Incluye las fracciones de barra ya calculadas para que la UI no haga cuentas
  * de negocio: solo lee `leaderHpFraction`, `playerHpFraction` y
- * `staminaFraction`.
+ * `postureFraction`.
  *
  * @param leaderHp vida restante del líder; llega a 0 → victoria.
  * @param leaderMaxHp vida inicial, para la barra (y el umbral de furia).
@@ -381,13 +387,15 @@ data class VoltorbFeedback(
  * @param voltorbs Voltorb cargados en este instante.
  * @param voltorbFeedback último apagado, explosión o descarga, para la animación
  *   de la escena.
- * @param waveDurationMs duración total de la oleada, en ms.
- * @param waveRemainingMs tiempo de oleada restante; la barra de stamina es este
- *   contador bajando por tiempo.
+ * @param posture aciertos acumulados en la ronda actual (0..[postureMax]).
+ *   Al llegar a [postureMax] el líder queda [GymPhase.EXPOSED].
+ * @param postureMax aciertos necesarios para romper la postura del líder.
  * @param exposureDurationMs duración total de la fase expuesta, en ms.
  * @param phase fase actual del combate.
  * @param exposureRemainingMs tiempo que le queda al líder para volver a atacar.
  * @param rage el líder está por debajo del 25 %: oleadas más densas y rápidas.
+ * @param rageRoundPlayed ya se jugó una ronda completa de furia; hasta entonces
+ *   el líder no puede morir, para que la furia nunca se pueda saltar.
  * @param leadSpeciesId especie del Pokémon principal, para elegir su sprite.
  * @param leadName nombre visible del principal (placeholder si no hay arte).
  * @param leadType tipo del principal; decide el multiplicador y el color del
@@ -411,12 +419,13 @@ data class GymState(
     val ringFeedback: RingFeedback? = null,
     val voltorbs: List<Voltorb> = emptyList(),
     val voltorbFeedback: VoltorbFeedback? = null,
-    val waveDurationMs: Long = 0L,
-    val waveRemainingMs: Long = 0L,
+    val posture: Int = 0,
+    val postureMax: Int = 0,
     val exposureDurationMs: Long = 0L,
     val phase: GymPhase = GymPhase.ATTACKING,
     val exposureRemainingMs: Long = 0L,
     val rage: Boolean = false,
+    val rageRoundPlayed: Boolean = false,
     val leadSpeciesId: String? = null,
     val leadName: String? = null,
     val leadType: PokemonType? = null,
@@ -433,16 +442,16 @@ data class GymState(
         else (playerHp.toFloat() / maxHp).coerceIn(0f, 1f)
 
     /**
-     * Fracción de stamina para la barra. En ataque es el tiempo de oleada
-     * restante (baja sola); en fase expuesta se rellena mientras corre la
-     * recuperación.
+     * Fracción de la barra de **postura**. Mientras el líder ataca crece con
+     * cada acierto (rompe la postura al llenarse); en fase expuesta se rellena
+     * con el tiempo de recuperación que queda.
      */
-    val staminaFraction: Float
+    val postureFraction: Float
         get() = when {
             phase == GymPhase.EXPOSED && exposureDurationMs > 0L ->
                 (1f - exposureRemainingMs.toFloat() / exposureDurationMs).coerceIn(0f, 1f)
-            waveDurationMs <= 0L -> 0f
-            else -> (waveRemainingMs.toFloat() / waveDurationMs).coerceIn(0f, 1f)
+            postureMax <= 0 -> 0f
+            else -> (posture.toFloat() / postureMax).coerceIn(0f, 1f)
         }
 }
 
@@ -466,10 +475,80 @@ object GymCombat {
     fun isRaging(state: GymState): Boolean = isRaging(state.leaderHp, state.leaderMaxHp)
 
     /**
+     * Primera vida (incluida) en la que el líder está en furia, es decir, el
+     * mayor HP que cumple `hp / max < 25 %`. Es el valor al que se clava la vida
+     * cuando el primer golpe intenta cruzar el umbral.
+     */
+    fun rageThresholdHp(leaderMaxHp: Int): Int {
+        if (leaderMaxHp <= 0) return 0
+        return (ceil(leaderMaxHp * RAGE_HP_FRACTION).toInt() - 1).coerceAtLeast(0)
+    }
+
+    /**
+     * Puerta de la **furia obligatoria**.
+     *
+     * Si el golpe dejaría al líder por debajo del umbral de furia antes de haber
+     * jugado una ronda completa, devuelve el estado con la vida clavada en
+     * [rageThresholdHp], la furia activada y una ronda de ataque nueva: así el
+     * jugador no puede matarlo ni encadenar la ventana actual para saltarse la
+     * furia. Devuelve `null` si no hay nada que frenar.
+     */
+    fun gateFirstRage(state: GymState, newLeaderHp: Int): GymState? {
+        if (state.rageRoundPlayed) return null
+        val threshold = rageThresholdHp(state.leaderMaxHp)
+        if (threshold <= 0 || newLeaderHp >= threshold) return null
+
+        return state.copy(
+            leaderHp = threshold,
+            rage = true,
+            phase = GymPhase.ATTACKING,
+            posture = 0,
+            exposureRemainingMs = 0L,
+            projectiles = emptyList(),
+            rings = emptyList(),
+            voltorbs = emptyList()
+        )
+    }
+
+    /**
+     * Acierto de la mecánica: suma un punto a la postura del líder.
+     *
+     * Cada acierto (romper una roca, apagar un Voltorb, acertar un anillo) llama
+     * aquí. Al alcanzar [GymState.postureMax] la postura se **rompe**: el líder
+     * pasa a [GymPhase.EXPOSED], se abre su ventana por tiempo y se limpian los
+     * ataques en curso. Si la postura se rompe durante la furia, además queda
+     * jugada la ronda obligatoria ([GymState.rageRoundPlayed]). Los fallos nunca
+     * llegan aquí: restan HP y no suman.
+     */
+    fun addPosture(state: GymState, hits: Int = 1): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+        if (hits <= 0 || state.postureMax <= 0) return state
+
+        val posture = (state.posture + hits).coerceAtMost(state.postureMax)
+        val rage = isRaging(state)
+        return if (posture >= state.postureMax) {
+            state.copy(
+                posture = state.postureMax,
+                phase = GymPhase.EXPOSED,
+                exposureRemainingMs = state.exposureDurationMs,
+                projectiles = emptyList(),
+                rings = emptyList(),
+                voltorbs = emptyList(),
+                rage = rage,
+                // Romper la postura durante la furia cierra la ronda obligatoria:
+                // desde aquí el líder ya puede morir.
+                rageRoundPlayed = state.rageRoundPlayed || rage
+            )
+        } else {
+            state.copy(posture = posture, rage = rage)
+        }
+    }
+
+    /**
      * Destruye el proyectil tocado (o le resta un toque si le quedaban varios).
      *
-     * Romper rocas **no** gasta stamina: el tiempo de oleada corre solo. Si el
-     * proyectil ya no existe o no estamos en fase de ataque, no cambia nada.
+     * Romper rocas **es un acierto**: suma postura. Si el proyectil ya no existe
+     * o no estamos en fase de ataque, no cambia nada.
      */
     fun breakProjectile(state: GymState, projectileId: Long): GymState {
         if (state.phase != GymPhase.ATTACKING) return state
@@ -484,14 +563,14 @@ object GymCombat {
         } else {
             state.projectiles.filterNot { it.id == projectileId }
         }
-        return state.copy(projectiles = projectiles)
+        return addPosture(state.copy(projectiles = projectiles))
     }
 
     /**
-     * Registra uno o varios proyectiles que han impactado al jugador.
+     * Registra uno o varios ataques que han impactado al jugador.
      *
-     * Resta [damage] HP. La stamina ya no cambia: la oleada sigue su cuenta atrás
-     * aunque el jugador falle. No actúa fuera de la fase de ataque.
+     * Resta [damage] HP y **no** suma postura: un fallo nunca acerca la ventana
+     * del líder. No actúa fuera de la fase de ataque.
      */
     fun registerImpact(state: GymState, damage: Int): GymState {
         if (state.phase != GymPhase.ATTACKING) return state
@@ -526,7 +605,8 @@ object GymCombat {
         (0 until totalCells).filter { cell -> state.voltorbs.none { it.cell == cell } }
 
     /**
-     * Apaga el Voltorb de [cell] si estaba cargado: acierto sin daño.
+     * Apaga el Voltorb de [cell] si estaba cargado: acierto sin daño que suma
+     * postura.
      *
      * Tocar una celda apagada no se resuelve aquí porque la descarga necesita el
      * daño del gimnasio; eso lo hace [registerShock].
@@ -535,10 +615,11 @@ object GymCombat {
         if (state.phase != GymPhase.ATTACKING) return state
 
         val voltorb = voltorbAt(state, cell) ?: return state
-        return state.copy(
+        val defused = state.copy(
             voltorbs = state.voltorbs.filterNot { it.id == voltorb.id },
             voltorbFeedback = VoltorbFeedback(cell, VoltorbOutcome.DEFUSED)
         )
+        return addPosture(defused)
     }
 
     /** Descarga por tocar una celda apagada: resta [damage] HP. */
@@ -579,41 +660,11 @@ object GymCombat {
     }
 
     /**
-     * Avanza el temporizador de la oleada.
-     *
-     * Al agotarse (la barra de stamina llega a 0) el líder queda
-     * [GymPhase.EXPOSED]: se vacían los proyectiles, los anillos **y los
-     * Voltorb** y empieza la cuenta de exposición. Si no está en fase de ataque,
-     * no cambia nada.
-     */
-    fun advanceWave(state: GymState, elapsedMs: Long): GymState {
-        if (state.phase != GymPhase.ATTACKING) return state
-
-        // La furia se refresca en cada tick (no solo al recibir daño) para que
-        // HUD y lógica no puedan quedar desincronizados.
-        val rage = isRaging(state)
-        val remaining = (state.waveRemainingMs - elapsedMs).coerceAtLeast(0L)
-        return if (remaining == 0L) {
-            state.copy(
-                waveRemainingMs = 0L,
-                phase = GymPhase.EXPOSED,
-                exposureRemainingMs = state.exposureDurationMs,
-                projectiles = emptyList(),
-                rings = emptyList(),
-                voltorbs = emptyList(),
-                rage = rage
-            )
-        } else {
-            state.copy(waveRemainingMs = remaining, rage = rage)
-        }
-    }
-
-    /**
      * Avanza la recuperación durante la fase expuesta.
      *
-     * Cuando se agota el tiempo vuelve a [GymPhase.ATTACKING] con una oleada
-     * nueva y completa. El ViewModel reinicia entonces el temporizador de
-     * aparición para dar un respiro antes de la siguiente lluvia de rocas.
+     * Cuando se agota el tiempo vuelve a [GymPhase.ATTACKING] con la postura a
+     * cero. El ViewModel reinicia entonces el temporizador de aparición para dar
+     * un respiro antes del siguiente ataque.
      */
     fun advanceExposure(state: GymState, elapsedMs: Long): GymState {
         if (state.phase != GymPhase.EXPOSED) return state
@@ -623,7 +674,7 @@ object GymCombat {
         return if (remaining <= 0L) {
             state.copy(
                 phase = GymPhase.ATTACKING,
-                waveRemainingMs = state.waveDurationMs,
+                posture = 0,
                 exposureRemainingMs = 0L,
                 rage = rage
             )

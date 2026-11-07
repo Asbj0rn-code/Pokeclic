@@ -1498,23 +1498,32 @@ la **vida del jugador** se muestra en una barra anclada al borde inferior, junto
 al sprite del principal, y el botón de rendirse desaparece del HUD (solo queda
 en el panel de derrota):
 
-1. **Fase de ataque** (`GymPhase.ATTACKING`): cae una **oleada** de rocas
-   (`rock.png`) por varias columnas durante `waveDurationMs` (10 s). La barra de
-   **stamina** es ese reloj de oleada: **baja sola por tiempo**, no al romper
-   rocas. Tocar una roca la rompe y evita su impacto; si una roca alcanza al
-   jugador, le resta `projectileDamage` HP. El objetivo es **aguantar la oleada
-   entera** (cada ráfaga lanza entre 1 y `projectilesPerSpawn` rocas a la vez).
-2. **Fase expuesta** (`GymPhase.EXPOSED`): al llegar la stamina a 0, el líder deja
-   de lanzar rocas (se vacían las activas) y se recupera **por tiempo**
-   (`exposureDurationMs`, 2,5 s). Mientras dura, los toques sobre el enemigo le
-   restan `potencia de clic × multiplicador de tipo`.
+1. **Fase de ataque** (`GymPhase.ATTACKING`): el líder ataca con su mecánica
+   (rocas, anillos o Voltorb según el gimnasio). Cada **acierto** del jugador
+   —romper una roca, acertar un anillo, apagar un Voltorb— suma un punto a la
+   barra de **postura** (`posture` / `postureHits`). Un **fallo** resta HP al
+   jugador (`projectileDamage`, `ringMissDamage`, `voltorbExplosionDamage`,
+   `voltorbShockDamage`) y **no suma postura**. La barra ya no baja por tiempo.
+2. **Fase expuesta** (`GymPhase.EXPOSED`): al llenarse la postura, ésta se
+   **rompe**: el líder deja de atacar (se vacían rocas, anillos y Voltorb) y se
+   abre una ventana que sigue funcionando **por tiempo** (`exposureDurationMs`,
+   2,5 s). Mientras dura, los toques sobre el enemigo le restan
+   `potencia de clic × multiplicador de tipo`. Al cerrarse la ventana la postura
+   vuelve a cero y empieza un ataque nuevo.
 3. **Furia**: cuando al líder le queda **menos del 25 %** de vida (`rage`), sus
-   oleadas son **más densas y rápidas** (`rageSpawnIntervalMs`,
+   ataques son **más densos y rápidos** (`rageSpawnIntervalMs`,
    `rageProjectilesPerSpawn`, `rageProjectileTravelMs`); el HUD lo anuncia con
-   «¡Enfurecido!» y la barra de stamina se tiñe de rojo.
+   «¡Enfurecido!» y la barra de postura se tiñe de rojo. La furia es
+   **obligatoria**: la primera vez que un golpe fuese a cruzar el umbral (incluido
+   un golpe letal), `GymCombat.gateFirstRage` clava la vida en el umbral y
+   devuelve al líder a `ATTACKING`, de modo que hay que jugar al menos una ronda
+   completa de furia. Al romper la postura durante esa ronda se marca
+   `rageRoundPlayed`; solo entonces el líder puede morir. No hay forma de
+   saltársela con daño alto.
 4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
-   lanza rocas, ni hay rocas que romper mientras está expuesto. Eso cierra el
-   antiguo *exploit* de dos manos (atacar con una y defender con la otra).
+   lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
+   cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
+   otra).
 5. **Ganas** al vaciar la barra del líder; **pierdes** al quedarte sin HP y desde
    el panel de derrota puedes **reintentar** sin coste o **rendirte** (reinicia
    el combate).
@@ -1530,22 +1539,29 @@ intercambiable: un *lunge* del sprite y un destello del color del principal en e
 punto tocado.
 
 La vida máxima es fija (`BASE_MAX_HP = 5`). Los gimnasios escalan (vida del líder,
-duración de oleada, cadencia/velocidad y número de proyectiles, daño). La lógica
-de avance vive en `advanceZone(...)` (`model/GameData.kt`), pura y testeable.
+aciertos de postura, duración de la ventana, cadencia/velocidad y número de
+proyectiles, daño). La lógica de avance vive en `advanceZone(...)`
+(`model/GameData.kt`), pura y testeable.
 
 ### Mecánica del combate (arquitectura)
 
 El ViewModel es dueño de las rocas (`Projectile`: columna, instante de salida y
 duración de caída) y corre un **tick de combate** (`GYM_TICK_MS`). En la fase de
-ataque descuenta el reloj de oleada, lanza ráfagas (eligiendo columnas al azar y
-sin repetir) y detecta las rocas que llegan abajo; durante la furia cambia la
-cadencia, el número y la velocidad de las ráfagas. En la fase expuesta solo
-descuenta la recuperación. Las transiciones (reloj → expuesto, recuperar → atacar,
-impacto → HP, romper → quitar roca) están en `GymCombat`, **funciones puras** sin
-reloj ni corrutinas, para poder testearlas en la JVM. La vista **no** recibe
-actualizaciones por fotograma: interpola la caída con el reloj de fotogramas a
-partir de `spawnedAtMs` y reparte los toques en una única capa `pointerInput`
-(enemigo si está expuesto; si no, la roca más cercana).
+ataque coloca los ataques del líder (ráfagas, anillos o Voltorb) y detecta los
+que hieren al jugador; durante la furia cambia la cadencia, el número y la
+velocidad. La postura **solo cambia con aciertos del jugador**: `GymCombat.addPosture`
+suma y, al llegar al máximo, rompe la postura y abre la ventana. En la fase
+expuesta solo descuenta la recuperación, que sí es por tiempo. Además,
+`GymCombat.gateFirstRage` garantiza que la furia se juegue al menos una vez:
+frena el primer golpe que cruzaría el umbral, reactiva la fase de ataque y marca
+`rageRoundPlayed` cuando el jugador rompe la postura en esa ronda. Las
+transiciones (acierto → postura, postura llena → expuesto, recuperar → atacar,
+impacto → HP, umbral de furia → ronda obligatoria) están en `GymCombat`,
+**funciones puras** sin reloj ni corrutinas, para poder testearlas en la JVM. La
+vista **no** recibe actualizaciones por fotograma:
+interpola la caída con el reloj de fotogramas a partir de `spawnedAtMs` y reparte
+los toques en una única capa `pointerInput` (enemigo si está expuesto; si no, la
+roca o el anillo más cercano, o la celda de Voltorb).
 
 ### Archivos
 
@@ -1556,29 +1572,29 @@ partir de `spawnedAtMs` y reparte los toques en una única capa `pointerInput`
 | `model/Catalogs.kt` | `GymCatalog` (Brock) y sprites |
 | `ui/Intro.kt` | introducción del Profesor Oak (nombre + starter, ver §20) |
 | `ui/Overlays.kt` | selector de principal |
-| `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, stamina, expuesto y feedback |
+| `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
 
 ### Estado nuevo (`GameUiState`)
 
 - **Meta**: `medals`, `starterSpeciesId`, `starterBond`.
 - **Run**: `leadSpeciesId` (se resetea al starter en `onReset()`).
-- **Transitorio**: `gym` (`GymState?`) con vida del líder/jugador, reloj de oleada,
-  fase, furia, recuperación y proyectiles.
+- **Transitorio**: `gym` (`GymState?`) con vida del líder/jugador, postura,
+  fase, furia, recuperación y ataques activos.
 - Derivados en `derive()`: `maxHp`, `leadName`, `leadType`, `isGymReady`,
   `gymLeaderName`, `needsStarter`, `leadOptions`.
 
 ### Cómo extender el contenido
 
 - **Gimnasio nuevo**: añade una entrada a `GymCatalog` y referencia su `id` en
-  `ZoneCatalog` (`gymId`). Ajusta `leaderHp`, `waveDurationMs`,
+  `ZoneCatalog` (`gymId`). Ajusta `leaderHp`, `postureHits`,
   `exposureDurationMs`, `columns`, `spawnIntervalMs`, `projectilesPerSpawn`,
   `projectileTravelMs`, `projectileDamage`, la pareja `rage*` y `coinReward`.
   Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
 - **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
   (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
 - **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
-  `MainViewModel`; duración de oleada, exposición, ráfagas y furia por gimnasio en
-  `GymCatalog`.
+  `MainViewModel`; aciertos de postura, duración de la ventana, aparición de
+  ataques y furia por gimnasio en `GymCatalog`.
 - **Ajustar el starter**: `SpeciesCatalog.starters` y
   `STARTER_BOND_CLICK_BONUS` en `MainViewModel`.
 - **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
@@ -1591,9 +1607,11 @@ partir de `spawnedAtMs` y reparte los toques en una única capa `pointerInput`
 `ModelTest` cubre, además de tipos/costes, el `typeDamageMultiplier`
 (ventaja/desventaja/neutro), la progresión y el aterrizaje de `Projectile`,
 `advanceZone` (capado con gimnasio pendiente, auto-salto con medalla, avance
-normal y capado en la última zona) y las reglas de `GymCombat` (romper roca, daño
-por impacto, reloj de oleada que expone al líder, fin de la exposición y umbral de
-furia). Todo corre en la JVM con `./gradlew testDebugUnitTest`.
+normal y capado en la última zona) y las reglas de `GymCombat` (romper roca suma
+postura, daño por impacto, postura llena que expone al líder y limpia ataques,
+fin de la ventana que resetea la postura, umbral de furia y puerta que obliga a
+jugar una ronda de furia incluso con un golpe letal). Todo corre en la JVM con
+`./gradlew testDebugUnitTest`.
 
 ---
 
@@ -1833,7 +1851,7 @@ Esto sustituye `wildSpeciesIds` y permite probabilidades distintas por especie.
 ]
 ```
 
-`gyms.json` conserva los campos actuales de `Gym` (`leaderHp`, oleadas, furia,
+`gyms.json` conserva los campos actuales de `Gym` (`leaderHp`, postura, furia,
 `coinReward`…), pero con `nameKey` y `spriteKey` en lugar de nombres y recursos
 hardcodeados.
 

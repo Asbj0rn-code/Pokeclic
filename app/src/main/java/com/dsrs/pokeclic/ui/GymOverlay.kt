@@ -4,7 +4,7 @@
  * Cada mecánica tiene su escena: rocas por columnas (Brock), anillos que se
  * cierran sobre el jugador (Misty) o una cuadrícula de Voltorb (Lt. Surge). Las
  * tres animan con un reloj de fotogramas y reparten los toques entre el líder
- * expuesto y el ataque en curso; el HUD pinta las fracciones de vida y stamina ya
+ * expuesto y el ataque en curso; el HUD pinta las fracciones de vida y postura ya
  * calculadas por el modelo. No hay lógica de combate aquí: solo presentación y
  * eventos hacia el ViewModel.
  */
@@ -92,7 +92,6 @@ import com.dsrs.pokeclic.model.Voltorb
 import com.dsrs.pokeclic.model.VoltorbFeedback
 import com.dsrs.pokeclic.model.VoltorbOutcome
 import kotlin.math.PI
-import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -104,11 +103,13 @@ import androidx.compose.foundation.shape.CircleShape
  * [AppRoot].
  *
  * Combate por **fases excluyentes** (ver [GymPhase]):
- * - **Ataque**: corre la oleada y la stamina del líder baja **por tiempo**. La
- *   defensa depende de la mecánica: romper rocas (Brock), acertar el círculo que
- *   converge (Misty) o apagar el Voltorb cargado (Lt. Surge).
+ * - **Ataque**: el líder ataca con su mecánica y el jugador llena la barra de
+ *   **postura** con cada acierto. Un fallo resta vida y no suma postura. Al
+ *   llenarla, la postura se rompe y el líder queda expuesto. La defensa depende
+ *   de la mecánica: romper rocas (Brock), acertar el círculo que converge (Misty)
+ *   o apagar el Voltorb cargado (Lt. Surge).
  * - **Expuesta**: sin ataque enemigo, tocar al líder le resta vida (con ventaja
- *   de tipo).
+ *   de tipo) durante una ventana que sigue funcionando **por tiempo**.
  *
  * Por debajo del 25 % de vida el líder entra en **furia**: los ataques son más
  * densos y rápidos (ver `Gym.rage*`).
@@ -355,9 +356,9 @@ private fun GymScene(
                 }
         )
 
-        // Barra de stamina justo debajo del enemigo: es el reloj de la oleada
-        // (baja por tiempo) y, en furia, se tiñe de rojo.
-        GymStaminaBar(
+        // Barra de postura justo debajo del enemigo: se llena con los aciertos
+        // del jugador y, al completarse, abre la ventana. En furia se tiñe de rojo.
+        GymPostureBar(
             state = state,
             exposed = exposed,
             modifier = Modifier
@@ -691,7 +692,7 @@ private fun RingGymScene(
                 .size(PLAYER_WIDTH, PLAYER_HEIGHT)
         )
 
-        GymStaminaBar(
+        GymPostureBar(
             state = state,
             exposed = exposed,
             modifier = Modifier
@@ -982,7 +983,7 @@ private fun VoltorbGridScene(
                 .size(PLAYER_WIDTH, PLAYER_HEIGHT)
         )
 
-        GymStaminaBar(
+        GymPostureBar(
             state = state,
             exposed = exposed,
             modifier = Modifier
@@ -1225,39 +1226,37 @@ private fun DrawScope.drawVoltorbCell(
 }
 
 /**
- * Barra de stamina del líder bajo su sprite: es el reloj de la oleada (baja por
- * tiempo) y, en furia, se tiñe de rojo. La comparten las dos mecánicas de
- * gimnasio para que la lectura del combate no cambie entre líderes.
+ * Barra de **postura** del líder bajo su sprite: se llena con cada acierto del
+ * jugador y, al completarse, rompe la postura y abre su ventana. Durante la
+ * ventana muestra el tiempo restante y, en furia, se tiñe de rojo. La comparten
+ * las tres mecánicas de gimnasio para que la lectura no cambie entre líderes.
  */
 @Composable
-private fun GymStaminaBar(
+private fun GymPostureBar(
     state: GymState,
     exposed: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val staminaColor = when {
+    val postureColor = when {
         exposed -> EXPOSED_COLOR
         state.rage -> RAGE_COLOR
-        else -> STAMINA_COLOR
+        else -> POSTURE_COLOR
     }
     Column(
-        modifier = modifier.width(STAMINA_WIDTH),
+        modifier = modifier.width(POSTURE_WIDTH),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         LinearProgressIndicator(
-            progress = { state.staminaFraction },
+            progress = { state.postureFraction },
             modifier = Modifier.fillMaxWidth(),
-            color = staminaColor
+            color = postureColor
         )
         Spacer(modifier = Modifier.size(2.dp))
         Text(
             text = if (exposed) {
                 stringResource(R.string.gym_exposed)
             } else {
-                stringResource(
-                    R.string.gym_stamina_time,
-                    ceil(state.waveRemainingMs / 1000f).toInt()
-                )
+                stringResource(R.string.gym_posture, state.posture, state.postureMax)
             },
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (exposed) FontWeight.Bold else FontWeight.Normal,
@@ -1349,7 +1348,7 @@ private fun GymHud(
 
 /**
  * Vida del jugador anclada al borde inferior, lejos del HUD del líder. Se dibuja
- * como la barra de stamina (barra + etiqueta) para mantener el mismo lenguaje.
+ * como la barra de postura (barra + etiqueta) para mantener el mismo lenguaje.
  */
 @Composable
 private fun PlayerHpBar(
@@ -1357,7 +1356,7 @@ private fun PlayerHpBar(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.width(STAMINA_WIDTH),
+        modifier = modifier.width(POSTURE_WIDTH),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         LinearProgressIndicator(
@@ -1431,11 +1430,11 @@ private val PLAYER_HP_BOTTOM_PADDING = 10.dp
 /** Cuánto por debajo de la cabeza del jugador se considera impacto. */
 private val PLAYER_HIT_INSET = 16.dp
 
-/** Ancho de la barra de stamina. */
-private val STAMINA_WIDTH = 200.dp
+/** Ancho de la barra de postura. */
+private val POSTURE_WIDTH = 200.dp
 
-/** Colores de la barra de stamina, del estado expuesto y de la furia. */
-private val STAMINA_COLOR = Color(0xFFFFC107)
+/** Colores de la barra de postura, del estado expuesto y de la furia. */
+private val POSTURE_COLOR = Color(0xFFFFC107)
 private val EXPOSED_COLOR = Color(0xFFFFEB3B)
 private val RAGE_COLOR = Color(0xFFFF5252)
 
@@ -1504,7 +1503,7 @@ private const val VOLTORB_WOBBLE_FROM_FRAME = 4
 /**
  * Cuadrícula de Voltorb de Lt. Surge: separación entre celdas, tamaño mínimo de
  * celda, altura del sprite del líder en este gimnasio y los márgenes verticales
- * que reservan la barra de stamina y la de vida del jugador.
+ * que reservan la barra de postura y la de vida del jugador.
  *
  * La celda se calcula por **ancho** para que el tablero llegue de extremo a
  * extremo; el alto disponible solo limita cuando la pantalla es demasiado baja.

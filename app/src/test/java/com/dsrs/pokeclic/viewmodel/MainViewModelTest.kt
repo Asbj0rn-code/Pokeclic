@@ -286,7 +286,8 @@ class MainViewModelTest {
 
     @Test
     fun winGym_closesCombatWithoutAutoAdvancing() {
-        val vm = viewModel()
+        val clock = TestClock()
+        val vm = viewModel(nowMs = { clock.now }, random = Random(7))
         tapZone(vm, times = 5)          // Z1 al límite
         vm.onAdvanceZone()              // → Z2 (gimnasio)
         tapZone(vm, times = 3)          // Z2 al límite
@@ -306,14 +307,32 @@ class MainViewModelTest {
         assertNull(vm.uiState.value.gymIntro)
         assertNotNull(vm.uiState.value.gym)
 
-        // Se consume la oleada completa con el reloj virtual: como el tiempo
-        // real apenas avanza, ningún proyectil impacta y el líder queda expuesto.
-        testScope.advanceTimeBy(10_000L)
-        testScope.runCurrent()
+        // La postura ya no baja por tiempo: se llena rompiendo rocas. Cada
+        // acierto suma, así que se rompen todas las que aparezcan hasta que el
+        // líder quede expuesto.
+        fillBrockPosture(vm, clock)
         assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
 
-        // Potencia de clic básica (1) contra Brock: 60 golpes expuestos.
+        // La furia es obligatoria: al cruzar el umbral, el líder interrumpe la
+        // ventana y se fuerza una ronda de furia antes de poder morir.
         var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.EXPOSED && guard++ < 120) {
+            vm.onGymEnemyHit()
+        }
+        val enraged = vm.uiState.value.gym
+        assertNotNull(enraged)
+        assertTrue(enraged!!.rage)
+        assertEquals(GymPhase.ATTACKING, enraged.phase)
+        assertEquals(14, enraged.leaderHp)      // umbral de furia de Brock (25 % de 60)
+        assertFalse(enraged.rageRoundPlayed)
+
+        // Ronda de furia completa: al romper la postura queda jugada.
+        fillBrockPosture(vm, clock)
+        assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
+        assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
+
+        // Potencia de clic básica (1): los 14 HP restantes caen en la ventana.
+        guard = 0
         while (vm.uiState.value.gym != null && guard++ < 120) {
             vm.onGymEnemyHit()
         }
@@ -329,6 +348,53 @@ class MainViewModelTest {
         vm.onAdvanceZone()
         assertEquals(2, vm.uiState.value.zoneIndex)
         assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    @Test
+    fun lethalHitCannotSkipTheMandatoryRageRound() {
+        val clock = TestClock()
+        val vm = viewModel(
+            saved = GameSnapshot(
+                zoneIndex = 1,
+                zoneClicks = 3L,
+                starterSpeciesId = "bulbasaur",
+                leadSpeciesId = "bulbasaur",
+                starterBond = 5_000
+            ),
+            nowMs = { clock.now },
+            random = Random(7)
+        )
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        fillBrockPosture(vm, clock)
+        assertTrue(vm.uiState.value.clickPower > 60) // un golpe bastaría para matarlo
+
+        vm.onGymEnemyHit()
+
+        val enraged = vm.uiState.value.gym
+        assertNotNull(enraged)
+        with(enraged!!) {
+            assertEquals(14, leaderHp)
+            assertTrue(rage)
+            assertEquals(GymPhase.ATTACKING, phase)
+            assertFalse(rageRoundPlayed)
+        }
+
+        // Ya no está expuesto: el golpe siguiente no le hace daño.
+        vm.onGymEnemyHit()
+        assertEquals(14, vm.uiState.value.gym!!.leaderHp)
+
+        // Ronda de furia obligatoria y, después, el golpe letal sí entra.
+        fillBrockPosture(vm, clock)
+        assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
+
+        vm.onGymEnemyHit()
+
+        assertNull(vm.uiState.value.gym)
+        assertTrue("brock" in vm.uiState.value.medals)
     }
 
     // --- Gimnasio de Misty: anillos rítmicos ---------------------------------
@@ -353,6 +419,24 @@ class MainViewModelTest {
     private fun tick() {
         testScope.advanceTimeBy(50L)
         testScope.runCurrent()
+    }
+
+    /** Reloj de juego mutable, para tests que necesitan avanzar `nowMs`. */
+    private class TestClock(var now: Long = 0L)
+
+    /**
+     * Llena la postura de Brock rompiendo todas las rocas que aparezcan hasta
+     * que el líder quede expuesto (o el combate termine).
+     */
+    private fun fillBrockPosture(vm: MainViewModel, clock: TestClock) {
+        var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.ATTACKING && guard++ < 300) {
+            clock.now += 400L
+            tick()
+            vm.uiState.value.gym?.projectiles
+                ?.map { it.id }
+                ?.forEach { vm.onGymProjectileHit(it) }
+        }
     }
 
     @Test
@@ -389,7 +473,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun ringTapOnBeat_removesTheRingWithoutDamage() {
+    fun ringTapOnBeat_removesTheRingWithoutDamageAndFillsPosture() {
         var now = 0L
         val vm = startMistyCombat(nowMs = { now })
         now = 900L
@@ -397,12 +481,14 @@ class MainViewModelTest {
 
         val ring = vm.uiState.value.gym!!.rings.single()
         val hpBefore = vm.uiState.value.gym!!.playerHp
+        val postureBefore = vm.uiState.value.gym!!.posture
 
         now = ring.convergeAtMs()
         vm.onGymRingTap()
 
         with(vm.uiState.value.gym!!) {
             assertEquals(hpBefore, playerHp)
+            assertEquals(postureBefore + 1, posture)
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
@@ -425,6 +511,7 @@ class MainViewModelTest {
 
         with(vm.uiState.value.gym!!) {
             assertEquals(hpBefore - 1, playerHp)
+            assertEquals(0, posture)
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
@@ -461,10 +548,18 @@ class MainViewModelTest {
         tick()
         assertTrue(vm.uiState.value.gym!!.rings.isNotEmpty())
 
-        // La oleada se consume con el reloj virtual; el del juego no avanza, así
-        // que los anillos no caducan ni se generan más durante la espera.
-        testScope.advanceTimeBy(10_000L)
-        testScope.runCurrent()
+        // La postura ya no se agota por tiempo: se llena acertando anillos. Al
+        // completarse, el líder queda expuesto y los anillos se limpian.
+        var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.ATTACKING && guard++ < 200) {
+            now += 800L
+            tick()
+            val ring = vm.uiState.value.gym?.rings
+                ?.minByOrNull { it.distanceToConvergenceMs(now) }
+                ?: continue
+            now = ring.convergeAtMs()
+            vm.onGymRingTap()
+        }
 
         val exposed = vm.uiState.value.gym
         assertNotNull(exposed)
@@ -488,7 +583,8 @@ class MainViewModelTest {
         var now = 0L
         val vm = viewModel(
             saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L),
-            nowMs = { now }
+            nowMs = { now },
+            random = Random(7)
         )
 
         assertTrue(vm.uiState.value.isGymReady)
@@ -502,17 +598,22 @@ class MainViewModelTest {
         val started = vm.uiState.value.gym
         assertNotNull(started)
 
-        testScope.advanceTimeBy(400L)
+        // Un acierto real (romper una roca) sube la postura del líder.
+        now = 900L
+        testScope.advanceTimeBy(50L)
         testScope.runCurrent()
+        val projectile = vm.uiState.value.gym?.projectiles?.firstOrNull()
+        assertNotNull(projectile)
+        vm.onGymProjectileHit(projectile!!.id)
         val ticked = vm.uiState.value.gym
         assertNotNull(ticked)
-        assertTrue(ticked!!.waveRemainingMs < started!!.waveDurationMs)
+        assertEquals(1, ticked!!.posture)
 
         vm.onEnterGym()
 
         val same = vm.uiState.value.gym
         assertNotNull(same)
-        assertEquals(ticked!!.waveRemainingMs, same!!.waveRemainingMs)
+        assertEquals(ticked.posture, same!!.posture)
         assertEquals(ticked.leaderHp, same.leaderHp)
     }
 
@@ -624,8 +725,9 @@ class MainViewModelTest {
         assertNull(vm.uiState.value.gymIntro)
         val fresh = vm.uiState.value.gym
         assertNotNull(fresh)
-        // Combate nuevo: la oleada vuelve a su duración completa y sin rocas.
-        assertEquals(fresh!!.waveDurationMs, fresh.waveRemainingMs)
+        // Combate nuevo: la postura vuelve a cero y sin rocas.
+        assertEquals(0, fresh!!.posture)
+        assertTrue(fresh.postureMax > 0)
         assertTrue(fresh.projectiles.isEmpty())
     }
 
