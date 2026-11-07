@@ -14,6 +14,9 @@
  */
 package com.dsrs.pokeclic.ui
 
+import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -46,8 +49,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,16 +63,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
@@ -77,6 +88,7 @@ import com.dsrs.pokeclic.model.CatchingPhase
 import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.PokemonType
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.min as minFloat
 import kotlin.random.Random
@@ -124,6 +136,17 @@ fun CatchingOverlay(
     modifier: Modifier = Modifier
 ) {
     val finished = catching.phase != CatchingPhase.PLAYING
+
+    // El panel de resultado espera a que el efecto de pixelfx termine: si
+    // apareciera en el mismo frame, taparía el burst justo cuando se ve.
+    var showResult by remember { mutableStateOf(false) }
+    LaunchedEffect(catching.phase) {
+        showResult = false
+        if (finished) {
+            delay(CatchFx.RESULT_DELAY_MS)
+            showResult = true
+        }
+    }
 
     Box(
         modifier = modifier
@@ -181,7 +204,7 @@ fun CatchingOverlay(
                     .padding(bottom = 22.dp, start = 16.dp, end = 16.dp)
             )
 
-            if (finished) {
+            if (showResult) {
                 CatchingResultPanel(
                     encounter = encounter,
                     captured = catching.phase == CatchingPhase.CAPTURED,
@@ -346,6 +369,67 @@ private fun CaptureRail(
                 .align(Alignment.TopCenter)
                 .offset(y = spriteCenterY - spriteSize / 2)
                 .size(spriteSize)
+        )
+
+        // Efecto de pixelfx al cerrar la partida: estrellas al capturar, humo
+        // al escapar. Se dibuja sobre el sprite y desborda el riel a propósito.
+        if (catching.phase != CatchingPhase.PLAYING) {
+            val captured = catching.phase == CatchingPhase.CAPTURED
+            val effectSize = if (captured) CatchFx.SUCCESS_SIZE else CatchFx.BREAK_SIZE
+            SpriteSheetEffect(
+                sheet = if (captured) R.drawable.fx_catch_success else R.drawable.fx_catch_break,
+                frameCount = if (captured) CatchFx.SUCCESS_FRAMES else CatchFx.BREAK_FRAMES,
+                frameSizePx = if (captured) CatchFx.SUCCESS_FRAME_PX else CatchFx.BREAK_FRAME_PX,
+                columns = CatchFx.COLUMNS,
+                fps = CatchFx.FPS,
+                playKey = catching.phase,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = spriteCenterY - effectSize / 2)
+                    .size(effectSize)
+            )
+        }
+    }
+}
+
+/**
+ * Reproduce una sola vez un sprite sheet exportado por pixelfx. [playKey]
+ * reinicia la animación; al cambiar la fase de la partida vuelve a empezar.
+ * Se dibuja con `FilterQuality.None` para no emborronar el pixel art.
+ */
+@Composable
+private fun SpriteSheetEffect(
+    @DrawableRes sheet: Int,
+    frameCount: Int,
+    frameSizePx: Int,
+    columns: Int,
+    fps: Int,
+    playKey: Any,
+    modifier: Modifier = Modifier
+) {
+    val bitmap = ImageBitmap.imageResource(sheet)
+    val frame = remember(playKey) { Animatable(0f) }
+
+    LaunchedEffect(playKey) {
+        frame.snapTo(0f)
+        frame.animateTo(
+            targetValue = (frameCount - 1).toFloat(),
+            animationSpec = tween(
+                durationMillis = frameCount * 1000 / fps,
+                easing = LinearEasing
+            )
+        )
+    }
+
+    Canvas(modifier) {
+        val index = frame.value.toInt().coerceIn(0, frameCount - 1)
+        drawImage(
+            image = bitmap,
+            srcOffset = IntOffset((index % columns) * frameSizePx, (index / columns) * frameSizePx),
+            srcSize = IntSize(frameSizePx, frameSizePx),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = FilterQuality.None
         )
     }
 }
@@ -732,6 +816,23 @@ private object CatchingSceneDefaults {
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp
     val GAUGE_GAP = 16.dp
+}
+
+/** Metadatos de los sprite sheets exportados por pixelfx. */
+private object CatchFx {
+    const val COLUMNS = 6
+    const val FPS = 30
+
+    /** Margen para que el efecto se vea antes de que entre el panel. */
+    const val RESULT_DELAY_MS = 900L
+
+    const val SUCCESS_FRAMES = 28
+    const val SUCCESS_FRAME_PX = 64
+    val SUCCESS_SIZE = 128.dp
+
+    const val BREAK_FRAMES = 30
+    const val BREAK_FRAME_PX = 56
+    val BREAK_SIZE = 112.dp
 }
 
 // ─────────────────────────── Previews ───────────────────────────
