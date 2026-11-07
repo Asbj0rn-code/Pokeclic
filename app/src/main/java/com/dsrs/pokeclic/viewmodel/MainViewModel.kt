@@ -547,13 +547,23 @@ class MainViewModel(
     private fun startGymLoop(config: Gym) {
         gymJob = viewModelScope.launch {
             var nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
+            // Se sigue la fase anterior para dar el respiro de arranque de ronda
+            // venga el cambio de donde venga: fin de la exposición por tiempo o
+            // puerta de furia, que devuelve al líder a [GymPhase.ATTACKING] fuera
+            // del bucle. Durante la exposición la cadencia no corre, así que sin
+            // este reinicio se cobraría de golpe en una ráfaga imposible de parar.
+            var wasExposed = false
             while (isActive) {
                 delay(GYM_TICK_MS)
                 val gym = _uiState.value.gym ?: break
                 if (gym.outcome != GymOutcome.ACTIVE) break
 
+                if (wasExposed && gym.phase == GymPhase.ATTACKING) {
+                    nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
+                }
+                wasExposed = gym.phase == GymPhase.EXPOSED
+
                 var lost = false
-                var resumed = false
 
                 // Un solo `updateGym` por tick: así un golpe del jugador que caiga
                 // a mitad no se pierde al reemplazar el estado.
@@ -563,9 +573,7 @@ class MainViewModel(
                     // Fase expuesta: no hay ataque enemigo y la ventana corre por
                     // tiempo. Al terminar, la postura vuelve a cero.
                     if (current.phase == GymPhase.EXPOSED) {
-                        val advanced = GymCombat.advanceExposure(current, GYM_TICK_MS)
-                        resumed = advanced.phase == GymPhase.ATTACKING
-                        return@updateGym advanced
+                        return@updateGym GymCombat.advanceExposure(current, GYM_TICK_MS)
                     }
 
                     val now = nowMs()
@@ -588,15 +596,23 @@ class MainViewModel(
                     // quede libre.
                     val blocked = current.mechanic == GymMechanic.VOLTORB_GRID &&
                         nextCombatId == idsBefore
-                    if (spawnDue && !blocked) nextSpawnMs += spawnIntervalMs(config, current)
+                    if (spawnDue && !blocked) {
+                        val interval = spawnIntervalMs(config, current)
+                        // Si el turno venía muy atrasado (tablero lleno, pausa
+                        // larga), se reanuda la cadencia desde ahora: nunca se
+                        // cobran varios ataques de golpe por tiempo perdido.
+                        nextSpawnMs = if (now - nextSpawnMs > interval) {
+                            now + interval
+                        } else {
+                            nextSpawnMs + interval
+                        }
+                    }
 
                     if (next.outcome == GymOutcome.LOST) lost = true
                     next
                 }
 
                 if (lost) break
-                // Al recuperarse, un respiro antes del siguiente ataque.
-                if (resumed) nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
             }
         }
     }
