@@ -235,7 +235,12 @@ fun AppRoot(
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
                         onPokeBallGameClick = {
-                            pokePulses.longValue++
+                            // Modo captura (hierba alta o encuentro en curso): el
+                            // mundo se congela; el clic no mueve el fondo ni
+                            // cuenta para el avance de la zona.
+                            if (advancesRouteWorld(state.isTallGrass, state.encounter != null)) {
+                                pokePulses.longValue++
+                            }
                             // El sprite sigue el eje por el que se acaba de mover el
                             // fondo: recto → back, lateral derecho → right, izquierdo
                             // → left. La Pokébola ya no elige dirección por el lado
@@ -356,6 +361,17 @@ fun AppRoot(
         )
     }
 }
+
+/**
+ * ¿Debe este clic de la Pokébola mover el fondo de ruta?
+ *
+ * En modo captura — hierba alta abierta o encuentro en curso — el mundo se
+ * congela: el clic no desplaza el fondo ni cuenta para el avance de la zona
+ * (eso ya lo evita `MainViewModel.onPokeBallTouch`, que no suma `zoneClicks`
+ * en esos dos estados). Fuera de él, cada pulsación avanza el recorrido.
+ */
+internal fun advancesRouteWorld(isTallGrass: Boolean, encounterActive: Boolean): Boolean =
+    !isTallGrass && !encounterActive
 
 // ─────────────────────────── Previews ───────────────────────────
 

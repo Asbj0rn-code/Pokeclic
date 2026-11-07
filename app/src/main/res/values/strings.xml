@@ -27,7 +27,6 @@
     <string name="hud_owned">En posesión: %d</string>
     <string name="hud_zone_progress">%1$d / %2$d</string>
     <string name="hud_zone_power">Potencia: %d</string>
-    <string name="hud_searching">Buscando salvajes…</string>
     <string name="action_reset">Reset</string>
 
     <!-- Minijuego de pesca -->

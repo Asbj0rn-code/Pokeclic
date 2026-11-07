@@ -157,19 +157,6 @@ private fun RetroButton(
 }
 
 /**
- * Color del relleno de barra: azul fijo para EXP; para la barra de búsqueda
- * (HP) cambia según la fracción (>50 % verde, 20–50 % amarillo, <=20 % rojo),
- * como la barra de vida clásica. El salto discreto es intencionado: es el
- * comportamiento de la consola original.
- */
-private fun barFill(fraction: Float, dynamicTint: Boolean, tint: Color): Color = when {
-    !dynamicTint -> tint
-    fraction > 0.5f -> RetroColors.HpGreen
-    fraction > 0.2f -> RetroColors.HpYellow
-    else -> RetroColors.HpRed
-}
-
-/**
  * Barra cuadrada estilo consola: marco negro grueso, riel oscuro, relleno
  * plano y brillo de cristal de 2.dp a lo ancho. **Nunca**
  * `LinearProgressIndicator`; esquinas rectas, sin circular pastillas.
@@ -183,7 +170,6 @@ private fun RetroBar(
     progress: () -> Float,
     modifier: Modifier = Modifier,
     barHeight: Dp = 16.dp,
-    dynamicTint: Boolean = false,
     tint: Color = RetroColors.ExpBlue,
     overlay: (@Composable BoxScope.() -> Unit)? = null
 ) {
@@ -241,7 +227,7 @@ private fun RetroBar(
                     val fillWidth = innerWidth * animatedFraction.coerceIn(0f, 1f)
                     if (fillWidth > 0f) {
                         drawRect(
-                            color = barFill(animatedFraction, dynamicTint, tint),
+                            color = tint,
                             topLeft = Offset(stroke + 1f, stroke + 1f),
                             size = Size(fillWidth, innerHeight)
                         )
@@ -796,7 +782,6 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     zoneIndex = 1,
     zoneClicks = 4L,
     isTallGrass = isTallGrass,
-    walkProgress = if (isTallGrass) 0.4f else 0f,
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 20L,
@@ -864,8 +849,8 @@ private fun MainScreenTallGrassPreview() = MaterialTheme {
  * HUD de juego de la pantalla principal con estética de consola portátil:
  * chasis de acero biselado con sombra dura, cabecera a la roja Pokédex con
  * LEDs, placas de diálogo crema para entrenador/monedas/zona/principal,
- * lecturas LCD para estadísticas rápidas, barra EXP cuadrada con contador
- * superpuesto y barra HP para la búsqueda en hierba alta. Los botones de reset y
+ * lecturas LCD para estadísticas rápidas y barra EXP cuadrada con contador
+ * superpuesto. Los botones de reset y
  * cambio de principal se hunden físicamente al pulsarlos; los CTA de gimnasio y
  * avance **no** viven aquí (ver `ProgressionAction`), para que su aparición no
  * cambie la altura del panel ni mueva al entrenador.
@@ -979,24 +964,6 @@ fun GameHud(
                         )
                     }
                 )
-
-                if (state.isTallGrass) {
-                    Text(
-                        text = stringResource(R.string.hud_searching),
-                        color = RetroColors.LcdText,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                    RetroBar(
-                        label = "HP",
-                        progress = { state.walkProgress },
-                        dynamicTint = true,
-                        barHeight = 14.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
 
                 PlateCell(
                     modifier = Modifier.align(Alignment.CenterHorizontally)

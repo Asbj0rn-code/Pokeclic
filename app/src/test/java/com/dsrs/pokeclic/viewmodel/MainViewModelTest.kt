@@ -196,6 +196,26 @@ class MainViewModelTest {
         assertFalse(state.canAdvanceZone)
     }
 
+    /**
+     * Avanzar estando en modo captura (hierba alta abierta): la zona nueva se
+     * estrena fuera del modo, sin búsqueda ni encuentro arrastrados.
+     */
+    @Test
+    fun onAdvanceZone_fromTallGrass_leavesCaptureMode() {
+        val vm = viewModel()
+        tapZone(vm, times = 2) // llena la barra de z1 (umbral 2)
+        vm.onTallGrassToggle()
+
+        vm.onAdvanceZone()
+
+        val state = vm.uiState.value
+        assertEquals(1, state.zoneIndex)
+        assertFalse(state.isTallGrass)
+        assertEquals(0f, state.walkProgress)
+        assertNull(state.encounter)
+        assertNull(state.fishing)
+    }
+
     @Test
     fun onAdvanceZone_atLastZone_isNoop() {
         val vm = viewModel(saved = GameSnapshot(zoneIndex = 2, zoneClicks = 4L))
@@ -774,6 +794,41 @@ class MainViewModelTest {
         val afterMeadow = vm.uiState.value
         assertNotNull(afterMeadow.encounter)
         assertNotNull(afterMeadow.fishing)
+    }
+
+    /**
+     * Modo captura: con la hierba alta abierta, los toques de la Pokébola
+     * alimentan el temporizador de caminar pero no cuentan para el avance
+     * de la zona.
+     */
+    @Test
+    fun pokeBallTaps_inTallGrass_doNotCountForZoneProgress() {
+        val vm = viewModel()
+        vm.onTallGrassToggle()
+
+        tapZone(vm, 3)
+
+        assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    /**
+     * Modo captura: con el encuentro (partida de pesca) en pantalla, un
+     * toque que alcanzara la Pokébola tampoco cuenta para el avance.
+     */
+    @Test
+    fun pokeBallTaps_duringAnEncounter_doNotCountForZoneProgress() {
+        var now = 0L
+        val vm = viewModel(nowMs = { now })
+        vm.onTallGrassToggle()
+        vm.onPokeBallTouch(Direction.BACK) // activa el temporizador de caminar
+
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+        assertNotNull(vm.uiState.value.encounter)
+
+        tapZone(vm, 3)
+
+        assertEquals(0L, vm.uiState.value.zoneClicks)
     }
 
     // --- Animación del entrenador -----------------------------------------
