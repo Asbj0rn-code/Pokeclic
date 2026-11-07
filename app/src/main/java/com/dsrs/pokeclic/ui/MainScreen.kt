@@ -13,14 +13,9 @@ package com.dsrs.pokeclic.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -553,25 +548,10 @@ fun MainScreen(
                 modifier = Modifier.matchParentSize(),
                 applyInsets = false
             ) {
-                // Respiración en reposo: sube y baja 4 px en bucle (1700 ms).
-                val bob by rememberInfiniteTransition(label = "trainerBob").animateFloat(
-                    initialValue = -4f,
-                    targetValue = 4f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(
-                            durationMillis = 1700,
-                            easing = LinearOutSlowInEasing
-                        ),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "trainerBobY"
-                )
-
                 TrainerGrassStack(
                     trainerFrameRes = state.trainerFrameRes,
                     showTallGrass = state.isTallGrass,
-                    modifier = Modifier.graphicsLayer { translationY = bob }
-                        .anchorVertically(MainLayout.TRAINER_BIAS)
+                    modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
                 )
 
                 // Solo las zonas con hierba alta (rutas, bosque, cueva) pueden
