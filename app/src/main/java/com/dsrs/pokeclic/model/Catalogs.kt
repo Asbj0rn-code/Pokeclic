@@ -165,7 +165,8 @@ object GymCatalog {
         spawnIntervalMs = 650L,
         projectileTravelMs = 1_800L,
         projectileDamage = 1,
-        waveDurationMs = 10_000L,
+        // Aciertos para romper la postura: ~2 rocas por ráfaga cada 650 ms.
+        postureHits = 14,
         exposureDurationMs = 2_500L,
         projectilesPerSpawn = 2,
         rageSpawnIntervalMs = 450L,
@@ -189,7 +190,8 @@ object GymCatalog {
         spawnIntervalMs = 0L,
         projectileTravelMs = 0L,
         projectileDamage = 0,
-        waveDurationMs = 10_000L,
+        // Aciertos para romper la postura: un anillo cada 750 ms.
+        postureHits = 12,
         exposureDurationMs = 2_500L,
         ringSpawnIntervalMs = 750L,
         ringTravelMinMs = 950L,
@@ -227,8 +229,9 @@ object GymCatalog {
         columns = 4,
         // Filas de la cuadrícula.
         rows = 4,
-        // Duración de la oleada: cuánto tarda Surge en quedar expuesto.
-        waveDurationMs = 10_000L,
+        // Aciertos seguidos para romper la postura y abrir su ventana: un Voltorb
+        // cada 520 ms, así que la ronda ronda los 8 segundos si no falla.
+        postureHits = 16,
         // Cuánto dura la fase expuesta, la única ventana para golpearle.
         exposureDurationMs = 2_500L,
 
