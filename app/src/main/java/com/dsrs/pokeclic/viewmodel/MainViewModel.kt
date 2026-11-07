@@ -917,7 +917,8 @@ class MainViewModel(
                 encounter = Encounter(
                     speciesId = species.id,
                     speciesName = species.name,
-                    speciesType = species.type
+                    speciesType = species.type,
+                    speciesDexNumber = species.dexNumber
                 ),
                 catching = CatchingGame.initialState(config, random),
                 walkProgress = 0f,

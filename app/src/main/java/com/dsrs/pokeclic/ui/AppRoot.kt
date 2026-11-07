@@ -586,7 +586,8 @@ private fun AppRootCatchingPreview() = MaterialTheme {
     val encounter = Encounter(
         speciesId = "rattata",
         speciesName = "Rattata",
-        speciesType = PokemonType.NORMAL
+        speciesType = PokemonType.NORMAL,
+        speciesDexNumber = 19
     )
     AppRootStage(
         state = previewGameState(

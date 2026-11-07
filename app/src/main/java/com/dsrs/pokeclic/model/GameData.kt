@@ -66,13 +66,16 @@ data class TrainerState(
  *   dificultad del minijuego de captura (`CatchingDefaults.configFor`).
  * @param coinReward monedas otorgadas la **primera vez** que se captura la
  *   especie (una sola vez para siempre).
+ * @param dexNumber número de la Pokédex nacional; resuelve el sprite de
+ *   `Pokedex/` (`pokedexSprite`).
  */
 data class Species(
     val id: String,
     val name: String,
     val type: PokemonType,
     val captureDifficulty: Float,
-    val coinReward: Int
+    val coinReward: Int,
+    val dexNumber: Int
 )
 
 /**
@@ -85,11 +88,14 @@ data class Species(
  * @param speciesId clave del catálogo (SpriteRepository y recompensas).
  * @param speciesName nombre mostrado, ya resuelto para la UI.
  * @param speciesType tipo elemental, para el color del sustituto de sprite.
+ * @param speciesDexNumber número de la Pokédex nacional, ya resuelto para que
+ *   la UI pinte el sprite de `Pokedex/` sin consultar el catálogo.
  */
 data class Encounter(
     val speciesId: String,
     val speciesName: String,
-    val speciesType: PokemonType
+    val speciesType: PokemonType,
+    val speciesDexNumber: Int = 0
 )
 
 /**

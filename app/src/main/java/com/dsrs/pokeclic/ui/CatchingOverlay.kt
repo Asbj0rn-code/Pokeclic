@@ -129,7 +129,7 @@ fun CatchingOverlay(
                 // Sprite del salvaje, animado o placeholder según el arte actual.
                 val spriteTop = railHeight * (1f - catching.spritePos) - CatchingSceneDefaults.SPRITE_SIZE / 2
                 WildSpriteBox(
-                    speciesId = encounter.speciesId,
+                    dexNumber = encounter.speciesDexNumber,
                     name = encounter.speciesName,
                     type = encounter.speciesType,
                     modifier = Modifier
@@ -239,38 +239,27 @@ private fun CatchingResultPanel(
 }
 
 /**
- * Sprite del salvaje con sustituto: si no hay GIF todavía (hoy solo lo tienen
- * los starters), dibuja el mismo placeholder que el gimnasio.
+ * Sprite del salvaje: el PNG de `Pokedex/` que corresponde a su número de la
+ * Pokédex nacional. Si el número no tiene sprite, dibuja el mismo placeholder
+ * que el gimnasio.
  */
 @Composable
 private fun WildSpriteBox(
-    speciesId: String,
+    dexNumber: Int,
     name: String,
     type: PokemonType,
     modifier: Modifier = Modifier
 ) {
-    val gifRes = wildGifFor(speciesId)
-    if (gifRes != null) {
-        AnimatedGifImage(
-            resId = gifRes,
+    val sprite = pokedexSprite(dexNumber)
+    if (sprite != null) {
+        PixelImage(
+            res = sprite,
             contentDescription = name,
             modifier = modifier
         )
     } else {
         GymSpritePlaceholder(name = name, type = type, modifier = modifier)
     }
-}
-
-/**
- * Sprite del salvaje, o `null` si esa especie aún no tiene GIF. Único punto
- * donde se mapea la especie de captura a su recurso, como `enemyGifFor`.
- */
-@DrawableRes
-private fun wildGifFor(speciesId: String): Int? = when (speciesId) {
-    "bulbasaur" -> R.drawable.bulbasaur
-    "charmander" -> R.drawable.charmander
-    "squirtle" -> R.drawable.squirtle
-    else -> null
 }
 
 /** Tamaños y posiciones fijas de la escena de captura. */
@@ -312,7 +301,8 @@ private fun previewCatchingState(
 private val previewEncounter = Encounter(
     speciesId = "rattata",
     speciesName = "Rattata",
-    speciesType = PokemonType.NORMAL
+    speciesType = PokemonType.NORMAL,
+    speciesDexNumber = 19
 )
 
 @Preview(
