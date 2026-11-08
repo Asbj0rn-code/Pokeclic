@@ -173,17 +173,17 @@ object CatchingDefaults {
 object CatchingGame {
 
     /**
-     * Abre la partida: barra parada en el centro, progreso a 0 y el sprite en
-     * una posición aleatoria dentro del riel.
+     * Abre la partida con **barra y sprite en el centro del riel**, progreso a 0
+     * y fase `PLAYING`. El sprite elige su primer objetivo de vagabundeo en el
+     * primer tick de [step], así que la partida arranca simétrica.
      */
-    fun initialState(config: CatchingConfig, random: Random): CatchingState {
-        val start = randomSpriteTarget(random)
+    fun initialState(config: CatchingConfig): CatchingState {
         return CatchingState(
             config = config,
             barPos = 0.5f,
             barVel = 0f,
-            spritePos = start,
-            spriteTarget = start,
+            spritePos = 0.5f,
+            spriteTarget = 0.5f,
             progress = 0f,
             elapsed = 0f
         )

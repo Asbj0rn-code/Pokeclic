@@ -45,7 +45,6 @@ import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.viewmodel.GameUiState
-import kotlin.random.Random
 
 /**
  * Shell de la aplicación: contenedor de pantallas + bottom menu siempre visible.
@@ -633,7 +632,7 @@ private fun AppRootCatchingPreview() = MaterialTheme {
     AppRootStage(
         state = previewGameState(
             encounter = encounter,
-            catching = CatchingGame.initialState(config, Random(42))
+            catching = CatchingGame.initialState(config)
         )
     )
 }

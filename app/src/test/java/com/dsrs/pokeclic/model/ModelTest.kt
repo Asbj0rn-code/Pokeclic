@@ -582,15 +582,15 @@ class ModelTest {
     }
 
     @Test
-    fun initialCatchingStateIsNeutral() {
-        val state = CatchingGame.initialState(CatchingDefaults.configFor(0.15f), Random(42))
+    fun initialCatchingStateStartsCentered() {
+        val state = CatchingGame.initialState(CatchingDefaults.configFor(0.15f))
         assertEquals(0.5f, state.barPos)
         assertEquals(0f, state.barVel)
+        assertEquals(0.5f, state.spritePos)
+        assertEquals(0.5f, state.spriteTarget)
         assertEquals(0f, state.progress)
         assertEquals(0f, state.elapsed)
         assertEquals(CatchingPhase.PLAYING, state.phase)
-        assertTrue(state.spritePos >= CatchingDefaults.SPRITE_MARGIN)
-        assertTrue(state.spritePos <= 1f - CatchingDefaults.SPRITE_MARGIN)
     }
 
     private fun combatState(

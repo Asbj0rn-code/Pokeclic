@@ -95,7 +95,6 @@ import com.dsrs.pokeclic.model.PokemonType
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.min as minFloat
-import kotlin.random.Random
 
 // ─────────────────────── Paleta de la escena ───────────────────────
 
@@ -768,7 +767,7 @@ private fun previewCatchingState(
     phase: CatchingPhase = CatchingPhase.PLAYING
 ): CatchingState {
     val config = CatchingDefaults.configFor(captureDifficulty)
-    return CatchingGame.initialState(config, Random(42)).copy(progress = progress, phase = phase)
+    return CatchingGame.initialState(config).copy(progress = progress, phase = phase)
 }
 
 private val previewEncounter = Encounter(

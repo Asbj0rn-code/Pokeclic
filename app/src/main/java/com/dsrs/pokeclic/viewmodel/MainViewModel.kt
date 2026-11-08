@@ -920,7 +920,7 @@ class MainViewModel(
                     speciesType = species.type,
                     speciesDexNumber = species.dexNumber
                 ),
-                catching = CatchingGame.initialState(config, random),
+                catching = CatchingGame.initialState(config),
                 walkProgress = 0f,
                 seenSpecies = it.seenSpecies + species.id
             )
