@@ -417,6 +417,60 @@ class MainViewModelTest {
         assertTrue("brock" in vm.uiState.value.medals)
     }
 
+    @Test
+    fun mandatoryRageRoundGetsTheSameBreatherAsANormalRound() {
+        val clock = TestClock()
+        val vm = viewModel(
+            saved = GameSnapshot(
+                zoneIndex = 1,
+                zoneClicks = 3L,
+                starterSpeciesId = "bulbasaur",
+                leadSpeciesId = "bulbasaur"
+            ),
+            nowMs = { clock.now },
+            random = Random(7)
+        )
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        fillBrockPosture(vm, clock)
+        assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
+
+        // El jugador tarda casi toda la ventana en golpear: mientras el líder
+        // está expuesto su cadencia de aparición no corre.
+        repeat(40) {
+            clock.now += 50L
+            tick()
+        }
+        assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
+
+        var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.EXPOSED && guard++ < 120) {
+            vm.onGymEnemyHit()
+        }
+        val enraged = vm.uiState.value.gym
+        assertNotNull(enraged)
+        assertTrue(enraged!!.rage)
+        assertTrue(enraged.projectiles.isEmpty())
+
+        // La ronda de furia arranca con el mismo respiro que una ronda normal:
+        // nada cae en el acto ni se cobra de golpe la espera de la exposición.
+        tick()
+        assertTrue(vm.uiState.value.gym!!.projectiles.isEmpty())
+
+        repeat(20) {
+            clock.now += 50L
+            tick()
+        }
+        val projectiles = vm.uiState.value.gym!!.projectiles
+        assertTrue(
+            "ráfaga acumulada: ${projectiles.size} rocas en un segundo",
+            projectiles.size <= 2
+        )
+    }
+
     // --- Gimnasio de Misty: anillos rítmicos ---------------------------------
 
     /** Entra al gimnasio de Misty y salta el cartel de arranque. */

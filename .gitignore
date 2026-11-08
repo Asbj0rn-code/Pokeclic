@@ -16,5 +16,10 @@ local.properties
 
 # Local AI tooling artifacts
 /.atl/
-/.opencode/skills/
 /odd/
+/.opencode/
+
+# Carpetas de trabajo y volcados de JVM locales
+/Pokedex/
+hs_err_pid*.log
+replay_pid*.log
