@@ -864,12 +864,19 @@ class MainViewModel(
 
     /**
      * Botón **Avanzar**: si `canAdvanceZone` (barra al 100 % y, en zonas con
-     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0;
-     * en caso contrario es un no-op. En la última zona nunca sufre cambios.
+     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0
+     * y **fuera del modo captura**: la hierba alta se cierra y no se arrastra
+     * ningún encuentro en curso; en caso contrario es un no-op. En la última
+     * zona nunca sufre cambios.
      */
     fun onAdvanceZone() = mutate { state ->
         if (state.canAdvanceZone) {
-            state.copy(zoneIndex = state.zoneIndex + 1, zoneClicks = 0L)
+            cancelFishing()
+            state.copy(
+                zoneIndex = state.zoneIndex + 1,
+                zoneClicks = 0L,
+                isTallGrass = false
+            ).withoutEncounter()
         } else {
             state
         }
