@@ -159,6 +159,8 @@ fun CatchingOverlay(
                 maxHeight * CatchingSceneDefaults.RAIL_HEIGHT_FRACTION,
                 CatchingSceneDefaults.RAIL_MAX_HEIGHT
             )
+            val railWidth = railHeight * CatchingSceneDefaults.RAIL_WIDTH_FRACTION
+            val spriteSize = railHeight * CatchingSceneDefaults.SPRITE_SIZE_FRACTION
 
             CatchingHud(
                 encounter = encounter,
@@ -175,8 +177,9 @@ fun CatchingOverlay(
                     catching = catching,
                     encounter = encounter,
                     railHeight = railHeight,
+                    spriteSize = spriteSize,
                     modifier = Modifier
-                        .width(CatchingSceneDefaults.RAIL_WIDTH)
+                        .width(railWidth)
                         .height(railHeight)
                 )
                 Spacer(Modifier.width(CatchingSceneDefaults.GAUGE_GAP))
@@ -219,14 +222,12 @@ private fun CaptureRail(
     catching: CatchingState,
     encounter: Encounter,
     railHeight: Dp,
+    spriteSize: Dp,
     modifier: Modifier = Modifier
 ) {
-    val barDiameter = min(
-        railHeight * catching.config.barSize,
-        CatchingSceneDefaults.RAIL_WIDTH - 8.dp
-    )
+    // La Pokébola no se recorta al ancho del riel: sobresale por los bordes.
+    val barDiameter = railHeight * catching.config.barSize
     val barCenterY = railHeight * (1f - catching.barPos)
-    val spriteSize = CatchingSceneDefaults.SPRITE_SIZE
     val spriteCenterY = railHeight * (1f - catching.spritePos)
     val overlapping = abs(catching.spritePos - catching.barPos) <= catching.config.barSize / 2f
 
@@ -722,14 +723,15 @@ private fun CatchingButton(
 
 /** Tamaños y posiciones fijas de la escena de captura. */
 private object CatchingSceneDefaults {
-    val RAIL_WIDTH = 104.dp
+    /** Ancho del riel como fracción de su alto: más estrecho que la Pokébola. */
+    const val RAIL_WIDTH_FRACTION = 0.19f
 
     /** Alto del riel como fracción de la pantalla, con tope para tablets. */
-    val RAIL_HEIGHT_FRACTION = 0.52f
+    const val RAIL_HEIGHT_FRACTION = 0.52f
     val RAIL_MAX_HEIGHT = 420.dp
 
-    /** Tamaño visual del sprite dentro del riel. */
-    val SPRITE_SIZE = 96.dp
+    /** Sprite del salvaje, algo más estrecho que el riel. */
+    const val SPRITE_SIZE_FRACTION = 0.17f
 
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp
