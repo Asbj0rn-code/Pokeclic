@@ -396,6 +396,12 @@ internal fun advancesRouteWorld(isTallGrass: Boolean, encounterActive: Boolean):
 /** Radio del desenfoque del fondo de ruta mientras dura la captura. */
 private val RouteCaptureBlurRadius = 8.dp
 
+/** Velo sobre la ruta difuminada: la oscurece un poco para que la UI gane foco. */
+private val RouteCaptureScrim = Color(0x40000000)
+
+/** Velo de respaldo donde no hay desenfoque (Android 11 o anterior). */
+private val RouteCaptureFallbackScrim = Color(0x66000000)
+
 /**
  * Hunde el fondo de ruta durante la captura para que la escena gane foco.
  *
@@ -407,9 +413,13 @@ private fun Modifier.routeCaptureDepth(active: Boolean): Modifier = when {
     !active -> this
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
         blur(RouteCaptureBlurRadius, BlurredEdgeTreatment.Rectangle)
+            .drawWithContent {
+                drawContent()
+                drawRect(RouteCaptureScrim)
+            }
     else -> drawWithContent {
         drawContent()
-        drawRect(Color(0x66000000))
+        drawRect(RouteCaptureFallbackScrim)
     }
 }
 
