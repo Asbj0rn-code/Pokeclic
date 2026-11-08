@@ -2,6 +2,8 @@ package com.dsrs.pokeclic.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -109,7 +111,7 @@ class ModelTest {
     // --- Combate de gimnasio --------------------------------------------------
 
     @Test
-    fun breakingAProjectileRemovesIt() {
+    fun breakingAProjectileRemovesItAndFillsPosture() {
         val state = combatState().copy(
             projectiles = listOf(
                 Projectile(1L, 0, 0L, 1_000L),
@@ -118,6 +120,7 @@ class ModelTest {
         )
         val next = GymCombat.breakProjectile(state, 1L)
         assertEquals(listOf(2L), next.projectiles.map { it.id })
+        assertEquals(1, next.posture)
         assertEquals(GymPhase.ATTACKING, next.phase)
     }
 
@@ -138,25 +141,46 @@ class ModelTest {
     }
 
     @Test
-    fun waveDrainsWithTimeAndExposesLeader() {
-        val state = combatState(waveRemainingMs = 10_000L).copy(
+    fun postureFillsWithHitsAndExposesLeader() {
+        var state = combatState(posture = 0, postureMax = 3).copy(
             projectiles = listOf(Projectile(1L, 0, 0L, 1_000L))
         )
 
-        val almost = GymCombat.advanceWave(state, 9_000L)
-        assertEquals(GymPhase.ATTACKING, almost.phase)
-        assertEquals(1_000L, almost.waveRemainingMs)
+        state = GymCombat.addPosture(state, hits = 1)
+        assertEquals(1, state.posture)
+        assertEquals(GymPhase.ATTACKING, state.phase)
 
-        val exposed = GymCombat.advanceWave(almost, 1_000L)
+        state = GymCombat.addPosture(state, hits = 1)
+        assertEquals(2, state.posture)
+        assertEquals(GymPhase.ATTACKING, state.phase)
+
+        val exposed = GymCombat.addPosture(state, hits = 1)
+        assertEquals(3, exposed.posture)
         assertEquals(GymPhase.EXPOSED, exposed.phase)
-        assertEquals(0L, exposed.waveRemainingMs)
         assertEquals(2_500L, exposed.exposureRemainingMs)
         assertEquals(emptyList<Projectile>(), exposed.projectiles)
     }
 
     @Test
-    fun exposureEndsAndStartsAFullWave() {
-        val exposed = combatState().copy(
+    fun postureDoesNotOverflowItsMaximum() {
+        val state = combatState(posture = 2, postureMax = 3)
+        val exposed = GymCombat.addPosture(state, hits = 5)
+        assertEquals(3, exposed.posture)
+        assertEquals(GymPhase.EXPOSED, exposed.phase)
+    }
+
+    @Test
+    fun postureDoesNotFillWhileExposed() {
+        val exposed = combatState(posture = 3, postureMax = 3).copy(
+            phase = GymPhase.EXPOSED,
+            exposureRemainingMs = 2_500L
+        )
+        assertEquals(exposed, GymCombat.addPosture(exposed, hits = 1))
+    }
+
+    @Test
+    fun exposureEndsAndResetsPosture() {
+        val exposed = combatState(posture = 3, postureMax = 3).copy(
             phase = GymPhase.EXPOSED,
             exposureRemainingMs = 2_500L
         )
@@ -166,7 +190,7 @@ class ModelTest {
 
         val resumed = GymCombat.advanceExposure(almost, 500L)
         assertEquals(GymPhase.ATTACKING, resumed.phase)
-        assertEquals(10_000L, resumed.waveRemainingMs)
+        assertEquals(0, resumed.posture)
         assertEquals(0L, resumed.exposureRemainingMs)
     }
 
@@ -181,6 +205,71 @@ class ModelTest {
         assertFalse(GymCombat.isRaging(60, 60))
         assertFalse(GymCombat.isRaging(15, 60))
         assertTrue(GymCombat.isRaging(14, 60))
+    }
+
+    @Test
+    fun rageThresholdIsTheFirstRagingHp() {
+        assertEquals(14, GymCombat.rageThresholdHp(60))
+        assertEquals(22, GymCombat.rageThresholdHp(90))
+        assertEquals(29, GymCombat.rageThresholdHp(120))
+        assertEquals(0, GymCombat.rageThresholdHp(0))
+    }
+
+    @Test
+    fun firstRageGateClampsLethalDamageAndForcesANewRound() {
+        val state = combatState().copy(
+            phase = GymPhase.EXPOSED,
+            exposureRemainingMs = 2_500L,
+            projectiles = listOf(Projectile(1L, 0, 0L, 1_000L))
+        )
+
+        val gated = GymCombat.gateFirstRage(state, newLeaderHp = 0)
+        assertNotNull(gated)
+        assertEquals(14, gated!!.leaderHp)
+        assertTrue(gated.rage)
+        assertFalse(gated.rageRoundPlayed)
+        assertEquals(GymPhase.ATTACKING, gated.phase)
+        assertEquals(0, gated.posture)
+        assertEquals(0L, gated.exposureRemainingMs)
+        assertEquals(emptyList<Projectile>(), gated.projectiles)
+    }
+
+    @Test
+    fun firstRageGateOnlyTriggersBelowTheThreshold() {
+        val state = combatState().copy(phase = GymPhase.EXPOSED)
+
+        assertNull(GymCombat.gateFirstRage(state, newLeaderHp = 14))
+        assertNotNull(GymCombat.gateFirstRage(state, newLeaderHp = 13))
+    }
+
+    @Test
+    fun firstRageGateDoesNotRepeatOnceTheRageRoundWasPlayed() {
+        val state = combatState().copy(phase = GymPhase.EXPOSED, rageRoundPlayed = true)
+
+        assertNull(GymCombat.gateFirstRage(state, newLeaderHp = 0))
+    }
+
+    @Test
+    fun breakingPostureWhileRagingMarksTheRageRoundAsPlayed() {
+        val state = combatState(posture = 9, postureMax = 10).copy(
+            leaderHp = 14,
+            rage = true
+        )
+
+        val exposed = GymCombat.addPosture(state, hits = 1)
+
+        assertEquals(GymPhase.EXPOSED, exposed.phase)
+        assertTrue(exposed.rageRoundPlayed)
+    }
+
+    @Test
+    fun breakingPostureWithoutRageDoesNotMarkTheRageRound() {
+        val state = combatState(posture = 9, postureMax = 10)
+
+        val exposed = GymCombat.addPosture(state, hits = 1)
+
+        assertEquals(GymPhase.EXPOSED, exposed.phase)
+        assertFalse(exposed.rageRoundPlayed)
     }
 
     // --- Minijuego de anillos (Misty) -----------------------------------------
@@ -253,14 +342,14 @@ class ModelTest {
     }
 
     @Test
-    fun waveEndClearsRingsAndExposesLeader() {
-        val state = combatState(waveRemainingMs = 500L).copy(
+    fun fillingPostureClearsRingsAndExposesLeader() {
+        val state = combatState(posture = 1, postureMax = 2).copy(
             mechanic = GymMechanic.TIMING_RINGS,
             ringWindowMs = 170L,
             rings = listOf(TimingRing(1L, spawnedAtMs = 0L, travelMs = 1_000L))
         )
 
-        val exposed = GymCombat.advanceWave(state, 500L)
+        val exposed = GymCombat.addPosture(state, hits = 1)
 
         assertEquals(GymPhase.EXPOSED, exposed.phase)
         assertEquals(emptyList<TimingRing>(), exposed.rings)
@@ -288,7 +377,7 @@ class ModelTest {
     }
 
     @Test
-    fun defusingAChargedVoltorbRemovesItWithoutDamage() {
+    fun defusingAChargedVoltorbRemovesItWithoutDamageAndFillsPosture() {
         val state = voltorbState(
             voltorbs = listOf(Voltorb(1L, cell = 5, chargedAtMs = 0L, windowMs = 1_400L))
         )
@@ -297,6 +386,7 @@ class ModelTest {
 
         assertEquals(emptyList<Voltorb>(), next.voltorbs)
         assertEquals(5, next.playerHp)
+        assertEquals(1, next.posture)
         assertEquals(VoltorbOutcome.DEFUSED, next.voltorbFeedback?.outcome)
         assertEquals(5, next.voltorbFeedback?.cell)
     }
@@ -372,13 +462,14 @@ class ModelTest {
     }
 
     @Test
-    fun waveEndClearsVoltorbsAndExposesLeader() {
+    fun fillingPostureClearsVoltorbsAndExposesLeader() {
         val state = voltorbState(
-            waveRemainingMs = 500L,
+            posture = 1,
+            postureMax = 2,
             voltorbs = listOf(Voltorb(1L, cell = 0, chargedAtMs = 0L, windowMs = 1_400L))
         )
 
-        val exposed = GymCombat.advanceWave(state, 500L)
+        val exposed = GymCombat.addPosture(state, hits = 1)
 
         assertEquals(GymPhase.EXPOSED, exposed.phase)
         assertEquals(emptyList<Voltorb>(), exposed.voltorbs)
@@ -504,7 +595,8 @@ class ModelTest {
 
     private fun combatState(
         playerHp: Int = 5,
-        waveRemainingMs: Long = 10_000L
+        posture: Int = 0,
+        postureMax: Int = 10
     ) = GymState(
         gymId = "brock",
         leaderName = "Brock",
@@ -514,14 +606,15 @@ class ModelTest {
         playerHp = playerHp,
         maxHp = 5,
         columns = 5,
-        waveDurationMs = 10_000L,
-        waveRemainingMs = waveRemainingMs,
+        posture = posture,
+        postureMax = postureMax,
         exposureDurationMs = 2_500L
     )
 
     private fun voltorbState(
         playerHp: Int = 5,
-        waveRemainingMs: Long = 10_000L,
+        posture: Int = 0,
+        postureMax: Int = 10,
         phase: GymPhase = GymPhase.ATTACKING,
         voltorbs: List<Voltorb> = emptyList()
     ) = GymState(
@@ -536,8 +629,8 @@ class ModelTest {
         columns = 4,
         rows = 4,
         voltorbs = voltorbs,
-        waveDurationMs = 10_000L,
-        waveRemainingMs = waveRemainingMs,
+        posture = posture,
+        postureMax = postureMax,
         exposureDurationMs = 2_500L,
         phase = phase
     )
