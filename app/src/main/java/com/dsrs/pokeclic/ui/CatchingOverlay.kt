@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -163,8 +164,21 @@ fun CatchingOverlay(
                 maxHeight * CatchingSceneDefaults.RAIL_HEIGHT_FRACTION,
                 CatchingSceneDefaults.RAIL_MAX_HEIGHT
             )
-            val railWidth = railHeight * CatchingSceneDefaults.RAIL_WIDTH_FRACTION
-            // El sprite ocupa el ancho del riel: se recorta su padding transparente.
+            // El riel mide lo que mide el sprite de esta especie: primero se
+            // recorta su padding transparente y se escala, y ese ancho manda.
+            val spriteBitmap = pokedexSprite(encounter.speciesDexNumber)
+                ?.let { ImageBitmap.imageResource(it) }
+            val spriteBounds = remember(spriteBitmap) {
+                spriteBitmap?.let { opaqueBounds(it) } ?: IntRect.Zero
+            }
+            val spriteScaleDp = railHeight.value *
+                CatchingSceneDefaults.SPRITE_REFERENCE_FRACTION /
+                CatchingSceneDefaults.SPRITE_REFERENCE_PX
+            val railWidth = if (spriteBounds.width > 0) {
+                (spriteBounds.width * spriteScaleDp).dp
+            } else {
+                railHeight * CatchingSceneDefaults.SPRITE_REFERENCE_FRACTION
+            }
             val spriteSize = railWidth
 
             CatchingHud(
@@ -183,6 +197,8 @@ fun CatchingOverlay(
                     encounter = encounter,
                     railHeight = railHeight,
                     spriteSize = spriteSize,
+                    spriteBitmap = spriteBitmap,
+                    spriteBounds = spriteBounds,
                     modifier = Modifier
                         .width(railWidth)
                         .height(railHeight)
@@ -228,6 +244,8 @@ private fun CaptureRail(
     encounter: Encounter,
     railHeight: Dp,
     spriteSize: Dp,
+    spriteBitmap: ImageBitmap?,
+    spriteBounds: IntRect,
     modifier: Modifier = Modifier
 ) {
     // La Pokébola no se recorta al ancho del riel: sobresale por los bordes.
@@ -238,7 +256,8 @@ private fun CaptureRail(
 
     Box(modifier) {
         Canvas(Modifier.matchParentSize()) {
-            val radius = CornerRadius(18.dp.toPx())
+            // Esquinas proporcionales: el riel cambia de ancho con cada especie.
+            val radius = CornerRadius(size.width * 0.22f)
             // Base oscura: el riel tiene que leerse sobre cualquier ruta.
             drawRoundRect(color = RailBase, cornerRadius = radius)
             drawRoundRect(color = RailFill, cornerRadius = radius)
@@ -265,21 +284,24 @@ private fun CaptureRail(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(y = spriteCenterY - spriteSize * 0.75f)
-                    .size(spriteSize * 1.5f)
+                    .requiredSize(spriteSize * 1.5f)
             ) {
                 drawCircle(color = HaloGold, radius = size.minDimension / 2f)
             }
         }
 
+        // `requiredSize`: la Pokébola es más ancha que el riel y tiene que
+        // poder salirse de la caja, que si no la recorta a su ancho.
         PokeBall(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = barCenterY - barDiameter / 2)
-                .size(barDiameter)
+                .requiredSize(barDiameter)
         )
 
         WildSpriteBox(
-            dexNumber = encounter.speciesDexNumber,
+            bitmap = spriteBitmap,
+            bounds = spriteBounds,
             name = encounter.speciesName,
             type = encounter.speciesType,
             modifier = Modifier
@@ -303,7 +325,7 @@ private fun CaptureRail(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(y = spriteCenterY - effectSize / 2)
-                    .size(effectSize)
+                    .requiredSize(effectSize)
             )
         }
     }
@@ -397,47 +419,34 @@ private fun PokeBall(modifier: Modifier = Modifier) {
 }
 
 /**
- * Sprite del salvaje: el PNG de `Pokedex/` que corresponde a su número de la
- * Pokédex nacional, **recortado a su contenido opaco** y escalado al ancho del
- * riel. Los PNG traen mucho padding transparente (Rattata ocupa ~37 % del
- * lienzo), así que sin el recorte el Pokémon se veía chico por más que la caja
- * midiera lo mismo que el riel. Si el número no tiene sprite, dibuja el mismo
- * placeholder que el gimnasio.
+ * Sprite del salvaje ya recortado a su contenido opaco. La caja mide
+ * exactamente su ancho, que es el mismo que el del riel, así que el Pokémon lo
+ * llena de lado a lado; el alto sale de la proporción de la especie. Si no hay
+ * sprite, dibuja el mismo placeholder que el gimnasio.
  */
 @Composable
 private fun WildSpriteBox(
-    dexNumber: Int,
+    bitmap: ImageBitmap?,
+    bounds: IntRect,
     name: String,
     type: PokemonType,
     modifier: Modifier = Modifier
 ) {
-    val sprite = pokedexSprite(dexNumber)
-    if (sprite == null) {
+    if (bitmap == null || bounds.width <= 0 || bounds.height <= 0) {
         GymSpritePlaceholder(name = name, type = type, modifier = modifier)
         return
     }
 
-    val bitmap = ImageBitmap.imageResource(sprite)
-    val bounds = remember(sprite) { opaqueBounds(bitmap) }
-
     Canvas(
         modifier = modifier.semantics { contentDescription = name }
     ) {
-        if (bounds.width <= 0 || bounds.height <= 0) return@Canvas
-        // Escala común para todos: el sprite más ancho del catálogo llena el
-        // riel y el resto conserva su tamaño relativo. Solo los que superen ese
-        // ancho se recortan al riel. El alto sale de la proporción del sprite.
-        val scale = size.width / CatchingSceneDefaults.SPRITE_REFERENCE_PX
-        val dstW = minFloat(bounds.width * scale, size.width)
+        val dstW = size.width
         val dstH = bounds.height * (dstW / bounds.width)
         drawImage(
             image = bitmap,
             srcOffset = IntOffset(bounds.left, bounds.top),
             srcSize = IntSize(bounds.width, bounds.height),
-            dstOffset = IntOffset(
-                ((size.width - dstW) / 2f).toInt(),
-                ((size.height - dstH) / 2f).toInt()
-            ),
+            dstOffset = IntOffset(0, ((size.height - dstH) / 2f).toInt()),
             dstSize = IntSize(dstW.toInt(), dstH.toInt()),
             filterQuality = FilterQuality.None
         )
@@ -784,8 +793,12 @@ private fun CatchingButton(
 
 /** Tamaños y posiciones fijas de la escena de captura. */
 private object CatchingSceneDefaults {
-    /** Ancho del riel como fracción de su alto: más estrecho que la Pokébola. */
-    const val RAIL_WIDTH_FRACTION = 0.19f
+    /**
+     * Ancho de referencia como fracción del alto del riel: el sprite más ancho
+     * del catálogo (56 px) mide esto y el riel se ajusta al ancho de cada
+     * especie. Es también el ancho de respaldo cuando no hay sprite.
+     */
+    const val SPRITE_REFERENCE_FRACTION = 0.19f
 
     /** Alto del riel como fracción de la pantalla, con tope para tablets. */
     const val RAIL_HEIGHT_FRACTION = 0.52f
