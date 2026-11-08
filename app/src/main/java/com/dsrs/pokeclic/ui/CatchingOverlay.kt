@@ -68,12 +68,15 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +84,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
@@ -160,7 +164,8 @@ fun CatchingOverlay(
                 CatchingSceneDefaults.RAIL_MAX_HEIGHT
             )
             val railWidth = railHeight * CatchingSceneDefaults.RAIL_WIDTH_FRACTION
-            val spriteSize = railHeight * CatchingSceneDefaults.SPRITE_SIZE_FRACTION
+            // El sprite ocupa el ancho del riel: se recorta su padding transparente.
+            val spriteSize = railWidth
 
             CatchingHud(
                 encounter = encounter,
@@ -214,8 +219,8 @@ fun CatchingOverlay(
 
 /**
  * Riel vertical: columna de energía translúcida con marcas, la Pokébola del
- * jugador (la barra de captura) y el salvaje. La Pokébola se pinta **detrás**
- * del sprite para que el Pokémon siga viéndose cuando ambos se solapan.
+ * jugador (que desborda el riel) y el salvaje, que ocupa el ancho del riel y se
+ * pinta **delante** para que siempre se vea; la bola asoma por los costados.
  */
 @Composable
 private fun CaptureRail(
@@ -393,8 +398,11 @@ private fun PokeBall(modifier: Modifier = Modifier) {
 
 /**
  * Sprite del salvaje: el PNG de `Pokedex/` que corresponde a su número de la
- * Pokédex nacional. Si el número no tiene sprite, dibuja el mismo placeholder
- * que el gimnasio.
+ * Pokédex nacional, **recortado a su contenido opaco** y escalado al ancho del
+ * riel. Los PNG traen mucho padding transparente (Rattata ocupa ~37 % del
+ * lienzo), así que sin el recorte el Pokémon se veía chico por más que la caja
+ * midiera lo mismo que el riel. Si el número no tiene sprite, dibuja el mismo
+ * placeholder que el gimnasio.
  */
 @Composable
 private fun WildSpriteBox(
@@ -404,14 +412,61 @@ private fun WildSpriteBox(
     modifier: Modifier = Modifier
 ) {
     val sprite = pokedexSprite(dexNumber)
-    if (sprite != null) {
-        PixelImage(
-            res = sprite,
-            contentDescription = name,
-            modifier = modifier
-        )
-    } else {
+    if (sprite == null) {
         GymSpritePlaceholder(name = name, type = type, modifier = modifier)
+        return
+    }
+
+    val bitmap = ImageBitmap.imageResource(sprite)
+    val bounds = remember(sprite) { opaqueBounds(bitmap) }
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = name }
+    ) {
+        if (bounds.width <= 0 || bounds.height <= 0) return@Canvas
+        // Escala por ancho: el contenido ocupa todo el riel; el alto sale de la
+        // proporción del sprite y se centra verticalmente.
+        val dstH = bounds.height * (size.width / bounds.width)
+        drawImage(
+            image = bitmap,
+            srcOffset = IntOffset(bounds.left, bounds.top),
+            srcSize = IntSize(bounds.width, bounds.height),
+            dstOffset = IntOffset(0, ((size.height - dstH) / 2f).toInt()),
+            dstSize = IntSize(size.width.toInt(), dstH.toInt()),
+            filterQuality = FilterQuality.None
+        )
+    }
+}
+
+/** Caja opaca del sprite: recorta el padding transparente de los PNG. */
+private fun opaqueBounds(bitmap: ImageBitmap): IntRect {
+    val source = bitmap.asAndroidBitmap()
+    val w = source.width
+    val h = source.height
+    if (w <= 0 || h <= 0) return IntRect.Zero
+
+    val pixels = IntArray(w * h)
+    source.getPixels(pixels, 0, w, 0, 0, w, h)
+
+    var left = w
+    var top = h
+    var right = -1
+    var bottom = -1
+    for (y in 0 until h) {
+        val row = y * w
+        for (x in 0 until w) {
+            if (pixels[row + x] ushr 24 != 0) {
+                if (x < left) left = x
+                if (x > right) right = x
+                if (y < top) top = y
+                if (y > bottom) bottom = y
+            }
+        }
+    }
+    return if (right < left || bottom < top) {
+        IntRect.Zero
+    } else {
+        IntRect(left, top, right + 1, bottom + 1)
     }
 }
 
@@ -729,9 +784,6 @@ private object CatchingSceneDefaults {
     /** Alto del riel como fracción de la pantalla, con tope para tablets. */
     const val RAIL_HEIGHT_FRACTION = 0.52f
     val RAIL_MAX_HEIGHT = 420.dp
-
-    /** Sprite del salvaje, algo más estrecho que el riel. */
-    const val SPRITE_SIZE_FRACTION = 0.17f
 
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp
