@@ -424,15 +424,21 @@ private fun WildSpriteBox(
         modifier = modifier.semantics { contentDescription = name }
     ) {
         if (bounds.width <= 0 || bounds.height <= 0) return@Canvas
-        // Escala por ancho: el contenido ocupa todo el riel; el alto sale de la
-        // proporción del sprite y se centra verticalmente.
-        val dstH = bounds.height * (size.width / bounds.width)
+        // Escala común para todos: el sprite más ancho del catálogo llena el
+        // riel y el resto conserva su tamaño relativo. Solo los que superen ese
+        // ancho se recortan al riel. El alto sale de la proporción del sprite.
+        val scale = size.width / CatchingSceneDefaults.SPRITE_REFERENCE_PX
+        val dstW = minFloat(bounds.width * scale, size.width)
+        val dstH = bounds.height * (dstW / bounds.width)
         drawImage(
             image = bitmap,
             srcOffset = IntOffset(bounds.left, bounds.top),
             srcSize = IntSize(bounds.width, bounds.height),
-            dstOffset = IntOffset(0, ((size.height - dstH) / 2f).toInt()),
-            dstSize = IntSize(size.width.toInt(), dstH.toInt()),
+            dstOffset = IntOffset(
+                ((size.width - dstW) / 2f).toInt(),
+                ((size.height - dstH) / 2f).toInt()
+            ),
+            dstSize = IntSize(dstW.toInt(), dstH.toInt()),
             filterQuality = FilterQuality.None
         )
     }
@@ -784,6 +790,13 @@ private object CatchingSceneDefaults {
     /** Alto del riel como fracción de la pantalla, con tope para tablets. */
     const val RAIL_HEIGHT_FRACTION = 0.52f
     val RAIL_MAX_HEIGHT = 420.dp
+
+    /**
+     * Ancho de contenido (en px del PNG) que se dibuja a todo el ancho del riel.
+     * Es el sprite más ancho del catálogo (Geodude, 56 px): los demás quedan
+     * proporcionalmente más chicos, respetando su tamaño relativo.
+     */
+    const val SPRITE_REFERENCE_PX = 56f
 
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp

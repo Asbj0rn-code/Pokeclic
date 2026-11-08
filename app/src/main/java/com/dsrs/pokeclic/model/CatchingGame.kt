@@ -145,12 +145,8 @@ object CatchingDefaults {
     /** Amplitud del vagabundeo suave, como fracción del riel. */
     const val WANDER_RANGE = 0.35f
 
-    /**
-     * Margen interior del sprite, como fracción del riel. Con el sprite escalado
-     * al ancho del riel su alto puede superar ese ancho (Rattata ~1,2×), así que
-     * el margen lo deja dentro de la pista al llegar a los extremos.
-     */
-    const val SPRITE_MARGIN = 0.12f
+    /** Margen interior del sprite, como fracción del riel. */
+    const val SPRITE_MARGIN = 0.1f
 
     /** Umbral a partir del cual el sprite considera "alcanzado" su objetivo. */
     const val ARRIVAL_TOLERANCE = 0.02f
