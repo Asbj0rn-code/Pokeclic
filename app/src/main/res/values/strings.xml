@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pokeclic</string>
+
+    <!-- Pantalla principal -->
+    <string name="poke_ball_desc">Poké Ball</string>
+    <string name="trainer_desc">Trainer</string>
+    <string name="tall_grass_desc">Hierba alta</string>
+
+    <!-- Bottom menu -->
+    <string name="nav_map">Mapa</string>
+    <string name="nav_pokedex">Pokédex</string>
+    <string name="pokedex_desc">Pokédex</string>
+
+    <!-- Mapa -->
+    <string name="map_kanto_desc">Mapa de Kanto</string>
+    <string name="map_reset_view">Restaurar vista</string>
+    <string name="map_open_dev_editor">Abrir editor de desarrollo del mapa</string>
+
+    <!-- Menú de opciones (placeholder) -->
+    <string name="options_title">Opciones</string>
+    <string name="options_settings">Configuración</string>
+    <string name="options_about">Acerca de</string>
+
+    <!-- HUD de juego -->
+    <string name="hud_coins">Monedas: %d</string>
+    <string name="hud_owned">En posesión: %d</string>
+    <string name="hud_zone_progress">%1$d / %2$d</string>
+    <string name="hud_zone_power">Potencia: %d</string>
+    <string name="action_reset">Reset</string>
+
+    <!-- Minijuego de pesca -->
+    <string name="catch_title">¡Ha aparecido %1$s!</string>
+    <string name="catch_type">Tipo: %s</string>
+    <string name="fishing_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
+    <string name="fishing_captured">¡Genial! ¡%1$s fue capturado!</string>
+    <string name="fishing_escaped">¡Oh, no! ¡%1$s se escapó!</string>
+    <string name="fishing_continue">Continuar</string>
+
+    <!-- Starter y principal -->
+    <string name="starter_type">Tipo: %s</string>
+    <string name="lead_title">Pokémon principal</string>
+    <string name="lead_hint">Elige quién te representa en los gimnasios</string>
+    <string name="lead_change">Cambiar principal</string>
+    <string name="lead_close">Cerrar</string>
+
+    <!-- Gimnasio -->
+    <string name="gym_title">Gimnasio de %1$s</string>
+    <string name="gym_type">Líder de tipo %s</string>
+    <string name="gym_leader_hp">Líder: %1$d / %2$d</string>
+    <string name="gym_hp">Vida: %1$d / %2$d</string>
+    <string name="gym_projectile_hint">Rompe las rocas para llenar la postura del líder</string>
+    <string name="gym_enemy_hint">¡Postura rota! Tócalo para atacar</string>
+    <string name="gym_posture">Postura · %1$d / %2$d</string>
+    <string name="gym_rage">¡Enfurecido!</string>
+    <string name="gym_exposed">¡Expuesto!</string>
+    <string name="gym_lost">¡Te han debilitado!</string>
+    <string name="gym_retry">Reintentar</string>
+    <string name="gym_leave">Rendirse</string>
+
+    <!-- Entrada al gimnasio: bienvenida, tutorial y cartel de arranque -->
+    <string name="gym_welcome_title">¡Bienvenido al gimnasio de %1$s!</string>
+    <string name="gym_welcome_body">El líder te espera dentro. ¿Quieres que te explique rápido cómo funciona el combate?</string>
+    <string name="gym_intro_watch">Ver tutorial</string>
+    <string name="gym_intro_skip">Omitir</string>
+    <string name="gym_tutorial_title">Cómo funciona el combate</string>
+    <string name="gym_tutorial_step1_title">Aguanta y acierta</string>
+    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance. Cada acierto llena su barra de postura; un impacto te daña y no suma.</string>
+    <string name="gym_tutorial_step2_title">Rompe su postura</string>
+    <string name="gym_tutorial_step2_text">Cuando la barra de postura se llena, el líder queda expuesto unos segundos: tócalo para restarle vida con ventaja de tipo. Esa ventana funciona por tiempo.</string>
+    <string name="gym_tutorial_step3_title">Ojo con la furia</string>
+    <string name="gym_tutorial_step3_text">Si su vida baja a un cuarto o menos se enfurece: las rocas caen más rápido y más apretadas. Sigue acertando y repite hasta vencerle.</string>
+    <string name="gym_tutorial_step_number">Paso %1$d · %2$s</string>
+    <string name="gym_tutorial_accept">Entendido</string>
+    <string name="gym_tutorial_repeat">Repetir tutorial</string>
+    <string name="gym_countdown">¡Que comience el combate!</string>
+
+    <!-- Minijuego de anillos (Misty) -->
+    <string name="gym_ring_hint">Acierta el anillo justo a tiempo para llenar la postura</string>
+    <string name="gym_ring_hit">¡Acierto!</string>
+    <string name="gym_ring_miss">¡Fallo!</string>
+    <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
+    <string name="gym_ring_tutorial_step1_title">Acierta el círculo</string>
+    <string name="gym_ring_tutorial_step1_text">Los círculos se cierran sobre tu Pokémon. Pulsa la pantalla justo cuando el círculo que baja toque el círculo fijo que lo rodea.</string>
+    <string name="gym_ring_tutorial_step2_title">Cada círculo va a su ritmo</string>
+    <string name="gym_ring_tutorial_step2_text">Cada círculo se cierra a una velocidad distinta. Si pulsas fuera del momento exacto, o lo dejas pasar, pierdes vida y no sumas postura.</string>
+    <string name="gym_ring_tutorial_step3_title">Rompe su postura</string>
+    <string name="gym_ring_tutorial_step3_text">Cada acierto llena la barra de postura del líder. Al completarse quedará expuesto unos segundos y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece y los círculos van más rápido.</string>
+
+    <!-- Minijuego de Voltorb (Lt. Surge) -->
+    <string name="gym_voltorb_hint">Apaga el Voltorb a tiempo para llenar la postura</string>
+    <string name="gym_voltorb_tutorial_step1_title">Una cuadrícula de Voltorb</string>
+    <string name="gym_voltorb_tutorial_step1_text">Cuatro filas y cuatro columnas de Voltorb esperan. Se encienden sin parar y sin tope: si no los apagas rápido se te van a juntar varios cargados a la vez.</string>
+    <string name="gym_voltorb_tutorial_step2_title">Apágalo a tiempo</string>
+    <string name="gym_voltorb_tutorial_step2_text">Toca el Voltorb cargado para apagarlo y sumar postura. Si su cuenta atrás termina, explota y pierdes vida sin sumar. Si tocas una celda apagada, la descarga también te daña.</string>
+    <string name="gym_voltorb_tutorial_step3_title">Rompe su postura</string>
+    <string name="gym_voltorb_tutorial_step3_text">Cada acierto llena la barra de postura del líder. Al completarse los Voltorb se apagan y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece: se encienden más rápido y más a la vez.</string>
+
+    <!-- HUD -->
+    <string name="hud_medals">Medallas: %d</string>
+    <string name="hud_trainer">Entrenador: %s</string>
+    <string name="hud_lead">Principal: %s</string>
+    <string name="hud_lead_none">—</string>
+    <string name="action_gym">Gimnasio: %s</string>
+    <string name="action_advance">Avanzar</string>
+    <!-- Provisional: borra toda la partida para testear (ver MainViewModel.onWipeGame). -->
+    <string name="action_wipe">Borrar partida (test)</string>
+    <string name="options_debug_plateada">Ir a Ciudad Plateada (test)</string>
+    <string name="options_debug_celeste">Ir a Ciudad Celeste (test)</string>
+    <string name="options_debug_carmin">Ir a Ciudad Carmín (test)</string>
+    <string name="wipe_confirm_title">¿Borrar partida?</string>
+    <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>
+    <string name="wipe_confirm_accept">Borrar</string>
+    <string name="wipe_confirm_cancel">Cancelar</string>
+
+    <!-- Introducción (Profesor Oak) -->
+    <string name="intro_oak_desc">Profesor Oak</string>
+    <string name="intro_line_welcome">¡Hola! Soy el Profesor Oak.</string>
+    <string name="intro_line_world">¡Bienvenido al mundo Pokémon!</string>
+    <string name="intro_line_creatures">Este mundo está habitado por unas criaturas llamadas Pokémon.</string>
+    <string name="intro_ask_name">Antes de empezar, dime… ¿cómo te llamas?</string>
+    <string name="intro_greet">¡Encantado, %1$s! Estoy seguro de que seremos grandes amigos.</string>
+    <string name="intro_ask_starter">Ahora elige tu primer compañero Pokémon.</string>
+    <string name="intro_goodbye">¡%1$s será tu compañero! ¡Que comience la aventura!</string>
+    <string name="intro_name_label">Tu nombre</string>
+    <string name="intro_accept">Aceptar</string>
+</resources>

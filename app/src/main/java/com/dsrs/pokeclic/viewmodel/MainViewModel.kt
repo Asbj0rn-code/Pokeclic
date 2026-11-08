@@ -1,0 +1,1149 @@
+package com.dsrs.pokeclic.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.dsrs.pokeclic.data.GameStateStore
+import com.dsrs.pokeclic.model.AppTab
+import com.dsrs.pokeclic.model.Direction
+import com.dsrs.pokeclic.model.Encounter
+import com.dsrs.pokeclic.model.FishingDefaults
+import com.dsrs.pokeclic.model.FishingGame
+import com.dsrs.pokeclic.model.FishingPhase
+import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.Gym
+import com.dsrs.pokeclic.model.GymCombat
+import com.dsrs.pokeclic.model.GymOutcome
+import com.dsrs.pokeclic.model.GymPhase
+import com.dsrs.pokeclic.model.GymState
+import com.dsrs.pokeclic.model.GymCatalog
+import com.dsrs.pokeclic.model.GymIntroPhase
+import com.dsrs.pokeclic.model.GymMechanic
+import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.Projectile
+import com.dsrs.pokeclic.model.RingFeedback
+import com.dsrs.pokeclic.model.RingOutcome
+import com.dsrs.pokeclic.model.SpeciesCatalog
+import com.dsrs.pokeclic.model.SpriteRepository
+import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TimingRing
+import com.dsrs.pokeclic.model.Voltorb
+import com.dsrs.pokeclic.model.Zone
+import com.dsrs.pokeclic.model.ZoneCatalog
+import com.dsrs.pokeclic.model.advanceZone
+import com.dsrs.pokeclic.model.isGymPending
+import com.dsrs.pokeclic.model.isLateral
+import com.dsrs.pokeclic.model.startFrame
+import com.dsrs.pokeclic.model.typeDamageMultiplier
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
+import kotlin.random.Random
+
+/**
+ * ViewModel de juego: contiene **toda** la lógica de negocio (clic de zona,
+ * caminar por la hierba alta, captura, starter y principal, tipos, gimnasio,
+ * reset, persistencia, navegación y la animación del entrenador). La UI solo lee
+ * el único [uiState] y le envía eventos.
+ *
+ * Reglas clave:
+ * - En una zona, cada toque suma [GameUiState.clickPower] clics de avance; el
+ *   progreso **se capa en el umbral**: el avance a la siguiente zona es manual,
+ *   vía `onAdvanceZone`. En zonas con gimnasio, el requisito extra es haberlo
+ *   ganado dentro de la run actual (`gymClearedRun`).
+ * - En hierba alta, los toques **no** cuentan para el avance: marcan actividad de
+ *   caminar (temporizador que solo corre con toques recientes).
+ * - Con un encuentro activo se juega el minijuego de pesca (`FishingGame`): la
+ *   UI registra la pulsación en toda la pantalla y el ViewModel mueve barra y
+ *   sprite en un bucle de ticks.
+ * - Con un gimnasio activo, romper proyectiles deja al líder expuesto; solo
+ *   entonces los toques sobre él le restan vida (fases excluyentes).
+ *
+ * Se piden por constructor el [SpriteRepository] y el [GameStateStore] (sin valor
+ * por defecto) para que la instancia se cree a través de una `Factory` y sea
+ * testeable en la JVM con dobles. El reloj es `System.nanoTime()`, que no
+ * depende de Android.
+ *
+ * @param zones catálogo ordenado de zonas (inyectable para tests).
+ * @param random fuente de aleatoriedad (inyectable para tests).
+ * @param nowMs reloj en ms (inyectable para tests: se congelan los combates).
+ */
+class MainViewModel(
+    private val sprites: SpriteRepository,
+    private val store: GameStateStore,
+    private val zones: List<Zone> = ZoneCatalog.zones,
+    private val random: Random = Random.Default,
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(derive(restoreState()))
+    val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
+
+    /** Job del reset de frame; se cancela al programar uno nuevo. */
+    private var resetJob: Job? = null
+
+    /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
+    private var lateralFrameJob: Job? = null
+
+    /** Job del bucle de combate del gimnasio. */
+    private var gymJob: Job? = null
+
+    /** Job del cartel de arranque del combate del gimnasio. */
+    private var gymIntroJob: Job? = null
+
+    /** Job del bucle del minijuego de pesca. */
+    private var fishingJob: Job? = null
+
+    /** ¿El jugador mantiene pulsado durante la partida de pesca? */
+    private var fishingHeld: Boolean = false
+
+    /** Siguiente id de ataque (proyectil o anillo) del combate actual. */
+    private var nextCombatId: Long = 0L
+
+    /** Momento del último toque en hierba alta; gobierna el temporizador de caminar. */
+    private var lastWalkTapMs: Long = 0L
+
+    init {
+        startWalkingLoop()
+    }
+
+    // --- Eventos de UI -----------------------------------------------------
+
+    /**
+     * Pulsación sobre la Pokébola.
+     *
+     * @param direction llega ya resuelta desde la UI: la marca el eje por el que
+     *   se mueve el fondo (recto → de espaldas, lateral → derecha o izquierda).
+     *   La Pokébola ya no elige dirección según el lado que se toca.
+     *
+     * Aplica el efecto del modo actual: caminar > avance de zona. Durante el
+     * minijuego de pesca la Pokébola no se dibuja (la escena ocupa toda la
+     * pantalla), así que un toque que la alcanzara no cambia nada sustantivo.
+     */
+    fun onPokeBallTouch(direction: Direction) {
+        val now = nowMs()
+        // Un clic nuevo manda: si quedaba pendiente el segundo fotograma de un
+        // lateral anterior, ya no aplica.
+        lateralFrameJob?.cancel()
+
+        var directionChanged = false
+        val updated = _uiState.updateAndGet { state ->
+            directionChanged = direction != state.trainer.currentDirection
+            val trainer = if (directionChanged) {
+                // Al estrenar dirección se arranca por su fotograma de entrada:
+                // los laterales empiezan en el segundo del ciclo.
+                val total = sprites.frameCount(direction)
+                val first = direction.startFrame().coerceIn(0, (total - 1).coerceAtLeast(0))
+                state.trainer.copy(currentDirection = direction, currentFrame = first)
+            } else {
+                val total = sprites.frameCount(direction)
+                state.trainer.copy(currentFrame = (state.trainer.currentFrame + 1) % total)
+            }
+            val animated = state.copy(
+                trainer = trainer,
+                trainerFrameRes = sprites.frame(trainer.currentDirection, trainer.currentFrame)
+            )
+
+            val progressed = when {
+                // Minijuego en curso: la pokéball no interviene en la partida.
+                state.encounter != null -> animated
+                state.isTallGrass -> {
+                    lastWalkTapMs = now
+                    animated
+                }
+                else -> addZoneClicks(animated)
+            }
+            derive(progressed)
+        }
+        store.save(updated.toSnapshot())
+
+        // El paso de lado dura un solo clic: su segundo fotograma entra cuando el
+        // desplazamiento ya está en marcha, no en el mismo instante del toque.
+        if (directionChanged && direction.isLateral) {
+            scheduleLateralSecondFrame(direction)
+        }
+        // Un segundo sin pulsar devuelve al entrenador al reposo (front, frame 0).
+        scheduleFrameReset()
+    }
+
+    /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
+    fun onTallGrassToggle() = mutate { state ->
+        if (state.isTallGrass) {
+            cancelFishing()
+            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, fishing = null)
+        } else {
+            state.copy(isTallGrass = true)
+        }
+    }
+
+    /**
+     * Reset manual: conserva la meta (monedas, visto, recompensadas, medallas,
+     * starter y su vínculo) y vacía lo de la run (en posesión, principal,
+     * gimnasios ganados en la run, zona y progreso). El principal vuelve al
+     * starter.
+     */
+    fun onReset() {
+        gymIntroJob?.cancel()
+        gymJob?.cancel()
+        cancelFishing()
+        mutate { state ->
+            state.copy(
+                ownedSpecies = emptySet(),
+                leadSpeciesId = state.starterSpeciesId,
+                gymClearedRun = emptySet(),
+                zoneIndex = 0,
+                zoneClicks = 0L,
+                isTallGrass = false,
+                walkProgress = 0f,
+                encounter = null,
+                fishing = null,
+                gym = null,
+                gymIntro = null
+            )
+        }
+    }
+
+    /**
+     * **Borrado total de la partida (provisional, solo para testear).** Elimina
+     * todo lo persistido y devuelve el estado a una primera partida: la app vuelve
+     * a la introducción del Profesor Oak. No forma parte del diseño final.
+     *
+     * `clear()` es síncrono (destructivo), y aquí se reinician los campos
+     * transitorios que sobreviven al estado (`lastWalkTapMs`,
+     * `nextCombatId`) para que ningún temporizador del estado anterior
+     * "arrastre" el instante posterior al borrado.
+     */
+    fun onWipeGame() {
+        gymIntroJob?.cancel()
+        gymJob?.cancel()
+        cancelFishing()
+        resetJob?.cancel()
+        lateralFrameJob?.cancel()
+        lastWalkTapMs = 0L
+        nextCombatId = 0L
+        store.clear()
+        _uiState.value = derive(GameUiState(trainerFrameRes = sprites.frame(Direction.FRONT, 0)))
+    }
+
+    /**
+     * **Salto de zona (provisional, solo para testear).** Deja la partida en la
+     * zona [zoneId] con la barra ya llena, para poder entrar a su gimnasio sin
+     * recorrer las zonas anteriores. No forma parte del diseño final.
+     *
+     * También limpia `gymClearedRun`: si la zona ya se había ganado en esta run,
+     * su gimnasio dejaría de estar pendiente y `isGymReady` sería `false`.
+     */
+    fun onDebugJumpToZone(zoneId: String) {
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index < 0) return
+        gymIntroJob?.cancel()
+        gymJob?.cancel()
+        cancelFishing()
+        lastWalkTapMs = 0L
+        nextCombatId = 0L
+        mutate { state ->
+            state.copy(
+                zoneIndex = index,
+                zoneClicks = zones[index].clickRequirement,
+                gymClearedRun = emptySet(),
+                isTallGrass = false,
+                walkProgress = 0f,
+                encounter = null,
+                fishing = null,
+                gym = null,
+                gymIntro = null
+            )
+        }
+    }
+
+    /**
+     * Cierra la introducción de la primera partida: fija el nombre del entrenador
+     * (permanente) y el starter elegido en una sola operación. Se llama una vez,
+     * cuando el jugador ya pasó el diálogo del Profesor Oak.
+     */
+    fun onFinishIntro(playerName: String, starterSpeciesId: String) {
+        if (SpeciesCatalog.starters.none { it.id == starterSpeciesId }) return
+        val name = playerName.trim()
+        if (name.isBlank()) return
+        mutate {
+            it.copy(
+                playerName = name,
+                starterSpeciesId = starterSpeciesId,
+                starterBond = 0,
+                leadSpeciesId = starterSpeciesId
+            )
+        }
+    }
+
+    /** Equipa como principal una especie en posesión de esta run (o el starter). */
+    fun onSelectLead(speciesId: String) = mutate { state ->
+        if (state.isLeadCandidate(speciesId)) state.copy(leadSpeciesId = speciesId) else state
+    }
+
+    // --- Navegación --------------------------------------------------------
+
+    /** Cambia de pantalla y cierra la hoja de opciones si estaba abierta. */
+    fun onSelectTab(tab: AppTab) = _uiState.update {
+        it.copy(contentTab = tab, isOptionsOpen = false)
+    }
+
+    fun onOpenOptions() = _uiState.update { it.copy(isOptionsOpen = true) }
+
+    fun onCloseOptions() = _uiState.update { it.copy(isOptionsOpen = false) }
+
+    /** Abre el selector de Pokémon principal. */
+    fun onOpenLead() = _uiState.update { it.copy(isLeadOpen = true) }
+
+    fun onCloseLead() = _uiState.update { it.copy(isLeadOpen = false) }
+
+    /**
+     * Al expandir la Pokéball se muestra la pantalla principal, que es donde
+     * tiene sentido usar la pokéball de juego. Al contraerla no cambia nada.
+     */
+    fun onPokeBallExpanded(expanded: Boolean) = _uiState.update {
+        if (expanded) it.copy(contentTab = AppTab.Home, isOptionsOpen = false) else it
+    }
+
+    // --- Gimnasio (combate clicker) ----------------------------------------
+
+    /** Empieza el intento de gimnasio de la zona actual, si está disponible. */
+    fun onEnterGym() {
+        val state = _uiState.value
+        // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
+        // reintento explícito es onGymRetry, y salir es onLeaveGym), una capa de
+        // intro abierta o un gimnasio no disponible.
+        if (state.gym != null) return
+        if (state.gymIntro != null) return
+        if (!state.isGymReady) return
+        val gymId = zoneAt(state.zoneIndex).gymId ?: return
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.WELCOME) }
+    }
+
+    /** Desde la bienvenida, abre la explicación del minijuego. */
+    fun onGymIntroWatchTutorial() {
+        if (_uiState.value.gymIntro != GymIntroPhase.WELCOME) return
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.TUTORIAL) }
+    }
+
+    /** "Omitir" (bienvenida): salta el tutorial y arma el cartel de arranque. */
+    fun onGymIntroSkip() = beginGymCombatCountdown()
+
+    /** "Entendido" (tutorial): cierra la explicación y arma el cartel de arranque. */
+    fun onGymIntroAccepted() = beginGymCombatCountdown()
+
+    /**
+     * Reintenta el gimnasio actual desde cero (tras una derrota), pasando por
+     * el cartel de arranque para que el jugador se prepare.
+     */
+    fun onGymRetry() {
+        if (_uiState.value.gym == null) return
+        beginGymCombatCountdown()
+    }
+
+    /**
+     * **Abandona el intento sin penalización**; se puede reintentar. También
+     * limpia la capa de intro: si el combate estaba arrancando con el cartel,
+     * dejarlo a medias replicaría un arranque fantasma.
+     */
+    fun onLeaveGym() {
+        gymIntroJob?.cancel()
+        gymIntroJob = null
+        gymJob?.cancel()
+        _uiState.update { derive(it.copy(gym = null, gymIntro = null)) }
+    }
+
+    /**
+     * Pasa a fase **countdown**: muestra el cartel "que comience el combate"
+     * durante [GYM_COUNTDOWN_MS] y solo entonces arranca el combate real, para
+     * que el jugador no entre por sorpresa.
+     */
+    private fun beginGymCombatCountdown() {
+        val phase = _uiState.value.gymIntro
+        // Desde una derrota no se exige fase: llega con el combate perdido ya
+        // detenido (`onGymRetry` llega sin la capa de intro compuesta).
+        val fromIntro = phase == GymIntroPhase.WELCOME || phase == GymIntroPhase.TUTORIAL
+        val fromRetry = _uiState.value.gym != null
+        // Solo hay un punto de partida válido: la intro o el reintento, nunca ambos.
+        if (fromIntro == fromRetry) return
+
+        gymIntroJob?.cancel()
+        gymIntroJob = viewModelScope.launch {
+            delay(GYM_COUNTDOWN_MS)
+            val state = _uiState.value
+            if (state.gymIntro != GymIntroPhase.COUNTDOWN) return@launch
+            val gymId = zoneAt(state.zoneIndex).gymId
+                ?: return@launch _uiState.update { it.copy(gymIntro = null) }
+            startGymCombat(GymCatalog.require(gymId))
+        }
+        _uiState.update { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
+    }
+
+    /**
+     * Golpea al líder. Solo cuenta si está **expuesto**: en fase de ataque no se
+     * le puede hacer daño, que es lo que cierra el exploit de atacar y defender a
+     * la vez. El daño combina la potencia de clic con la ventaja de tipo.
+     *
+     * La primera vez que un golpe fuese a cruzar el umbral de furia (o a matarlo)
+     * sin haber jugado una ronda de furia, [GymCombat.gateFirstRage] frena el daño
+     * en el umbral y devuelve al líder a [GymPhase.ATTACKING]: la furia es
+     * obligatoria al menos una vez por combate.
+     */
+    fun onGymEnemyHit() {
+        val state = _uiState.value
+        val gym = state.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE || gym.phase != GymPhase.EXPOSED) return
+        val config = GymCatalog.require(gym.gymId)
+
+        val multiplier = typeDamageMultiplier(state.leadType, config.type)
+        val damage = (state.clickPower * multiplier).roundToLong().coerceAtLeast(1L).toInt()
+
+        var won = false
+        // Un solo `updateGym`: golpe, puerta de furia y victoria se deciden sobre
+        // el estado más reciente.
+        updateGym { current ->
+            if (current.outcome != GymOutcome.ACTIVE || current.phase != GymPhase.EXPOSED) {
+                return@updateGym current
+            }
+            val newLeaderHp = (current.leaderHp - damage).coerceAtLeast(0)
+            val gated = GymCombat.gateFirstRage(current, newLeaderHp)
+            when {
+                gated != null -> gated
+                newLeaderHp <= 0 -> {
+                    won = true
+                    current.copy(leaderHp = 0)
+                }
+                else -> current.copy(
+                    leaderHp = newLeaderHp,
+                    rage = GymCombat.isRaging(newLeaderHp, current.leaderMaxHp)
+                )
+            }
+        }
+        if (won) winGym(config)
+    }
+
+    /**
+     * Pulsación en el minijuego de anillos de Misty.
+     *
+     * Juzga el anillo **más cercano** a su convergencia: dentro de la ventana es
+     * acierto y el anillo desaparece **sumando postura**; fuera, fallo, resta
+     * vida, no suma y el anillo también desaparece. Un anillo se cobra una sola
+     * vez, de modo que pulsar repetidamente no permite encadenar aciertos ni
+     * acumula daño sobre el mismo anillo. En fase expuesta no hace nada: entonces
+     * el toque válido es sobre el sprite del líder ([onGymEnemyHit]).
+     */
+    fun onGymRingTap() {
+        val state = _uiState.value
+        val gym = state.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.mechanic != GymMechanic.TIMING_RINGS) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        val config = GymCatalog.require(gym.gymId)
+        val now = nowMs()
+
+        updateGym { current ->
+            val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
+            val onBeat = GymCombat.isRingOnBeat(ring, current, now)
+            val resolved = current.copy(
+                rings = current.rings.filterNot { it.id == ring.id },
+                ringFeedback = RingFeedback(
+                    ringId = ring.id,
+                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
+                )
+            )
+            if (onBeat) GymCombat.addPosture(resolved)
+            else applyRingMiss(resolved, config.ringMissDamage)
+        }
+    }
+
+    /**
+     * Destruye (o resta un toque a) el proyectil tocado por el jugador.
+     *
+     * La lectura y la escritura van dentro de `updateGym` para no pisar un golpe
+     * del jugador que llegue entre el cálculo y la actualización.
+     */
+    fun onGymProjectileHit(projectileId: Long) {
+        if (_uiState.value.gym?.outcome != GymOutcome.ACTIVE) return
+
+        updateGym { current -> GymCombat.breakProjectile(current, projectileId) }
+    }
+
+    /**
+     * Toque en una celda de la cuadrícula de Lt. Surge.
+     *
+     * Si esa celda tiene un Voltorb cargado lo apaga: acierto sin daño. Si está
+     * apagada, la descarga resta vida. En fase expuesta no hace nada: entonces el
+     * toque válido es sobre el sprite del líder ([onGymEnemyHit]).
+     */
+    fun onGymVoltorbTap(cell: Int) {
+        val state = _uiState.value
+        val gym = state.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.mechanic != GymMechanic.VOLTORB_GRID) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        val config = GymCatalog.require(gym.gymId)
+
+        updateGym { current ->
+            if (GymCombat.voltorbAt(current, cell) != null) {
+                GymCombat.defuseVoltorb(current, cell)
+            } else {
+                val shocked = GymCombat.registerShock(current, cell, config.voltorbShockDamage)
+                if (shocked.playerHp <= 0) shocked.copy(outcome = GymOutcome.LOST) else shocked
+            }
+        }
+    }
+
+    private fun startGymCombat(config: Gym) {
+        gymJob?.cancel()
+        nextCombatId = 0L
+        _uiState.update { current ->
+            val maxHp = current.maxHp
+            derive(
+                current.copy(
+                    isTallGrass = false,
+                    walkProgress = 0f,
+                    encounter = null,
+                    fishing = null,
+                    gymIntro = null,
+                    gym = GymState(
+                        gymId = config.id,
+                        leaderName = config.leaderName,
+                        gymType = config.type,
+                        leaderHp = config.leaderHp,
+                        leaderMaxHp = config.leaderHp,
+                        playerHp = maxHp,
+                        maxHp = maxHp,
+                        mechanic = config.mechanic,
+                        columns = config.columns,
+                        rows = config.rows,
+                        ringWindowMs = config.ringWindowMs,
+                        postureMax = config.postureHits,
+                        posture = 0,
+                        exposureDurationMs = config.exposureDurationMs,
+                        // El principal efectivo es el elegido o, si no hay, el starter.
+                        leadSpeciesId = current.leadSpeciesId ?: current.starterSpeciesId,
+                        leadName = current.leadName,
+                        leadType = current.leadType
+                    )
+                )
+            )
+        }
+        startGymLoop(config)
+    }
+
+    /**
+     * Bucle de combate. En fase de ataque aplica la mecánica del líder —ráfagas
+     * de proyectiles, anillos que se cierran o Voltorb que se cargan—; la postura
+     * solo sube con los aciertos del jugador, nunca por tiempo. En fase expuesta
+     * avanza la recuperación por tiempo. Al bajar del 25 % de vida la mecánica se
+     * acelera (furia). Se detiene al ganar o perder.
+     */
+    private fun startGymLoop(config: Gym) {
+        gymJob = viewModelScope.launch {
+            var nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
+            // Se sigue la fase anterior para dar el respiro de arranque de ronda
+            // venga el cambio de donde venga: fin de la exposición por tiempo o
+            // puerta de furia, que devuelve al líder a [GymPhase.ATTACKING] fuera
+            // del bucle. Durante la exposición la cadencia no corre, así que sin
+            // este reinicio se cobraría de golpe en una ráfaga imposible de parar.
+            var wasExposed = false
+            while (isActive) {
+                delay(GYM_TICK_MS)
+                val gym = _uiState.value.gym ?: break
+                if (gym.outcome != GymOutcome.ACTIVE) break
+
+                if (wasExposed && gym.phase == GymPhase.ATTACKING) {
+                    nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
+                }
+                wasExposed = gym.phase == GymPhase.EXPOSED
+
+                var lost = false
+
+                // Un solo `updateGym` por tick: así un golpe del jugador que caiga
+                // a mitad no se pierde al reemplazar el estado.
+                updateGym { current ->
+                    if (current.outcome != GymOutcome.ACTIVE) return@updateGym current
+
+                    // Fase expuesta: no hay ataque enemigo y la ventana corre por
+                    // tiempo. Al terminar, la postura vuelve a cero.
+                    if (current.phase == GymPhase.EXPOSED) {
+                        return@updateGym GymCombat.advanceExposure(current, GYM_TICK_MS)
+                    }
+
+                    val now = nowMs()
+                    val spawnDue = now >= nextSpawnMs
+
+                    val idsBefore = nextCombatId
+                    val next = when (current.mechanic) {
+                        GymMechanic.PROJECTILES ->
+                            tickProjectiles(config, current, now, spawnDue)
+                        GymMechanic.TIMING_RINGS ->
+                            tickRings(config, current, now, spawnDue)
+                        GymMechanic.VOLTORB_GRID ->
+                            tickVoltorbs(config, current, now, spawnDue)
+                    }
+
+                    // La cadencia se cobra cuando la mecánica **coloca** su ataque.
+                    // La cuadrícula de Voltorb es la única que puede quedar
+                    // bloqueada —un Voltorb cargado a la vez—, así que si no
+                    // colocó, el turno sigue pendiente y entra en cuanto la celda
+                    // quede libre.
+                    val blocked = current.mechanic == GymMechanic.VOLTORB_GRID &&
+                        nextCombatId == idsBefore
+                    if (spawnDue && !blocked) {
+                        val interval = spawnIntervalMs(config, current)
+                        // Si el turno venía muy atrasado (tablero lleno, pausa
+                        // larga), se reanuda la cadencia desde ahora: nunca se
+                        // cobran varios ataques de golpe por tiempo perdido.
+                        nextSpawnMs = if (now - nextSpawnMs > interval) {
+                            now + interval
+                        } else {
+                            nextSpawnMs + interval
+                        }
+                    }
+
+                    if (next.outcome == GymOutcome.LOST) lost = true
+                    next
+                }
+
+                if (lost) break
+            }
+        }
+    }
+
+    /** Cadencia de aparición del ataque en curso, más rápida durante la furia. */
+    private fun spawnIntervalMs(config: Gym, state: GymState): Long =
+        when (state.mechanic) {
+            GymMechanic.PROJECTILES ->
+                if (GymCombat.isRaging(state)) config.rageSpawnIntervalMs
+                else config.spawnIntervalMs
+            GymMechanic.TIMING_RINGS ->
+                if (GymCombat.isRaging(state)) config.rageRingSpawnIntervalMs
+                else config.ringSpawnIntervalMs
+            GymMechanic.VOLTORB_GRID ->
+                if (GymCombat.isRaging(state)) config.rageVoltorbSpawnIntervalMs
+                else config.voltorbSpawnIntervalMs
+        }
+
+    /**
+     * Tick de la lluvia de rocas: retira las que ya impactaron, aplica su daño y
+     * lanza una ráfaga nueva si toca. [spawnDue] lo decide el bucle para compartir
+     * la cadencia entre mecánicas.
+     */
+    private fun tickProjectiles(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        val alive = state.projectiles.filterNot { it.hasLanded(now) }
+        val landedCount = state.projectiles.size - alive.size
+
+        val projectiles = if (spawnDue) {
+            val raging = GymCombat.isRaging(state)
+            val perSpawn = if (raging) config.rageProjectilesPerSpawn else config.projectilesPerSpawn
+            val travel = if (raging) config.rageProjectileTravelMs else config.projectileTravelMs
+            // La ráfaga no siempre es completa: entre 1 y `perSpawn` rocas, así no
+            // todas las filas son iguales.
+            val salvoSize = random.nextInt(1, perSpawn + 1)
+            val columns = (0 until config.columns)
+                .shuffled(random)
+                .take(salvoSize)
+            alive + columns.map { column ->
+                Projectile(
+                    id = nextCombatId++,
+                    column = column,
+                    spawnedAtMs = now,
+                    travelMs = travel
+                )
+            }
+        } else {
+            alive
+        }
+
+        if (landedCount == 0) return state.copy(projectiles = projectiles)
+
+        val damaged = GymCombat.registerImpact(
+            state = state.copy(projectiles = projectiles),
+            damage = landedCount * config.projectileDamage
+        )
+        return damaged.withDefeatIfPlayerDown()
+    }
+
+    /**
+     * Tick de los anillos de Misty: cobra los que caducaron sin acierto y lanza
+     * uno nuevo si toca. Cada anillo elige su propia duración dentro del rango
+     * del gimnasio, de ahí que se cierren con cadencias distintas.
+     */
+    private fun tickRings(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        var next = state
+
+        val expired = GymCombat.expiredRings(next, now)
+        if (expired.isNotEmpty()) {
+            val expiredIds = expired.map { it.id }.toSet()
+            next = next.copy(
+                rings = next.rings.filterNot { it.id in expiredIds },
+                ringFeedback = RingFeedback(
+                    ringId = expired.maxOf { it.id },
+                    outcome = RingOutcome.MISS,
+                    count = expired.size
+                )
+            )
+            next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
+        }
+
+        if (spawnDue) {
+            val raging = GymCombat.isRaging(next)
+            val minTravel = if (raging) config.rageRingTravelMinMs else config.ringTravelMinMs
+            val maxTravel = if (raging) config.rageRingTravelMaxMs else config.ringTravelMaxMs
+            val travel = if (maxTravel <= minTravel) {
+                minTravel
+            } else {
+                random.nextLong(minTravel, maxTravel + 1)
+            }
+            next = next.copy(rings = next.rings + TimingRing(nextCombatId++, now, travel))
+        }
+
+        return next.withDefeatIfPlayerDown()
+    }
+
+    /** Daño de un anillo fallado; cierra el combate si deja al jugador a 0. */
+    private fun applyRingMiss(state: GymState, damage: Int): GymState =
+        GymCombat.registerImpact(state, damage).withDefeatIfPlayerDown()
+
+    /** Cierra el combate como derrota si el jugador se ha quedado sin vida. */
+    private fun GymState.withDefeatIfPlayerDown(): GymState =
+        if (playerHp <= 0) copy(outcome = GymOutcome.LOST) else this
+
+    /**
+     * Tick de la cuadrícula de Lt. Surge: cobra los Voltorb que explotaron y
+     * carga uno nuevo si toca y queda celda libre.
+     *
+     * No hay tope de cargados a la vez: el único límite es el tablero, así que si
+     * el jugador se atrasa los Voltorb se apilan. Las cargas siguen escalonadas
+     * por [Gym.voltorbSpawnIntervalMs] —nunca dos en el mismo instante— y con el
+     * tablero lleno el turno queda pendiente y entra en cuanto se libera una
+     * celda.
+     */
+    private fun tickVoltorbs(
+        config: Gym,
+        state: GymState,
+        now: Long,
+        spawnDue: Boolean
+    ): GymState {
+        var next = GymCombat.explodeVoltorbs(state, now, config.voltorbExplosionDamage)
+
+        val raging = GymCombat.isRaging(next)
+        val totalCells = (config.rows * config.columns).coerceAtLeast(1)
+        val freeCells = GymCombat.freeVoltorbCells(next, totalCells)
+
+        if (spawnDue && freeCells.isNotEmpty()) {
+            val window = if (raging) config.rageVoltorbWindowMs else config.voltorbWindowMs
+            next = next.copy(
+                voltorbs = next.voltorbs + Voltorb(
+                    id = nextCombatId++,
+                    cell = freeCells.random(random),
+                    chargedAtMs = now,
+                    windowMs = window
+                )
+            )
+        }
+
+        return if (next.playerHp <= 0) next.copy(outcome = GymOutcome.LOST) else next
+    }
+
+    /**
+     * Victoria del gimnasio: cierra el combate y da sus recompensas, pero **no
+     * autoavanza** la zona: la medalla entra en la meta permanente y el gimnasio
+     * en `gymClearedRun` (requisito del botón «Avanzar» en esta run). Si la
+     * barra ya estaba al 100 %, el botón queda disponible inmediatamente.
+     */
+    private fun winGym(config: Gym) {
+        gymJob?.cancel()
+        mutate { state ->
+            state.copy(
+                gym = null,
+                medals = state.medals + config.id,
+                gymClearedRun = state.gymClearedRun + config.id,
+                coins = state.coins + config.coinReward,
+                starterBond = if (state.starterSpeciesId != null) state.starterBond + 1 else state.starterBond
+            )
+        }
+    }
+
+    // --- Pesca (Etapa 3) ---------------------------------------------------
+
+    /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
+    fun onFishingHold(held: Boolean) {
+        fishingHeld = held
+    }
+
+    /**
+     * Cierra el panel de resultado y aplica sus consecuencias: **capturado** suma
+     * la especie (y las monedas, solo la primera vez); **escapado** no cambia
+     * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
+     * encuentro.
+     */
+    fun onFishingResultContinue() {
+        val fishing = _uiState.value.fishing ?: return
+        if (fishing.phase == FishingPhase.PLAYING) return
+        cancelFishing()
+
+        val captured = fishing.phase == FishingPhase.CAPTURED
+        mutate { state ->
+            val encounter = state.encounter ?: return@mutate state.withoutEncounter()
+            if (captured) {
+                val firstTime = encounter.speciesId !in state.rewardedSpecies
+                val reward = if (firstTime) {
+                    SpeciesCatalog.require(encounter.speciesId).coinReward.toLong()
+                } else {
+                    0L
+                }
+                state.copy(
+                    ownedSpecies = state.ownedSpecies + encounter.speciesId,
+                    rewardedSpecies = state.rewardedSpecies + encounter.speciesId,
+                    coins = state.coins + reward
+                ).withoutEncounter()
+            } else {
+                state.withoutEncounter()
+            }
+        }
+    }
+
+    /** Sale del encuentro y deja la hierba lista para el siguiente. */
+    private fun GameUiState.withoutEncounter(): GameUiState =
+        copy(encounter = null, fishing = null, walkProgress = 0f)
+
+    /**
+     * Bucle del minijuego de pesca: avanza barra y sprite a 50 ms con la
+     * pulsación registrada. Se detiene al terminar la partida (captura o huida);
+     * el panel de resultado espera el `onFishingResultContinue` del jugador.
+     */
+    private fun startFishingLoop() {
+        fishingJob?.cancel()
+        fishingHeld = false
+        fishingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(FISHING_TICK_MS)
+                var finished = false
+                updateFishing { current ->
+                    val next = FishingGame.step(
+                        state = current,
+                        held = fishingHeld,
+                        dt = FISHING_TICK_MS / 1000f,
+                        random = random
+                    )
+                    finished = next.phase != FishingPhase.PLAYING
+                    next
+                }
+                if (finished) break
+            }
+        }
+    }
+
+    /** Actualiza el minijuego (estado transitorio, no se persiste). */
+    private fun updateFishing(block: (FishingState) -> FishingState) {
+        _uiState.update { state ->
+            val fishing = state.fishing ?: return@update state
+            derive(state.copy(fishing = block(fishing)))
+        }
+    }
+
+    /** Cancela el bucle de pesca y suelta la pulsación que quedara a medias. */
+    private fun cancelFishing() {
+        fishingJob?.cancel()
+        fishingJob = null
+        fishingHeld = false
+    }
+
+    /**
+     * Suma [amount] clics de avance a la zona actual. El resultado se **capa en
+     * el umbral** en todo caso: la zona queda a tope (barra al 100 %) y es el
+     * botón Avanzar el que mueve al jugador en lugar del umbral. La llamada
+     * también la usa la producción pasiva del bucle de CPS.
+     */
+    private fun addZoneClicks(state: GameUiState, amount: Long = state.clickPower): GameUiState {
+        val zone = zoneAt(state.zoneIndex)
+        return state.copy(zoneClicks = advanceZone(zone, state.zoneClicks, amount))
+    }
+
+    /**
+     * Botón **Avanzar**: si `canAdvanceZone` (barra al 100 % y, en zonas con
+     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0
+     * y **fuera del modo captura**: la hierba alta se cierra y no se arrastra
+     * ningún encuentro en curso; en caso contrario es un no-op. En la última
+     * zona nunca sufre cambios.
+     */
+    fun onAdvanceZone() = mutate { state ->
+        if (state.canAdvanceZone) {
+            cancelFishing()
+            state.copy(
+                zoneIndex = state.zoneIndex + 1,
+                zoneClicks = 0L,
+                isTallGrass = false
+            ).withoutEncounter()
+        } else {
+            state
+        }
+    }
+
+    /**
+     * Revierte un salvaje a la zona actual y abre su partida de pesca: el
+     * encuentro muestra la especie y `GameUiState.fishing` guarda el estado del
+     * minijuego con los parámetros según su dificultad de captura.
+     *
+     * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
+     * encuentros: caminar ahí no genera spawns ni toca el catálogo.
+     */
+    private fun spawnEncounter() {
+        val state = _uiState.value
+        val zone = zoneAt(state.zoneIndex)
+        if (zone.wildSpeciesIds.isEmpty()) return
+        val species = SpeciesCatalog.require(zone.wildSpeciesIds.random(random))
+        val config = FishingDefaults.configFor(species.captureDifficulty)
+        mutate {
+            it.copy(
+                encounter = Encounter(
+                    speciesId = species.id,
+                    speciesName = species.name,
+                    speciesType = species.type
+                ),
+                fishing = FishingGame.initialState(config, random),
+                walkProgress = 0f,
+                seenSpecies = it.seenSpecies + species.id
+            )
+        }
+        startFishingLoop()
+    }
+
+    // --- Bucles ------------------------------------------------------------
+
+    /**
+     * Temporizador de caminar: solo avanza si el jugador ha tocado hace poco y
+     * no hay encuentro ni gimnasio en curso. Deja de tocar → no aparece nada.
+     */
+    private fun startWalkingLoop() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(WALK_TICK_MS)
+                val state = _uiState.value
+                if (!state.isTallGrass || state.encounter != null || state.gym != null) continue
+                if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
+
+                val next = state.walkProgress + WALK_TICK_MS / 1000f / ENCOUNTER_SECONDS
+                if (next >= 1f) spawnEncounter()
+                else mutate(persist = false) { it.copy(walkProgress = next) }
+            }
+        }
+    }
+
+    // --- Animación del entrenador -----------------------------------------
+
+    /**
+     * Vuelve al reposo tras [FRAME_RESET_DELAY_MS] sin pulsar: **front** y su
+     * primer fotograma, quieto. Cada pulsación reprograma el plazo.
+     */
+    private fun scheduleFrameReset() {
+        resetJob?.cancel()
+        resetJob = viewModelScope.launch {
+            delay(FRAME_RESET_DELAY_MS)
+            _uiState.update { state ->
+                state.copy(
+                    trainer = state.trainer.copy(
+                        currentDirection = Direction.FRONT,
+                        currentFrame = 0
+                    ),
+                    trainerFrameRes = sprites.frame(Direction.FRONT, 0)
+                )
+            }
+        }
+    }
+
+    /**
+     * Segundo fotograma del paso lateral.
+     *
+     * El paso de lado dura un solo clic, así que sus dos fotogramas caen dentro de
+     * la misma animación: el primero se pinta al tocar y este entra
+     * [LATERAL_SECOND_FRAME_DELAY_MS] después, cuando el fondo ya está deslizando.
+     * Cualquier clic nuevo cancela el plazo.
+     */
+    private fun scheduleLateralSecondFrame(direction: Direction) {
+        lateralFrameJob?.cancel()
+        lateralFrameJob = viewModelScope.launch {
+            delay(LATERAL_SECOND_FRAME_DELAY_MS)
+            _uiState.update { state ->
+                if (state.trainer.currentDirection != direction) return@update state
+                val total = sprites.frameCount(direction)
+                val frame = (direction.startFrame() + 1)
+                    .coerceIn(0, (total - 1).coerceAtLeast(0))
+                state.copy(
+                    trainer = state.trainer.copy(currentFrame = frame),
+                    trainerFrameRes = sprites.frame(direction, frame)
+                )
+            }
+        }
+    }
+
+    // --- Estado derivado y persistencia -----------------------------------
+
+    private fun restoreState(): GameUiState {
+        val saved = store.load() ?: return GameUiState(
+            trainerFrameRes = sprites.frame(Direction.FRONT, 0)
+        )
+        return GameUiState(
+            playerName = saved.playerName,
+            coins = saved.coins,
+            seenSpecies = saved.seenSpecies,
+            rewardedSpecies = saved.rewardedSpecies,
+            medals = saved.medals,
+            starterSpeciesId = saved.starterSpeciesId,
+            starterBond = saved.starterBond,
+            ownedSpecies = saved.ownedSpecies,
+            leadSpeciesId = saved.leadSpeciesId,
+            gymClearedRun = saved.gymClearedRun,
+            zoneIndex = saved.zoneIndex,
+            zoneClicks = saved.zoneClicks,
+            trainerFrameRes = sprites.frame(Direction.FRONT, 0)
+        )
+    }
+
+    /** Actualiza el estado derivado y, salvo [persist] = false, lo persiste. */
+    private fun mutate(persist: Boolean = true, block: (GameUiState) -> GameUiState) {
+        val updated = _uiState.updateAndGet { derive(block(it)) }
+        if (persist) store.save(updated.toSnapshot())
+    }
+
+    /** Actualiza el gimnasio (estado transitorio, no se persiste). */
+    private fun updateGym(block: (GymState) -> GymState) {
+        _uiState.update { state ->
+            val gym = state.gym ?: return@update state
+            derive(state.copy(gym = block(gym)))
+        }
+    }
+
+    /** Recalcula los campos que dependen de catálogos (zona, costes, principal…). */
+    private fun derive(state: GameUiState): GameUiState {
+        val zone = zoneAt(state.zoneIndex)
+
+        val starterId = state.starterSpeciesId
+        val ownedCount = state.ownedSpecies.size + if (starterId != null) 1 else 0
+        val bondBonus = if (starterId != null && state.leadSpeciesId == starterId) {
+            state.starterBond * STARTER_BOND_CLICK_BONUS
+        } else {
+            0.0
+        }
+        val bonus = ownedCount * PER_OWNED_SPECIES_BONUS + bondBonus
+        val clickPower = (1.0 + bonus).roundToLong().coerceAtLeast(1L)
+
+        val lead = (state.leadSpeciesId ?: starterId)?.let { SpeciesCatalog.byId(it) }
+
+        // Opciones ya resueltas: la UI no conoce el catálogo ni ordena especies.
+        val leadOptions = (state.ownedSpecies + setOfNotNull(starterId))
+            .mapNotNull { SpeciesCatalog.byId(it) }
+            .sortedBy { it.name }
+            .map { LeadOption(id = it.id, name = it.name) }
+        val starterOptions = SpeciesCatalog.starters.map {
+            StarterOption(id = it.id, name = it.name, type = it.type)
+        }
+
+        val gymPending = isGymPending(zone, state.gymClearedRun)
+        val isGymReady = gymPending && state.zoneClicks >= zone.clickRequirement
+        // La mecánica también se resuelve antes de crear `GymState`: la capa de
+        // entrada (bienvenida/tutorial) se pinta con `gym == null` y necesita
+        // saber qué minijuego explicar.
+        val gymMechanic = zone.gymId?.let { GymCatalog.byId(it)?.mechanic }
+            ?: GymMechanic.PROJECTILES
+
+        // Botón Avanzar: barra llena y, en zonas con gimnasio, ganado en la run
+        // (lo excluye `gymPending`). En la última zona no hay botón.
+        val canAdvanceZone = state.zoneIndex < zones.lastIndex &&
+            state.zoneClicks >= zone.clickRequirement &&
+            !gymPending
+
+        return state.copy(
+            zoneName = zone.name,
+            zoneId = zone.id,
+            zoneRequirement = zone.clickRequirement,
+            ownedCount = ownedCount,
+            clickPower = clickPower,
+            maxHp = BASE_MAX_HP,
+            leadName = lead?.name,
+            leadType = lead?.type,
+            isGymReady = isGymReady,
+            hasWilds = zone.wildSpeciesIds.isNotEmpty(),
+            gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
+            gymMechanic = gymMechanic,
+            canAdvanceZone = canAdvanceZone,
+            needsStarter = starterId == null,
+            leadOptions = leadOptions,
+            starterOptions = starterOptions
+        )
+    }
+
+    private fun GameUiState.toSnapshot() = GameSnapshot(
+        playerName = playerName,
+        coins = coins,
+        seenSpecies = seenSpecies,
+        rewardedSpecies = rewardedSpecies,
+        medals = medals,
+        starterSpeciesId = starterSpeciesId,
+        starterBond = starterBond,
+        ownedSpecies = ownedSpecies,
+        leadSpeciesId = leadSpeciesId,
+        gymClearedRun = gymClearedRun,
+        zoneIndex = zoneIndex,
+        zoneClicks = zoneClicks
+    )
+
+    private fun zoneAt(index: Int): Zone = zones[index.coerceIn(0, zones.lastIndex)]
+
+    private companion object {
+        const val FRAME_RESET_DELAY_MS = 1_000L
+
+        /**
+         * Cuánto tarda el segundo fotograma de un paso lateral. Cae dentro de los
+         * ~100 ms que dura el desplazamiento de ese clic, así que se ve el
+         * arranque (frame 1) y luego la zancada (frame 2).
+         */
+        const val LATERAL_SECOND_FRAME_DELAY_MS = 60L
+        const val WALK_TICK_MS = 100L
+
+        /** Si no se toca en este margen, el temporizador de caminar se para. */
+        const val WALK_ACTIVITY_WINDOW_MS = 1_000L
+
+        /** Segundos de caminar continuo necesarios para que aparezca un salvaje. */
+        const val ENCOUNTER_SECONDS = 3f
+
+        /** Tick del bucle del minijuego de pesca. */
+        const val FISHING_TICK_MS = 50L
+
+        /** Cada especie en posesión suma este % a la potencia de clic. */
+        const val PER_OWNED_SPECIES_BONUS = 0.05
+
+        /** Extra de % de clic por nivel de vínculo del starter, cuando va equipado. */
+        const val STARTER_BOND_CLICK_BONUS = 0.02
+
+        /** HP base del entrenador antes de la mejora de vida. */
+        const val BASE_MAX_HP = 5
+
+        /** Tick del bucle de combate del gimnasio. */
+        const val GYM_TICK_MS = 50L
+
+        /** Respiro antes del primer ataque de la oleada (proyectil, anillo o Voltorb). */
+        const val COMBAT_FIRST_SPAWN_MS = 800L
+
+        /** Duración del cartel "que comience el combate" antes del combate. */
+        const val GYM_COUNTDOWN_MS = 1_000L
+    }
+}

@@ -1,0 +1,685 @@
+package com.dsrs.pokeclic.model
+
+import kotlin.math.ceil
+
+/**
+ * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
+ * de ritmo, Voltorb cargados y las reglas puras del combate.
+ *
+ * Todo aquí es independiente de Android y del reloj real (las funciones reciben
+ * el tiempo transcurrido), para poder probar la mecánica en la JVM. El
+ * ViewModel se encarga de los bucles, de crear proyectiles, anillos y Voltorb y
+ * de persistir la victoria; la UI solo pinta el estado ya calculado.
+ */
+
+/** Menos del 25 % de vida: el líder entra en furia y sus oleadas son más duras. */
+const val RAGE_HP_FRACTION = 0.25f
+
+/**
+ * Tipos elementales usados por el juego.
+ *
+ * Es un subconjunto de los tipos de la primera generación: solo los que
+ * aparecen en el contenido planificado. Añadir un tipo es añadir una constante y
+ * sus entradas en las tablas de efectividad.
+ */
+enum class PokemonType {
+    NORMAL,
+    FIRE,
+    WATER,
+    GRASS,
+    ELECTRIC,
+    ROCK,
+    FLYING,
+    POISON;
+
+    /**
+     * Efectividad de este tipo (atacante) contra [defender].
+     *
+     * 2f = súper eficaz (ventaja para el atacante), 0.5f = poco eficaz
+     * (desventaja) y 1f = neutro. La tabla es una simplificación del juego
+     * original, suficiente para el minijuego de gimnasio y la captura.
+     */
+    fun effectiveness(defender: PokemonType): Float = when {
+        defender in strongAgainst.getValue(this) -> 2f
+        defender in weakAgainst.getValue(this) -> 0.5f
+        else -> 1f
+    }
+
+    private companion object {
+        val strongAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
+            NORMAL to emptySet(),
+            FIRE to setOf(GRASS),
+            WATER to setOf(FIRE, ROCK),
+            GRASS to setOf(WATER, ROCK),
+            ELECTRIC to setOf(WATER, FLYING),
+            ROCK to setOf(FIRE, FLYING),
+            FLYING to setOf(GRASS),
+            POISON to setOf(GRASS)
+        )
+
+        val weakAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
+            NORMAL to setOf(ROCK),
+            FIRE to setOf(WATER, ROCK),
+            WATER to setOf(GRASS, ELECTRIC),
+            GRASS to setOf(FIRE, FLYING, POISON),
+            ELECTRIC to setOf(GRASS),
+            ROCK to setOf(WATER, GRASS),
+            FLYING to setOf(ELECTRIC, ROCK),
+            POISON to setOf(ROCK)
+        )
+    }
+}
+
+/**
+ * Multiplicador de daño del ataque según los tipos.
+ *
+ * El tipo del principal se compara con el del gimnasio: súper eficaz → ×2
+ * (`effectiveness` = 2f), poco eficaz → ×0.5, neutro o sin principal → ×1.
+ */
+fun typeDamageMultiplier(leadType: PokemonType?, gymType: PokemonType): Float =
+    leadType?.effectiveness(gymType) ?: 1f
+
+/**
+ * Mecánica de defensa de un gimnasio. Cada líder ataca a su manera, pero todas
+ * comparten las mismas fases ([GymPhase]) y la fase expuesta.
+ *
+ * - [PROJECTILES]: caen rocas por columnas y hay que romperlas (Brock).
+ * - [TIMING_RINGS]: círculos que se cierran sobre el jugador y hay que aciertar
+ *   el instante en que tocan el círculo fijo (Misty).
+ * - [VOLTORB_GRID]: una cuadrícula de Voltorb que se cargan de a uno y hay que
+ *   apagar antes de que exploten (Lt. Surge).
+ */
+enum class GymMechanic {
+    PROJECTILES,
+    TIMING_RINGS,
+    VOLTORB_GRID
+}
+
+/**
+ * Un gimnasio: el muro de cada tramo del mapa.
+ *
+ * Los parámetros del combate se guardan como datos para que añadir gimnasios sea
+ * añadir entradas al catálogo, sin código nuevo.
+ *
+ * Los campos `columns`, `spawnIntervalMs`, `projectileTravelMs`,
+ * `projectileDamage`, `projectilesPerSpawn` y sus variantes `rage*` solo se usan
+ * con [GymMechanic.PROJECTILES]. Los campos `ring*` solo se usan con
+ * [GymMechanic.TIMING_RINGS]. Los campos `rows` y `voltorb*` solo se usan con
+ * [GymMechanic.VOLTORB_GRID].
+ *
+ * @param id clave estable para medallas y persistencia.
+ * @param leaderName nombre del líder, mostrado en el overlay.
+ * @param type tipo del gimnasio; se compara con el del Pokémon principal para el
+ *   multiplicador de daño en la fase expuesta.
+ * @param coinReward monedas que paga al ganar.
+ * @param leaderHp vida del líder (cuánto daño hay que hacerle para ganar).
+ * @param mechanic minijuego de defensa que usa el líder.
+ * @param columns número de columnas por las que caen los proyectiles.
+ * @param spawnIntervalMs tiempo entre ráfagas de proyectiles, en ms.
+ * @param projectileTravelMs tiempo que tarda un proyectil en caer de arriba a
+ *   abajo, en ms.
+ * @param projectileDamage HP que resta cada proyectil que impacta en el jugador.
+ * @param postureHits aciertos seguidos que hacen falta para **romper la postura**
+ *   del líder y abrir su ventana de vulnerabilidad. Cada acierto de la mecánica
+ *   suma uno; los fallos no suman y además restan HP al jugador.
+ * @param exposureDurationMs duración de la fase expuesta, en ms. Es la ventana
+ *   para castigar al líder y sigue funcionando **por tiempo**.
+ * @param projectilesPerSpawn máximo de proyectiles por ráfaga (la ráfaga real
+ *   elige al azar entre 1 y este valor).
+ * @param rageSpawnIntervalMs cadencia de las ráfagas durante la furia (por
+ *   debajo del umbral [RAGE_HP_FRACTION]).
+ * @param rageProjectilesPerSpawn proyectiles por ráfaga durante la furia.
+ * @param rageProjectileTravelMs caída (más rápida) durante la furia.
+ * @param ringSpawnIntervalMs tiempo entre anillos durante la oleada, en ms.
+ * @param ringTravelMinMs cierre más rápido de un anillo, en ms.
+ * @param ringTravelMaxMs cierre más lento de un anillo, en ms. Cada anillo elige
+ *   un valor entre ambos: de ahí sale la cadencia distinta de cada círculo.
+ * @param ringWindowMs margen de acierto alrededor de la convergencia, en ms.
+ * @param ringMissDamage HP que resta cada anillo fallado (pulsado fuera de la
+ *   ventana o dejado caducar).
+ * @param rageRingSpawnIntervalMs cadencia de anillos durante la furia.
+ * @param rageRingTravelMinMs cierre más rápido durante la furia.
+ * @param rageRingTravelMaxMs cierre más lento durante la furia.
+ * @param rows número de filas de la cuadrícula de Voltorb. Con `columns` define
+ *   cuántas celdas tiene el tablero (`rows * columns`).
+ * @param voltorbWindowMs tiempo que tarda en explotar un Voltorb cargado, en ms.
+ * @param rageVoltorbWindowMs ventana (más corta) durante la furia.
+ * @param voltorbSpawnIntervalMs tiempo **mínimo** entre el inicio de una carga y
+ *   el de la siguiente, en ms. Si el tablero está ocupado, la carga pendiente
+ *   entra en cuanto se libera la celda.
+ * @param rageVoltorbSpawnIntervalMs margen mínimo durante la furia.
+ * @param voltorbExplosionDamage HP que resta un Voltorb que explota.
+ * @param voltorbShockDamage HP que resta tocar una celda apagada.
+ */
+data class Gym(
+    val id: String,
+    val leaderName: String,
+    val type: PokemonType,
+    val coinReward: Long,
+    val leaderHp: Int,
+    val mechanic: GymMechanic = GymMechanic.PROJECTILES,
+    val columns: Int,
+    val spawnIntervalMs: Long,
+    val projectileTravelMs: Long,
+    val projectileDamage: Int,
+    val postureHits: Int,
+    val exposureDurationMs: Long,
+    val projectilesPerSpawn: Int = 1,
+    val rageSpawnIntervalMs: Long = spawnIntervalMs,
+    val rageProjectilesPerSpawn: Int = projectilesPerSpawn,
+    val rageProjectileTravelMs: Long = projectileTravelMs,
+    val ringSpawnIntervalMs: Long = 750L,
+    val ringTravelMinMs: Long = 900L,
+    val ringTravelMaxMs: Long = 1_600L,
+    val ringWindowMs: Long = 170L,
+    val ringMissDamage: Int = 1,
+    val rageRingSpawnIntervalMs: Long = ringSpawnIntervalMs,
+    val rageRingTravelMinMs: Long = ringTravelMinMs,
+    val rageRingTravelMaxMs: Long = ringTravelMaxMs,
+    val rows: Int = 1,
+    val voltorbWindowMs: Long = 1_400L,
+    val rageVoltorbWindowMs: Long = 850L,
+    val voltorbSpawnIntervalMs: Long = 900L,
+    val rageVoltorbSpawnIntervalMs: Long = 600L,
+    val voltorbExplosionDamage: Int = 1,
+    val voltorbShockDamage: Int = 1
+)
+
+/**
+ * Fase del combate de gimnasio.
+ *
+ * Las dos fases son **mutuamente excluyentes**: mientras el líder ataca no se le
+ * puede hacer daño, y mientras está expuesto no lanza ataques. Eso evita que
+ * el jugador pueda atacar y defenderse a la vez (el antiguo exploit de dos manos).
+ *
+ * - [ATTACKING]: el líder ataca con su mecánica; cada acierto del jugador llena
+ *   la barra de **postura** y cada fallo le resta HP. Al llenarla, la postura se
+ *   rompe y el líder pasa a [EXPOSED].
+ * - [EXPOSED]: sin ataques enemigos; tocar al líder le resta vida mientras se
+ *   recupera. La ventana sigue funcionando **por tiempo**.
+ */
+enum class GymPhase { ATTACKING, EXPOSED }
+
+/**
+ * Resultado global del intento de gimnasio. No existe `WON`: al ganar se cierra
+ * la escena y se actualiza la partida, así que no hace falta un estado ganador.
+ */
+enum class GymOutcome { ACTIVE, LOST }
+
+/**
+ * Un proyectil del combate de gimnasio (estado **transitorio**).
+ *
+ * No guarda su posición: se deriva del tiempo transcurrido desde [spawnedAtMs],
+ * así que no hace falta recalcularla en cada fotograma. La vista la interpola y
+ * el ViewModel la usa para detectar aciertos e impactos.
+ *
+ * @param id identificador único dentro del combate.
+ * @param column columna (0..columns-1) por la que cae.
+ * @param spawnedAtMs instante de aparición, en el reloj del juego.
+ * @param travelMs tiempo total de caída de arriba a abajo, en ms.
+ * @param hitsRemaining toques que le faltan para romperse (hoy 1; reservado para
+ *   proyectiles que aguantan dos toques).
+ */
+data class Projectile(
+    val id: Long,
+    val column: Int,
+    val spawnedAtMs: Long,
+    val travelMs: Long,
+    val hitsRemaining: Int = 1
+) {
+    /** Progreso de la caída, `0f` (arriba) a `1f` (alcanza al jugador). */
+    fun progressAt(nowMs: Long): Float {
+        if (travelMs <= 0L) return 1f
+        return ((nowMs - spawnedAtMs).toFloat() / travelMs).coerceIn(0f, 1f)
+    }
+
+    /** ¿Ha llegado ya al jugador? */
+    fun hasLanded(nowMs: Long): Boolean = nowMs - spawnedAtMs >= travelMs
+}
+
+/**
+ * Un anillo del minijuego de ritmo ([GymMechanic.TIMING_RINGS]).
+ *
+ * Nace en [spawnedAtMs] con radio grande y se cierra hasta tocar el círculo fijo
+ * del jugador en [convergeAtMs]. Su posición no se guarda: se deriva del tiempo
+ * transcurrido, igual que [Projectile], para que la UI lo interpole sin que el
+ * ViewModel actualice cada fotograma.
+ *
+ * @param id identificador único dentro del combate.
+ * @param spawnedAtMs instante de aparición, en el reloj del juego.
+ * @param travelMs tiempo que tarda en converger con el círculo fijo, en ms. Es
+ *   la cadencia del anillo: dos anillos con distinto [travelMs] se cierran a
+ *   velocidades distintas.
+ */
+data class TimingRing(
+    val id: Long,
+    val spawnedAtMs: Long,
+    val travelMs: Long
+) {
+    /** Progreso del cierre, `0f` (recién nacido) a `1f` (converge con el fijo). */
+    fun progressAt(nowMs: Long): Float {
+        if (travelMs <= 0L) return 1f
+        return ((nowMs - spawnedAtMs).toFloat() / travelMs).coerceIn(0f, 1f)
+    }
+
+    /** Instante exacto en el que el anillo toca el círculo fijo. */
+    fun convergeAtMs(): Long = spawnedAtMs + travelMs
+
+    /** Distancia temporal (siempre positiva) hasta la convergencia. */
+    fun distanceToConvergenceMs(nowMs: Long): Long =
+        kotlin.math.abs(nowMs - convergeAtMs())
+
+    /** ¿Cae [nowMs] dentro del margen de acierto [windowMs]? */
+    fun isInWindow(nowMs: Long, windowMs: Long): Boolean =
+        distanceToConvergenceMs(nowMs) <= windowMs
+
+    /** ¿Pasó ya su ventana de acierto sin resolverse? */
+    fun hasExpired(nowMs: Long, windowMs: Long): Boolean =
+        nowMs - convergeAtMs() > windowMs
+}
+
+/** Resultado de un anillo del minijuego de ritmo. */
+enum class RingOutcome {
+    HIT,
+    MISS
+}
+
+/**
+ * Feedback visual del último anillo resuelto (estado **transitorio**).
+ *
+ * El modelo decide si el anillo se acertó o falló; la UI solo necesita saber qué
+ * ocurrió y cuándo para lanzar su animación. [ringId] actúa de clave: cada anillo
+ * produce como máximo un resultado, así que un id nuevo reinicia el efecto.
+ *
+ * @param ringId anillo que produjo el resultado.
+ * @param outcome acierto o fallo.
+ * @param count anillos cobrados en el mismo evento; solo puede ser mayor que 1
+ *   cuando varios caducan en el mismo tick.
+ */
+data class RingFeedback(
+    val ringId: Long,
+    val outcome: RingOutcome,
+    val count: Int = 1
+)
+
+/**
+ * Un Voltorb cargado de la cuadrícula ([GymMechanic.VOLTORB_GRID]).
+ *
+ * Igual que [Projectile] y [TimingRing], no guarda animación: su "calor" se
+ * deriva del tiempo transcurrido desde [chargedAtMs], así que la vista lo pinta
+ * sin que el ViewModel actualice cada fotograma.
+ *
+ * @param id identificador único dentro del combate.
+ * @param cell celda de la cuadrícula, de `0` a `rows * columns - 1`, en orden de
+ *   filas.
+ * @param chargedAtMs instante en que empezó a cargarse.
+ * @param windowMs tiempo que tarda en explotar desde [chargedAtMs], en ms. Cada
+ *   Voltorb nace con la ventana de su oleada, así un cambio de furia a mitad de
+ *   vuelo no alarga ni acorta la que ya estaba corriendo.
+ */
+data class Voltorb(
+    val id: Long,
+    val cell: Int,
+    val chargedAtMs: Long,
+    val windowMs: Long
+) {
+    /** Calor acumulado, `0f` (recién cargado) a `1f` (a punto de explotar). */
+    fun progressAt(nowMs: Long): Float {
+        if (windowMs <= 0L) return 1f
+        return ((nowMs - chargedAtMs).toFloat() / windowMs).coerceIn(0f, 1f)
+    }
+
+    /** ¿Se le agotó la ventana? */
+    fun hasExploded(nowMs: Long): Boolean = nowMs - chargedAtMs >= windowMs
+}
+
+/** Resultado de un Voltorb de la cuadrícula. */
+enum class VoltorbOutcome {
+    /** Apagado a tiempo: no hubo daño. */
+    DEFUSED,
+
+    /** Se agotó su ventana y explotó. */
+    EXPLODED,
+
+    /** Tocado cuando su celda estaba apagada: descarga. */
+    SHOCK
+}
+
+/**
+ * Feedback visual del último Voltorb resuelto (estado **transitorio**).
+ *
+ * @param cell celda principal del resultado; en una explosión múltiple es la de
+ *   mayor índice, pero la UI debe usar [cells] para pintar todas.
+ * @param outcome apagado, explosión o descarga.
+ * @param count Voltorb cobrados en el mismo tick; solo puede ser mayor que 1
+ *   cuando varios explotan a la vez.
+ * @param cells todas las celdas que produjeron el resultado. Un solo apagado o
+ *   una descarga traen una; varias explosiones en el mismo tick traen todas, de
+ *   modo que la escena puede pintar una explosión por celda.
+ */
+data class VoltorbFeedback(
+    val cell: Int,
+    val outcome: VoltorbOutcome,
+    val count: Int = 1,
+    val cells: List<Int> = listOf(cell)
+)
+
+/**
+ * Estado **transitorio** del combate de gimnasio (no se persiste).
+ *
+ * Incluye las fracciones de barra ya calculadas para que la UI no haga cuentas
+ * de negocio: solo lee `leaderHpFraction`, `playerHpFraction` y
+ * `postureFraction`.
+ *
+ * @param leaderHp vida restante del líder; llega a 0 → victoria.
+ * @param leaderMaxHp vida inicial, para la barra (y el umbral de furia).
+ * @param playerHp HP restante del jugador; llega a 0 → derrota.
+ * @param maxHp HP máximo del jugador.
+ * @param mechanic minijuego de defensa activo; decide qué pinta la escena y qué
+ *   eventos acepta.
+ * @param columns columnas por las que caen los proyectiles.
+ * @param rows filas de la cuadrícula de Voltorb.
+ * @param projectiles proyectiles activos en este instante.
+ * @param rings anillos activos del minijuego de ritmo.
+ * @param ringWindowMs margen de acierto de los anillos, en ms. La UI lo usa para
+ *   resaltar el anillo que está en su momento exacto.
+ * @param ringFeedback último acierto o fallo, para la animación de la escena.
+ * @param voltorbs Voltorb cargados en este instante.
+ * @param voltorbFeedback último apagado, explosión o descarga, para la animación
+ *   de la escena.
+ * @param posture aciertos acumulados en la ronda actual (0..[postureMax]).
+ *   Al llegar a [postureMax] el líder queda [GymPhase.EXPOSED].
+ * @param postureMax aciertos necesarios para romper la postura del líder.
+ * @param exposureDurationMs duración total de la fase expuesta, en ms.
+ * @param phase fase actual del combate.
+ * @param exposureRemainingMs tiempo que le queda al líder para volver a atacar.
+ * @param rage el líder está por debajo del 25 %: oleadas más densas y rápidas.
+ * @param rageRoundPlayed ya se jugó una ronda completa de furia; hasta entonces
+ *   el líder no puede morir, para que la furia nunca se pueda saltar.
+ * @param leadSpeciesId especie del Pokémon principal, para elegir su sprite.
+ * @param leadName nombre visible del principal (placeholder si no hay arte).
+ * @param leadType tipo del principal; decide el multiplicador y el color del
+ *   destello de ataque.
+ * @param outcome resultado global del intento.
+ */
+data class GymState(
+    val gymId: String,
+    val leaderName: String,
+    val gymType: PokemonType,
+    val leaderHp: Int,
+    val leaderMaxHp: Int,
+    val playerHp: Int,
+    val maxHp: Int,
+    val mechanic: GymMechanic = GymMechanic.PROJECTILES,
+    val columns: Int,
+    val rows: Int = 1,
+    val projectiles: List<Projectile> = emptyList(),
+    val rings: List<TimingRing> = emptyList(),
+    val ringWindowMs: Long = 0L,
+    val ringFeedback: RingFeedback? = null,
+    val voltorbs: List<Voltorb> = emptyList(),
+    val voltorbFeedback: VoltorbFeedback? = null,
+    val posture: Int = 0,
+    val postureMax: Int = 0,
+    val exposureDurationMs: Long = 0L,
+    val phase: GymPhase = GymPhase.ATTACKING,
+    val exposureRemainingMs: Long = 0L,
+    val rage: Boolean = false,
+    val rageRoundPlayed: Boolean = false,
+    val leadSpeciesId: String? = null,
+    val leadName: String? = null,
+    val leadType: PokemonType? = null,
+    val outcome: GymOutcome = GymOutcome.ACTIVE
+) {
+    /** Fracción 0f..1f de vida del líder, lista para su barra. */
+    val leaderHpFraction: Float
+        get() = if (leaderMaxHp <= 0) 0f
+        else (leaderHp.toFloat() / leaderMaxHp).coerceIn(0f, 1f)
+
+    /** Fracción 0f..1f de vida del jugador, lista para su barra. */
+    val playerHpFraction: Float
+        get() = if (maxHp <= 0) 0f
+        else (playerHp.toFloat() / maxHp).coerceIn(0f, 1f)
+
+    /**
+     * Fracción de la barra de **postura**. Mientras el líder ataca crece con
+     * cada acierto (rompe la postura al llenarse); en fase expuesta se rellena
+     * con el tiempo de recuperación que queda.
+     */
+    val postureFraction: Float
+        get() = when {
+            phase == GymPhase.EXPOSED && exposureDurationMs > 0L ->
+                (1f - exposureRemainingMs.toFloat() / exposureDurationMs).coerceIn(0f, 1f)
+            postureMax <= 0 -> 0f
+            else -> (posture.toFloat() / postureMax).coerceIn(0f, 1f)
+        }
+}
+
+/**
+ * Reglas puras del combate de gimnasio, sin reloj ni corrutinas.
+ *
+ * Están separadas del ViewModel para poder probarlas en la JVM: reciben un
+ * [GymState] y devuelven el siguiente. El ViewModel se encarga de los tiempos, de
+ * crear proyectiles y de persistir la victoria.
+ */
+object GymCombat {
+
+    /**
+     * ¿El líder está en furia? Debe quedar **estrictamente** por debajo del 25 %
+     * de su vida máxima: al 25 % exacto todavía no entra.
+     */
+    fun isRaging(leaderHp: Int, leaderMaxHp: Int): Boolean =
+        leaderMaxHp > 0 && leaderHp.toFloat() / leaderMaxHp < RAGE_HP_FRACTION
+
+    /** Variante que lee la vida directamente del estado del combate. */
+    fun isRaging(state: GymState): Boolean = isRaging(state.leaderHp, state.leaderMaxHp)
+
+    /**
+     * Primera vida (incluida) en la que el líder está en furia, es decir, el
+     * mayor HP que cumple `hp / max < 25 %`. Es el valor al que se clava la vida
+     * cuando el primer golpe intenta cruzar el umbral.
+     */
+    fun rageThresholdHp(leaderMaxHp: Int): Int {
+        if (leaderMaxHp <= 0) return 0
+        return (ceil(leaderMaxHp * RAGE_HP_FRACTION).toInt() - 1).coerceAtLeast(0)
+    }
+
+    /**
+     * Puerta de la **furia obligatoria**.
+     *
+     * Si el golpe dejaría al líder por debajo del umbral de furia antes de haber
+     * jugado una ronda completa, devuelve el estado con la vida clavada en
+     * [rageThresholdHp], la furia activada y una ronda de ataque nueva: así el
+     * jugador no puede matarlo ni encadenar la ventana actual para saltarse la
+     * furia. Devuelve `null` si no hay nada que frenar.
+     */
+    fun gateFirstRage(state: GymState, newLeaderHp: Int): GymState? {
+        if (state.rageRoundPlayed) return null
+        val threshold = rageThresholdHp(state.leaderMaxHp)
+        if (threshold <= 0 || newLeaderHp >= threshold) return null
+
+        return state.copy(
+            leaderHp = threshold,
+            rage = true,
+            phase = GymPhase.ATTACKING,
+            posture = 0,
+            exposureRemainingMs = 0L,
+            projectiles = emptyList(),
+            rings = emptyList(),
+            voltorbs = emptyList()
+        )
+    }
+
+    /**
+     * Acierto de la mecánica: suma un punto a la postura del líder.
+     *
+     * Cada acierto (romper una roca, apagar un Voltorb, acertar un anillo) llama
+     * aquí. Al alcanzar [GymState.postureMax] la postura se **rompe**: el líder
+     * pasa a [GymPhase.EXPOSED], se abre su ventana por tiempo y se limpian los
+     * ataques en curso. Si la postura se rompe durante la furia, además queda
+     * jugada la ronda obligatoria ([GymState.rageRoundPlayed]). Los fallos nunca
+     * llegan aquí: restan HP y no suman.
+     */
+    fun addPosture(state: GymState, hits: Int = 1): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+        if (hits <= 0 || state.postureMax <= 0) return state
+
+        val posture = (state.posture + hits).coerceAtMost(state.postureMax)
+        val rage = isRaging(state)
+        return if (posture >= state.postureMax) {
+            state.copy(
+                posture = state.postureMax,
+                phase = GymPhase.EXPOSED,
+                exposureRemainingMs = state.exposureDurationMs,
+                projectiles = emptyList(),
+                rings = emptyList(),
+                voltorbs = emptyList(),
+                rage = rage,
+                // Romper la postura durante la furia cierra la ronda obligatoria:
+                // desde aquí el líder ya puede morir.
+                rageRoundPlayed = state.rageRoundPlayed || rage
+            )
+        } else {
+            state.copy(posture = posture, rage = rage)
+        }
+    }
+
+    /**
+     * Destruye el proyectil tocado (o le resta un toque si le quedaban varios).
+     *
+     * Romper rocas **es un acierto**: suma postura. Si el proyectil ya no existe
+     * o no estamos en fase de ataque, no cambia nada.
+     */
+    fun breakProjectile(state: GymState, projectileId: Long): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        val projectile = state.projectiles.firstOrNull { it.id == projectileId }
+            ?: return state
+
+        val projectiles = if (projectile.hitsRemaining > 1) {
+            state.projectiles.map {
+                if (it.id == projectileId) it.copy(hitsRemaining = it.hitsRemaining - 1) else it
+            }
+        } else {
+            state.projectiles.filterNot { it.id == projectileId }
+        }
+        return addPosture(state.copy(projectiles = projectiles))
+    }
+
+    /**
+     * Registra uno o varios ataques que han impactado al jugador.
+     *
+     * Resta [damage] HP y **no** suma postura: un fallo nunca acerca la ventana
+     * del líder. No actúa fuera de la fase de ataque.
+     */
+    fun registerImpact(state: GymState, damage: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        return state.copy(playerHp = (state.playerHp - damage).coerceAtLeast(0))
+    }
+
+    /**
+     * Anillo que el jugador debería pulsar ahora: el más cercano a su
+     * convergencia. Con varios anillos en pantalla, la pulsación se juzga contra
+     * este, nunca contra uno que aún está lejos.
+     */
+    fun nearestRing(state: GymState, nowMs: Long): TimingRing? =
+        state.rings.minByOrNull { it.distanceToConvergenceMs(nowMs) }
+
+    /** ¿La pulsación sobre [ring] cae dentro del margen de acierto del combate? */
+    fun isRingOnBeat(ring: TimingRing, state: GymState, nowMs: Long): Boolean =
+        ring.isInWindow(nowMs, state.ringWindowMs)
+
+    /** Anillos que ya pasaron su ventana de acierto sin resolverse. */
+    fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
+        state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
+
+    // --- cuadrícula de Voltorb (Lt. Surge) ---------------------------------
+
+    /** Voltorb de [cell], o `null` si esa celda está apagada. */
+    fun voltorbAt(state: GymState, cell: Int): Voltorb? =
+        state.voltorbs.firstOrNull { it.cell == cell }
+
+    /** Celdas del tablero que no tienen un Voltorb cargado. */
+    fun freeVoltorbCells(state: GymState, totalCells: Int): List<Int> =
+        (0 until totalCells).filter { cell -> state.voltorbs.none { it.cell == cell } }
+
+    /**
+     * Apaga el Voltorb de [cell] si estaba cargado: acierto sin daño que suma
+     * postura.
+     *
+     * Tocar una celda apagada no se resuelve aquí porque la descarga necesita el
+     * daño del gimnasio; eso lo hace [registerShock].
+     */
+    fun defuseVoltorb(state: GymState, cell: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        val voltorb = voltorbAt(state, cell) ?: return state
+        val defused = state.copy(
+            voltorbs = state.voltorbs.filterNot { it.id == voltorb.id },
+            voltorbFeedback = VoltorbFeedback(cell, VoltorbOutcome.DEFUSED)
+        )
+        return addPosture(defused)
+    }
+
+    /** Descarga por tocar una celda apagada: resta [damage] HP. */
+    fun registerShock(state: GymState, cell: Int, damage: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        return state.copy(
+            playerHp = (state.playerHp - damage).coerceAtLeast(0),
+            voltorbFeedback = VoltorbFeedback(cell, VoltorbOutcome.SHOCK)
+        )
+    }
+
+    /** Voltorb a los que ya se les agotó la ventana. */
+    fun explodedVoltorbs(state: GymState, nowMs: Long): List<Voltorb> =
+        state.voltorbs.filter { it.hasExploded(nowMs) }
+
+    /**
+     * Cobra los Voltorb que explotaron antes de [nowMs]: los retira del tablero y
+     * resta [damage] HP por cada uno. Sin explosiones no cambia nada.
+     */
+    fun explodeVoltorbs(state: GymState, nowMs: Long, damage: Int): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+
+        val exploded = explodedVoltorbs(state, nowMs)
+        if (exploded.isEmpty()) return state
+
+        val ids = exploded.map { it.id }.toSet()
+        return state.copy(
+            voltorbs = state.voltorbs.filterNot { it.id in ids },
+            playerHp = (state.playerHp - exploded.size * damage).coerceAtLeast(0),
+            voltorbFeedback = VoltorbFeedback(
+                cell = exploded.maxOf { it.cell },
+                outcome = VoltorbOutcome.EXPLODED,
+                count = exploded.size,
+                cells = exploded.map { it.cell }
+            )
+        )
+    }
+
+    /**
+     * Avanza la recuperación durante la fase expuesta.
+     *
+     * Cuando se agota el tiempo vuelve a [GymPhase.ATTACKING] con la postura a
+     * cero. El ViewModel reinicia entonces el temporizador de aparición para dar
+     * un respiro antes del siguiente ataque.
+     */
+    fun advanceExposure(state: GymState, elapsedMs: Long): GymState {
+        if (state.phase != GymPhase.EXPOSED) return state
+
+        val rage = isRaging(state)
+        val remaining = state.exposureRemainingMs - elapsedMs
+        return if (remaining <= 0L) {
+            state.copy(
+                phase = GymPhase.ATTACKING,
+                posture = 0,
+                exposureRemainingMs = 0L,
+                rage = rage
+            )
+        } else {
+            state.copy(exposureRemainingMs = remaining, rage = rage)
+        }
+    }
+}

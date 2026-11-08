@@ -1,0 +1,190 @@
+package com.dsrs.pokeclic.ui
+
+import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.model.Direction
+import com.dsrs.pokeclic.model.ZoneCatalog
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import kotlin.math.abs
+
+/**
+ * Todas las zonas tienen que poder animarse. Las que no tengan fondo propio caen
+ * en [RouteBackgrounds.DEFAULT], pero la trayectoria tiene que cumplir las mismas
+ * reglas que el default o la zona se queda sin movimiento.
+ *
+ * Con los dos ejes infinitos ya no hay ciclos que cerrar: lo que se comprueba es
+ * que cada zona avanza, que cambia de dirección y que un clic de lado recorre lo
+ * mismo que un clic recto.
+ */
+class RouteBackgroundsTest {
+
+    @Test
+    fun everyZone_resolvesToAUsableBackground() {
+        ZoneCatalog.zones.forEach { zone ->
+            val background = RouteBackgrounds.forZone(zone.id)
+            assertTrue("${zone.id} sin arte", background.imageRes != 0)
+            assertTrue("${zone.id} sin tramos", background.motion.legs.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun everyZone_advancesVertically() {
+        ZoneCatalog.zones.forEach { zone ->
+            val motion = RouteBackgrounds.forZone(zone.id).motion
+            val vertical = motion.verticalDistanceAt(motion.cycleDistance.toDouble())
+            assertTrue("${zone.id} sin avance vertical", vertical > 0.0)
+        }
+    }
+
+    @Test
+    fun everyZone_changesDirection() {
+        ZoneCatalog.zones.forEach { zone ->
+            val motion = RouteBackgrounds.forZone(zone.id).motion
+            assertTrue("${zone.id} sin tramo recto", motion.legs.any { !it.isLateral })
+            assertTrue("${zone.id} sin tramo lateral", motion.legs.any { it.isLateral })
+        }
+    }
+
+    @Test
+    fun everyZone_movesTheSamePerClickInBothAxes() {
+        // La ley del modelo: la distancia de un tramo ya no es un dato aparte,
+        // sale de sus clics. Un clic de lado recorre lo mismo que uno recto.
+        ZoneCatalog.zones.forEach { zone ->
+            val motion = RouteBackgrounds.forZone(zone.id).motion
+            motion.legs.forEach { leg ->
+                assertEquals(
+                    "${zone.id}: ${leg.clicks} clics no avanzan ${leg.distance}",
+                    leg.clicks * RouteScrollDefaults.TILES_PER_CLICK,
+                    leg.distance,
+                    1e-6f
+                )
+            }
+        }
+    }
+
+    @Test
+    fun everyZone_hasASaneStart() {
+        ZoneCatalog.zones.forEach { zone ->
+            val background = RouteBackgrounds.forZone(zone.id)
+            background.startAnchor?.let { anchor ->
+                assertTrue(
+                    "${zone.id}: startAnchor $anchor deja el arte fuera de la pantalla",
+                    anchor in 0f..1f
+                )
+            }
+            assertTrue(
+                "${zone.id}: startOffset ${background.startOffset} corre la imagen más de una pantalla",
+                abs(background.startOffset) < 1f
+            )
+        }
+    }
+
+    @Test
+    fun aZoneWithOnlyArtwork_usesTheStandardWalk() {
+        // La forma mínima de dar de alta una zona: solo el arte. Hereda la
+        // trayectoria estándar y el arranque de siempre.
+        val minimal = ZoneBackground(imageRes = R.drawable.background_bosque_verde)
+        assertSame(RouteScrollDefaults.MOTION, minimal.motion)
+        assertEquals(0, minimal.seamCutRow)
+        assertEquals(null, minimal.startAnchor)
+        assertEquals(0f, minimal.startOffset, 0f)
+    }
+
+    @Test
+    fun catalogKeys_matchRealZoneIds() {
+        // Un id mal escrito en el catálogo caería en DEFAULT sin avisar.
+        val zoneIds = ZoneCatalog.zones.map { it.id }.toSet()
+        RouteBackgrounds.configuredZoneIds.forEach { id ->
+            assertTrue("'$id' no es una zona del catálogo", id in zoneIds)
+        }
+    }
+
+    @Test
+    fun puebloPaleta_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_pallet_town,
+            RouteBackgrounds.forZone("pueblo_paleta").imageRes
+        )
+    }
+
+    @Test
+    fun onlyZonesWithAnEntry_showTheAnimatedBackground() {
+        // El fondo animado se muestra en zonas con fauna y, además, en las que
+        // tienen arte propio: Pueblo Paleta no tiene encuentros y aun así lo
+        // enseña. Las ciudades sin entrada siguen con el fondo liso.
+        assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
+    }
+
+    @Test
+    fun bosqueVerde_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_bosque_verde,
+            RouteBackgrounds.forZone("bosque_verde").imageRes
+        )
+    }
+
+    @Test
+    fun bosqueVerde_startsAtTheBottomOfItsArtwork() {
+        assertEquals(0.5f, RouteBackgrounds.forZone("bosque_verde").startAnchor!!, 0f)
+    }
+
+    @Test
+    fun bosqueVerde_startsWithTheImageShiftedToTheRight() {
+        // El signo es el del personaje: negativo = el personaje arranca a la
+        // izquierda del centro, así que la imagen se ve corrida a la derecha.
+        assertTrue(RouteBackgrounds.forZone("bosque_verde").startOffset < 0f)
+    }
+
+    @Test
+    fun bosqueVerde_followsTheDesignedPath() {
+        // La secuencia, tramo a tramo, con el clic que estrena cada uno.
+        val motion = RouteBackgrounds.forZone("bosque_verde").motion
+        val expected = mapOf(
+            1L to Direction.BACK,     // 2 recto
+            3L to Direction.RIGHT,    // 3 derecha
+            5L to Direction.RIGHT,
+            6L to Direction.BACK,     // 2 recto
+            8L to Direction.RIGHT,    // 2 derecha
+            10L to Direction.BACK,    // 6 recto
+            16L to Direction.LEFT,    // 6 izquierda
+            21L to Direction.LEFT,
+            22L to Direction.BACK,    // 6 recto
+            28L to Direction.RIGHT,   // 5 derecha
+            33L to Direction.BACK,    // 5 recto
+            38L to Direction.LEFT,    // 4 izquierda
+            42L to Direction.BACK,    // 4 recto
+            45L to Direction.BACK     // último clic del ciclo
+        )
+        expected.forEach { (step, direction) ->
+            assertEquals("clic $step", direction, motion.directionForStep(step))
+        }
+    }
+
+    @Test
+    fun bosqueVerde_returnsToTheCentreLineBecauseBothSidesBalance() {
+        // 10 clics a cada lado: el zigzag no acumula deriva. Si algún día deja de
+        // estar balanceado, el personaje quedará cada vuelta más corrido (el
+        // modelo lo permite) y este test lo delatará.
+        val motion = RouteBackgrounds.forZone("bosque_verde").motion
+        assertEquals(0f, motion.lateralDistanceAt(motion.cycleDistance.toDouble()), 1e-4f)
+    }
+
+    @Test
+    fun otherZones_keepStartingAtTheTopOfTheirArtwork() {
+        // El ancla es opt-in: las zonas sin entrada propia no cambian de aspecto.
+        assertEquals(null, RouteBackgrounds.DEFAULT.startAnchor)
+        assertEquals(0f, RouteBackgrounds.DEFAULT.startOffset, 0f)
+    }
+
+    @Test
+    fun unknownZone_fallsBackToTheDefault() {
+        assertEquals(RouteBackgrounds.DEFAULT, RouteBackgrounds.forZone("zona_inexistente"))
+        assertEquals(RouteBackgrounds.DEFAULT, RouteBackgrounds.forZone(""))
+    }
+}

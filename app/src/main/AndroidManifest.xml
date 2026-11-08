@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        `appCategory="game"` no es cosmético: desde Android 16 (API 36) el sistema
+        ignora `screenOrientation` en pantallas de `sw >= 600dp`, y el opt-out
+        `PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY` deja de aplicar apuntando a
+        API 37 (este proyecto apunta a 37). La categoría "game" es la excepción que
+        mantiene el bloqueo en tablets, plegables y multiventana. Ver issue #47.
+    -->
+    <application
+        android:allowBackup="true"
+        android:appCategory="game"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Pokeclic">
+        <!--
+            El juego solo tiene disposición vertical: en horizontal el fondo de ruta
+            repite el arte en columnas y el HUD no está pensado para ese ancho.
+            `portrait` y no `userPortrait`: este último respeta el auto-giro del
+            sistema y dejaría entrar en horizontal cuando el usuario lo tiene apagado.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
