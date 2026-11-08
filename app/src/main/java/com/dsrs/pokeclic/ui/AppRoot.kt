@@ -7,6 +7,7 @@
  */
 package com.dsrs.pokeclic.ui
 
+import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,11 +21,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.AppTab
@@ -205,7 +210,9 @@ fun AppRoot(
             // barra.
             RouteScrollingBackground(
                 pulseCount = pokePulses.longValue,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .routeCaptureDepth(catchingActive),
                 motion = routeBackground.motion,
                 imageRes = routeBackground.imageRes,
                 seamCutRow = routeBackground.seamCutRow,
@@ -385,6 +392,26 @@ fun AppRoot(
  */
 internal fun advancesRouteWorld(isTallGrass: Boolean, encounterActive: Boolean): Boolean =
     !isTallGrass && !encounterActive
+
+/** Radio del desenfoque del fondo de ruta mientras dura la captura. */
+private val RouteCaptureBlurRadius = 8.dp
+
+/**
+ * Hunde el fondo de ruta durante la captura para que la escena gane foco.
+ *
+ * `Modifier.blur` solo dibuja en Android 12+ (antes es un no-op), así que en
+ * versiones previas se aplica un velo oscuro con la misma intención: separar el
+ * fondo de la interfaz sin quitarlo de la vista.
+ */
+private fun Modifier.routeCaptureDepth(active: Boolean): Modifier = when {
+    !active -> this
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+        blur(RouteCaptureBlurRadius, BlurredEdgeTreatment.Rectangle)
+    else -> drawWithContent {
+        drawContent()
+        drawRect(Color(0x66000000))
+    }
+}
 
 // ─────────────────────────── Previews ───────────────────────────
 
