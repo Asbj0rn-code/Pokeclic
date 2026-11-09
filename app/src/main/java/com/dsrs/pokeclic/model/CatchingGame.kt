@@ -135,7 +135,7 @@ object CatchingDefaults {
      * riel, para que el jugador tenga tiempo de reaccionar antes de que la
      * gravedad la haga caer.
      */
-    const val REACTION_MS = 400L
+    const val REACTION_MS = 300L
 
     /** Suavizado del sprite en la dificultad mínima. */
     const val SMOOTHING_EASY = 1.2f
