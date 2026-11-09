@@ -180,6 +180,14 @@ fun CatchingOverlay(
                 railHeight * CatchingSceneDefaults.SPRITE_REFERENCE_FRACTION
             }
             val spriteSize = railWidth
+            // La Pokébola es más ancha que el riel: el marco reserva a cada lado
+            // lo que sobresale (más un margen) para que entre entera.
+            val barDiameter = railHeight * catching.config.barSize
+            val ballOverhang = ((barDiameter - railWidth) / 2f).coerceAtLeast(0.dp)
+            val frameInset = maxOf(
+                CatchingSceneDefaults.FRAME_MIN_INSET,
+                ballOverhang + CatchingSceneDefaults.FRAME_BALL_MARGIN
+            )
 
             CatchingHud(
                 encounter = encounter,
@@ -197,7 +205,7 @@ fun CatchingOverlay(
                 innerBorder = Color(0xFF4E5A66),
                 shadowOffset = 3.dp,
                 shape = PanelShape,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                contentPadding = PaddingValues(horizontal = frameInset, vertical = 12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CaptureRail(
@@ -205,6 +213,7 @@ fun CatchingOverlay(
                         encounter = encounter,
                         railHeight = railHeight,
                         spriteSize = spriteSize,
+                        barDiameter = barDiameter,
                         spriteBitmap = spriteBitmap,
                         spriteBounds = spriteBounds,
                         modifier = Modifier
@@ -253,12 +262,12 @@ private fun CaptureRail(
     encounter: Encounter,
     railHeight: Dp,
     spriteSize: Dp,
+    barDiameter: Dp,
     spriteBitmap: ImageBitmap?,
     spriteBounds: IntRect,
     modifier: Modifier = Modifier
 ) {
     // La Pokébola no se recorta al ancho del riel: sobresale por los bordes.
-    val barDiameter = railHeight * catching.config.barSize
     val barCenterY = railHeight * (1f - catching.barPos)
     val spriteCenterY = railHeight * (1f - catching.spritePos)
     val overlapping = abs(catching.spritePos - catching.barPos) <= catching.config.barSize / 2f
@@ -823,6 +832,12 @@ private object CatchingSceneDefaults {
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp
     val GAUGE_GAP = 28.dp
+
+    /** Aire mínimo entre el riel/medidor y el borde interior del marco. */
+    val FRAME_MIN_INSET = 14.dp
+
+    /** Aire extra entre la Pokébola y el borde interior del marco. */
+    val FRAME_BALL_MARGIN = 4.dp
 }
 
 /** Metadatos de los sprite sheets exportados por pixelfx. */
