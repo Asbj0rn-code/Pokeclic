@@ -86,9 +86,9 @@ internal fun LeafBursts(
 private data class LeafBurst(val startNanos: Long, val offsetX: Float)
 
 // Metadatos del sheet exportado por pixelfx (`nature/leaf-puff`).
-private const val LEAF_FRAMES = 27
-private const val LEAF_FRAME_PX = 40
+private const val LEAF_FRAMES = 31
+private const val LEAF_FRAME_PX = 64
 private const val LEAF_COLUMNS = 6
 private const val LEAF_FPS = 30
 private const val MAX_LEAF_BURSTS = 6
-private const val LEAF_BURST_NANOS = 900_000_000L
+private const val LEAF_BURST_NANOS = 1_000_000_000L

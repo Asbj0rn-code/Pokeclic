@@ -623,8 +623,8 @@ private fun TrainerGrassStack(
                 active = showTallGrass,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .offset(y = 2.dp)
-                    .size(48.dp)
+                    .offset(y = 19.dp)
+                    .size(64.dp)
             )
         }
     }
