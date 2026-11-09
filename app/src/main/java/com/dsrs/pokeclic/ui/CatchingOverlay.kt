@@ -67,8 +67,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -569,6 +571,14 @@ private fun CaptureGauge(progress: Float, modifier: Modifier = Modifier) {
         fill >= 0.2f -> RetroColors.HpYellow
         else -> RetroColors.HpRed
     }
+    // Degradado vertical: oscuro abajo, claro arriba, como una columna encendida.
+    val fillBrush = Brush.verticalGradient(
+        colors = listOf(
+            lerp(fillColor, Color.White, 0.35f),
+            fillColor,
+            lerp(fillColor, Color.Black, 0.45f)
+        )
+    )
 
     Column(
         modifier = modifier,
@@ -607,16 +617,8 @@ private fun CaptureGauge(progress: Float, modifier: Modifier = Modifier) {
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .fillMaxHeight(fill)
-                    .background(fillColor)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(2.dp)
-                        .background(Color(0x99FFFFFF))
-                )
-            }
+                    .background(brush = fillBrush)
+            )
 
             Canvas(Modifier.matchParentSize()) {
                 val step = size.height / 10f
