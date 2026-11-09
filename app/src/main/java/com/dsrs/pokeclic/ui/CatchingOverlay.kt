@@ -17,6 +17,7 @@ package com.dsrs.pokeclic.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -39,10 +40,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -52,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,18 +66,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -99,7 +104,6 @@ import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.PokemonType
 import kotlinx.coroutines.delay
 import kotlin.math.abs
-import kotlin.math.min as minFloat
 
 // ─────────────────────── Paleta de la escena ───────────────────────
 
@@ -108,10 +112,6 @@ private val RailFill = Color(0x4422C8F0)
 private val RailEdge = Color(0xFF8FE8FF)
 private val RailTick = Color(0x88BFF4FF)
 private val HaloGold = Color(0x44FFD75A)
-
-private val PokeRed = Color(0xFFE8382F)
-private val PokeWhite = Color(0xFFF8F8F8)
-private val PokeInk = Color(0xFF202020)
 
 /**
  * Escena completa de la partida de captura.
@@ -146,9 +146,13 @@ fun CatchingOverlay(
         }
     }
 
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+    var railCenter by remember { mutableStateOf(Offset.Zero) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onGloballyPositioned { rootOrigin = it.positionInRoot() }
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -189,6 +193,29 @@ fun CatchingOverlay(
                 ballOverhang + CatchingSceneDefaults.FRAME_BALL_MARGIN
             )
 
+            // Lanzamiento: la Pokébola grande del menú vuela hasta el centro del
+            // riel y se encoge. El ViewModel no mueve el riel hasta que termina.
+            val throwProgress = remember(encounter.speciesId) { Animatable(0f) }
+            LaunchedEffect(encounter.speciesId, railCenter) {
+                if (railCenter == Offset.Zero) return@LaunchedEffect
+                throwProgress.snapTo(0f)
+                throwProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = CatchingDefaults.THROW_MS.toInt(),
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            }
+            val throwing by remember(encounter.speciesId) {
+                derivedStateOf { throwProgress.value < 1f }
+            }
+            val menuBall = ImageBitmap.imageResource(R.drawable.pokeball_menu)
+            val density = LocalDensity.current
+            val navBarPx = WindowInsets.navigationBars.getBottom(density)
+            val throwStartBottom = BottomMenuDefaults.POKEBALL_EXPANDED_BOTTOM +
+                BottomMenuDefaults.POKEBALL_EXPANDED_SIZE / 2f
+
             CatchingHud(
                 encounter = encounter,
                 modifier = Modifier
@@ -216,9 +243,13 @@ fun CatchingOverlay(
                         barDiameter = barDiameter,
                         spriteBitmap = spriteBitmap,
                         spriteBounds = spriteBounds,
+                        showBall = !throwing,
                         modifier = Modifier
                             .width(railWidth)
                             .height(railHeight)
+                            .onGloballyPositioned {
+                                railCenter = it.boundsInRoot().center - rootOrigin
+                            }
                     )
                     Spacer(Modifier.width(CatchingSceneDefaults.GAUGE_GAP))
                     CaptureGauge(
@@ -245,6 +276,30 @@ fun CatchingOverlay(
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
+
+            // La bola del lanzamiento va por encima de todo: arranca donde está
+            // la Pokébola expandida del menú y aterriza en el centro del riel.
+            if (throwing) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val t = throwProgress.value
+                    val startX = size.width / 2f
+                    val startY = size.height - throwStartBottom.toPx() + navBarPx
+                    val cx = startX + (railCenter.x - startX) * t
+                    val cy = startY + (railCenter.y - startY) * t
+                    val startSize = BottomMenuDefaults.POKEBALL_EXPANDED_SIZE.toPx()
+                    val endSize = barDiameter.toPx()
+                    val diameter = startSize + (endSize - startSize) * t
+                    drawImage(
+                        image = menuBall,
+                        dstOffset = IntOffset(
+                            (cx - diameter / 2f).toInt(),
+                            (cy - diameter / 2f).toInt()
+                        ),
+                        dstSize = IntSize(diameter.toInt(), diameter.toInt()),
+                        filterQuality = FilterQuality.None
+                    )
+                }
+            }
         }
     }
 }
@@ -265,6 +320,7 @@ private fun CaptureRail(
     barDiameter: Dp,
     spriteBitmap: ImageBitmap?,
     spriteBounds: IntRect,
+    showBall: Boolean,
     modifier: Modifier = Modifier
 ) {
     // La Pokébola no se recorta al ancho del riel: sobresale por los bordes.
@@ -297,7 +353,7 @@ private fun CaptureRail(
             }
         }
 
-        if (overlapping) {
+        if (overlapping && showBall) {
             Canvas(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -308,14 +364,17 @@ private fun CaptureRail(
             }
         }
 
-        // `requiredSize`: la Pokébola es más ancha que el riel y tiene que
-        // poder salirse de la caja, que si no la recorta a su ancho.
-        PokeBall(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = barCenterY - barDiameter / 2)
-                .requiredSize(barDiameter)
-        )
+        // Misma Pokébola que el menú; `requiredSize` la deja desbordar el riel.
+        if (showBall) {
+            PixelImage(
+                res = R.drawable.pokeball_menu,
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = barCenterY - barDiameter / 2)
+                    .requiredSize(barDiameter)
+            )
+        }
 
         WildSpriteBox(
             bitmap = spriteBitmap,
@@ -388,51 +447,6 @@ private fun SpriteSheetEffect(
             dstSize = IntSize(size.width.toInt(), size.height.toInt()),
             filterQuality = FilterQuality.None
         )
-    }
-}
-
-/** Pokébola pixel art: dos mitades, banda negra y botón central. */
-@Composable
-private fun PokeBall(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val radius = minFloat(size.width, size.height) / 2f
-        val center = Offset(size.width / 2f, size.height / 2f)
-
-        drawCircle(color = Color(0x33FFD75A), radius = radius * 1.12f, center = center)
-
-        val circle = Path().apply { addOval(Rect(center = center, radius = radius)) }
-        clipPath(circle) {
-            drawRect(
-                color = PokeWhite,
-                topLeft = Offset(center.x - radius, center.y - radius),
-                size = Size(radius * 2f, radius * 2f)
-            )
-            drawRect(
-                color = PokeRed,
-                topLeft = Offset(center.x - radius, center.y - radius),
-                size = Size(radius * 2f, radius)
-            )
-            drawRect(
-                color = PokeInk,
-                topLeft = Offset(center.x - radius, center.y - radius * 0.14f),
-                size = Size(radius * 2f, radius * 0.28f)
-            )
-        }
-
-        drawCircle(
-            color = PokeInk,
-            radius = radius,
-            center = center,
-            style = Stroke(2.dp.toPx())
-        )
-        drawCircle(color = PokeWhite, radius = radius * 0.30f, center = center)
-        drawCircle(
-            color = PokeInk,
-            radius = radius * 0.30f,
-            center = center,
-            style = Stroke(2.dp.toPx())
-        )
-        drawCircle(color = PokeInk, radius = radius * 0.12f, center = center)
     }
 }
 
@@ -692,7 +706,11 @@ private fun CatchingResultPanel(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            PokeBall(modifier = Modifier.size(40.dp))
+            PixelImage(
+                res = R.drawable.pokeball_menu,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp)
+            )
             Text(
                 text = stringResource(
                     if (captured) R.string.catching_captured else R.string.catching_escaped,

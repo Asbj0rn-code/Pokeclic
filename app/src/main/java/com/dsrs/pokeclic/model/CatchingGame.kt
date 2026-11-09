@@ -124,6 +124,13 @@ object CatchingDefaults {
     /** Segundo(s) iniciales sin huida aunque el progreso esté a 0. */
     const val INITIAL_GRACE_SECONDS = 1.0f
 
+    /**
+     * Duración del lanzamiento de la Pokébola al abrir el encuentro. El riel no
+     * avanza durante ese tiempo: la bola vuela desde el menú hasta el centro y
+     * recién ahí empieza la partida.
+     */
+    const val THROW_MS = 520L
+
     /** Suavizado del sprite en la dificultad mínima. */
     const val SMOOTHING_EASY = 1.2f
 
