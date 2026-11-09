@@ -152,6 +152,9 @@ fun AppRoot(
     // efímero de UI, sin relación con la lógica de negocio.
     val pokePulses = remember { mutableLongStateOf(0L) }
 
+    // Clics sobre la Pokébola: alimentan las hojas del modo hierba alta.
+    val ballTaps = remember { mutableLongStateOf(0L) }
+
     // Fondo de la zona actual: arte + trayectoria. La **misma** instancia mueve el
     // dibujo y decide la dirección del entrenador, así que no pueden desincronizarse.
     val routeBackground = RouteBackgrounds.forZone(state.zoneId)
@@ -245,6 +248,7 @@ fun AppRoot(
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
                         onPokeBallGameClick = {
+                            ballTaps.longValue++
                             // Modo captura (hierba alta o encuentro en curso): el
                             // mundo se congela; el clic no mueve el fondo ni
                             // cuenta para el avance de la zona.
@@ -295,7 +299,8 @@ fun AppRoot(
                             state = state,
                             onTallGrassToggle = onTallGrassToggle,
                             onEnterGym = onEnterGym,
-                            onAdvanceZone = onAdvanceZone
+                            onAdvanceZone = onAdvanceZone,
+                            ballTaps = ballTaps.longValue
                         )
                         AppTab.Map -> MapScreen(
                             bottomReserved = innerPadding.calculateBottomPadding()
