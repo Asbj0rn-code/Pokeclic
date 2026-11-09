@@ -17,6 +17,7 @@ package com.dsrs.pokeclic.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -72,6 +73,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -336,6 +338,27 @@ private fun CaptureRail(
     val spriteCenterY = railHeight * (1f - catching.spritePos)
     val overlapping = abs(catching.spritePos - catching.barPos) <= catching.config.barSize / 2f
 
+    // Rebote al tocar los extremos: un empujón visual corto hacia adentro con
+    // una compresión leve. No toca la física, así que no hace vibrar la barra
+    // cuando el jugador la sostiene contra el tope.
+    val halfBar = catching.config.barSize / 2f
+    val atTop = catching.barPos >= 1f - halfBar - 0.001f
+    val atBottom = catching.barPos <= halfBar + 0.001f
+    val atEdge = atTop || atBottom
+    val recoil = remember { Animatable(0f) }
+    LaunchedEffect(atEdge) {
+        if (!atEdge) return@LaunchedEffect
+        recoil.snapTo(1f)
+        recoil.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = 220,
+                easing = FastOutLinearInEasing
+            )
+        )
+    }
+    val recoilDirection = if (atTop) 1f else -1f
+
     Box(modifier) {
         Canvas(Modifier.matchParentSize()) {
             // Esquinas proporcionales: el riel cambia de ancho con cada especie.
@@ -381,6 +404,12 @@ private fun CaptureRail(
                     .align(Alignment.TopCenter)
                     .offset(y = barCenterY - barDiameter / 2)
                     .requiredSize(barDiameter)
+                    .graphicsLayer {
+                        val k = recoil.value
+                        translationY = CatchingSceneDefaults.EDGE_RECOIL.toPx() * k * recoilDirection
+                        scaleY = 1f - 0.10f * k
+                        scaleX = 1f + 0.06f * k
+                    }
             )
         }
 
@@ -864,6 +893,9 @@ private object CatchingSceneDefaults {
 
     /** Aire extra entre la Pokébola y el borde interior del marco. */
     val FRAME_BALL_MARGIN = 4.dp
+
+    /** Cuánto se mete la Pokébola al rebotar contra un extremo del riel. */
+    val EDGE_RECOIL = 6.dp
 }
 
 /** Metadatos de los sprite sheets exportados por pixelfx. */
