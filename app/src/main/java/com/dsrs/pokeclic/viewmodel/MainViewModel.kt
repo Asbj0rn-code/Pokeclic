@@ -834,9 +834,10 @@ class MainViewModel(
         catchingJob?.cancel()
         catchingHeld = false
         catchingJob = viewModelScope.launch {
-            // La Pokébola se lanza antes de que el riel empiece a moverse: el
-            // estado se queda centrado mientras dura la animación.
-            delay(CatchingDefaults.THROW_MS)
+            // La Pokébola se lanza y queda clavada en el centro antes de que el
+            // riel empiece a moverse: el estado se queda centrado durante el
+            // vuelo y la pausa de reacción.
+            delay(CatchingDefaults.THROW_MS + CatchingDefaults.REACTION_MS)
             while (isActive) {
                 delay(CATCHING_TICK_MS)
                 var finished = false

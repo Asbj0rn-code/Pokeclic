@@ -126,10 +126,16 @@ object CatchingDefaults {
 
     /**
      * Duración del lanzamiento de la Pokébola al abrir el encuentro. El riel no
-     * avanza durante ese tiempo: la bola vuela desde el menú hasta el centro y
-     * recién ahí empieza la partida.
+     * avanza durante ese tiempo: la bola vuela desde el menú hasta el centro.
      */
     const val THROW_MS = 900L
+
+    /**
+     * Pausa después del lanzamiento con la Pokébola **clavada en el centro** del
+     * riel, para que el jugador tenga tiempo de reaccionar antes de que la
+     * gravedad la haga caer.
+     */
+    const val REACTION_MS = 400L
 
     /** Suavizado del sprite en la dificultad mínima. */
     const val SMOOTHING_EASY = 1.2f
