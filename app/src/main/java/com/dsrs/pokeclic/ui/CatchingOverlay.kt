@@ -17,7 +17,6 @@ package com.dsrs.pokeclic.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -103,7 +102,9 @@ import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.PokemonType
 import kotlinx.coroutines.delay
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.sin
 
 // ─────────────────────── Paleta de la escena ───────────────────────
 
@@ -203,7 +204,7 @@ fun CatchingOverlay(
                     targetValue = 1f,
                     animationSpec = tween(
                         durationMillis = CatchingDefaults.THROW_MS.toInt(),
-                        easing = FastOutSlowInEasing
+                        easing = LinearEasing
                     )
                 )
             }
@@ -284,10 +285,17 @@ fun CatchingOverlay(
                     val t = throwProgress.value
                     val startX = size.width / 2f
                     val startY = size.height - throwStartBottom.toPx() + navBarPx
-                    val cx = startX + (railCenter.x - startX) * t
-                    val cy = startY + (railCenter.y - startY) * t
+                    val endX = railCenter.x
+                    val endY = railCenter.y
+                    val dy = endY - startY
+                    // Parábola: sale hacia arriba por encima del destino y cae en
+                    // él. `rise` es el pico del arco sobre la recta de llegada.
+                    val rise = -dy * 0.75f
+                    val cx = startX + (endX - startX) * t
+                    val cy = startY + dy * t - rise * sin(PI.toFloat() * t)
                     val startSize = BottomMenuDefaults.POKEBALL_EXPANDED_SIZE.toPx()
                     val endSize = barDiameter.toPx()
+                    // Se empequeñece de a poco a lo largo de todo el vuelo.
                     val diameter = startSize + (endSize - startSize) * t
                     drawImage(
                         image = menuBall,

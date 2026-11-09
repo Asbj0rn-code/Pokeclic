@@ -129,7 +129,7 @@ object CatchingDefaults {
      * avanza durante ese tiempo: la bola vuela desde el menú hasta el centro y
      * recién ahí empieza la partida.
      */
-    const val THROW_MS = 520L
+    const val THROW_MS = 900L
 
     /** Suavizado del sprite en la dificultad mínima. */
     const val SMOOTHING_EASY = 1.2f
