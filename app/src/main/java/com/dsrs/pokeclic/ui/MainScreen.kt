@@ -449,7 +449,6 @@ fun MainScreen(
     onTallGrassToggle: () -> Unit,
     onEnterGym: () -> Unit,
     onAdvanceZone: () -> Unit,
-    ballTaps: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     // "Juice" efímero: cada incremento real de zoneClicks dispara pop flotante.
@@ -482,7 +481,6 @@ fun MainScreen(
             TrainerGrassStack(
                 trainerFrameRes = state.trainerFrameRes,
                 showTallGrass = state.isTallGrass,
-                ballTaps = ballTaps,
                 modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
             )
 
@@ -585,7 +583,6 @@ private fun ProgressionAction(
 private fun TrainerGrassStack(
     trainerFrameRes: Int,
     showTallGrass: Boolean,
-    ballTaps: Long,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -616,17 +613,6 @@ private fun TrainerGrassStack(
             )
         }
 
-        // Capa 4 · hojas: salen de los pies con cada clic en hierba alta.
-        if (showTallGrass) {
-            LeafBursts(
-                tapCount = ballTaps,
-                active = showTallGrass,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(y = 27.dp)
-                    .size(80.dp)
-            )
-        }
     }
 }
 
