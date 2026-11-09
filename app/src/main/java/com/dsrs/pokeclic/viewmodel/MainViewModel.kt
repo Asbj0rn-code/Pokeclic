@@ -838,14 +838,21 @@ class MainViewModel(
             // riel empiece a moverse: el estado se queda centrado durante el
             // vuelo y la pausa de reacción.
             delay(CatchingDefaults.THROW_MS + CatchingDefaults.REACTION_MS)
+            // `dt` sale del reloj real y no del tick nominal: así el movimiento
+            // no se ralentiza si un frame tarda más de lo previsto.
+            var lastTickMs = nowMs()
             while (isActive) {
                 delay(CATCHING_TICK_MS)
+                val now = nowMs()
+                val dt = ((now - lastTickMs) / 1000f).coerceIn(0f, MAX_CATCHING_DT_SECONDS)
+                lastTickMs = now
+                if (dt <= 0f) continue
                 var finished = false
                 updateCatching { current ->
                     val next = CatchingGame.step(
                         state = current,
                         held = catchingHeld,
-                        dt = CATCHING_TICK_MS / 1000f,
+                        dt = dt,
                         random = random
                     )
                     finished = next.phase != CatchingPhase.PLAYING
@@ -1130,8 +1137,14 @@ class MainViewModel(
         /** Segundos de caminar continuo necesarios para que aparezca un salvaje. */
         const val ENCOUNTER_SECONDS = 3f
 
-        /** Tick del bucle del minijuego de captura. */
-        const val CATCHING_TICK_MS = 50L
+        /**
+         * Tick del bucle del minijuego de captura. Apunta a 60 fps para que la
+         * barra y el sprite se muevan suave; el `dt` real corrige la deriva.
+         */
+        const val CATCHING_TICK_MS = 16L
+
+        /** Tope de `dt` por tick: un frame perdido no debe teletransportar nada. */
+        const val MAX_CATCHING_DT_SECONDS = 0.1f
 
         /** Cada especie en posesión suma este % a la potencia de clic. */
         const val PER_OWNED_SPECIES_BONUS = 0.05
