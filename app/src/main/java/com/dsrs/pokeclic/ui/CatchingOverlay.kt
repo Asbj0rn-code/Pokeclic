@@ -188,28 +188,37 @@ fun CatchingOverlay(
                     .padding(top = 20.dp, start = 16.dp, end = 16.dp)
             )
 
-            Row(
+            // Riel y medidor viven dentro de un marco LCD, con el mismo doble
+            // borde, esquinas cortadas y sombra dura que el resto de los menús.
+            RetroPanel(
                 modifier = Modifier.align(Alignment.Center),
-                verticalAlignment = Alignment.CenterVertically
+                backgroundColor = RetroColors.LcdDark,
+                outerBorder = RetroColors.DialogBorderOuter,
+                innerBorder = Color(0xFF4E5A66),
+                shadowOffset = 3.dp,
+                shape = PanelShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                CaptureRail(
-                    catching = catching,
-                    encounter = encounter,
-                    railHeight = railHeight,
-                    spriteSize = spriteSize,
-                    spriteBitmap = spriteBitmap,
-                    spriteBounds = spriteBounds,
-                    modifier = Modifier
-                        .width(railWidth)
-                        .height(railHeight)
-                )
-                Spacer(Modifier.width(CatchingSceneDefaults.GAUGE_GAP))
-                CaptureGauge(
-                    progress = catching.progress,
-                    modifier = Modifier
-                        .width(CatchingSceneDefaults.GAUGE_WIDTH)
-                        .height(railHeight)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CaptureRail(
+                        catching = catching,
+                        encounter = encounter,
+                        railHeight = railHeight,
+                        spriteSize = spriteSize,
+                        spriteBitmap = spriteBitmap,
+                        spriteBounds = spriteBounds,
+                        modifier = Modifier
+                            .width(railWidth)
+                            .height(railHeight)
+                    )
+                    Spacer(Modifier.width(CatchingSceneDefaults.GAUGE_GAP))
+                    CaptureGauge(
+                        progress = catching.progress,
+                        modifier = Modifier
+                            .width(CatchingSceneDefaults.GAUGE_WIDTH)
+                            .height(railHeight)
+                    )
+                }
             }
 
             CatchingHint(
@@ -813,7 +822,7 @@ private object CatchingSceneDefaults {
 
     /** Grosor y hueco del medidor de progreso. */
     val GAUGE_WIDTH = 34.dp
-    val GAUGE_GAP = 16.dp
+    val GAUGE_GAP = 28.dp
 }
 
 /** Metadatos de los sprite sheets exportados por pixelfx. */
