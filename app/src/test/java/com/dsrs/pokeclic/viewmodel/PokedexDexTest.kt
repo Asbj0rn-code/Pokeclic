@@ -5,7 +5,6 @@
  */
 package com.dsrs.pokeclic.viewmodel
 
-import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.CatchingPhase
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.DexStatus
@@ -14,7 +13,6 @@ import com.dsrs.pokeclic.model.PokedexCatalog
 import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexSpecies
 import com.dsrs.pokeclic.model.SpeciesCatalog
-import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.Zone
 import kotlin.math.abs
 import kotlin.random.Random
@@ -80,21 +78,6 @@ class PokedexDexTest {
             clockNow += chunk
             remaining -= chunk
         }
-    }
-
-    /// Duplicados a propósito de los dobles privados de `MainViewModelTest`
-    /// (no hay forma de reutilizarlos sin hacerlos internos a producción).
-
-    private class FakeStore : GameStateStore {
-        var saved: GameSnapshot? = null
-        override fun load(): GameSnapshot? = saved
-        override fun save(snapshot: GameSnapshot) { saved = snapshot }
-        override fun clear(): Boolean { saved = null; return true }
-    }
-
-    private class FakeSprites : SpriteRepository {
-        override fun frameCount(direction: Direction): Int = 1
-        override fun frame(direction: Direction, index: Int): Int = 0
     }
 
     /** Catálogo de dex de laboratorio (números de posición, no de Kanto). */
@@ -269,10 +252,12 @@ class PokedexDexTest {
         // Una pulsación nueva reactiva el temporizador de caminar (con su
         // ritmo de re-toque: el encuentro llega a los 3 s de caminar activo).
         vm.onPokeBallTouch(Direction.BACK)
-        repeat(12) {
+        var taps = 0
+        while (vm.uiState.value.encounter == null && taps < 12) {
             advance(500L)
-            if (vm.uiState.value.encounter != null) return@repeat
+            if (vm.uiState.value.encounter != null) break
             vm.onPokeBallTouch(Direction.BACK)
+            taps++
         }
         assertNotNull(vm.uiState.value.encounter)
         // Y el avistamiento llega a la dex.
