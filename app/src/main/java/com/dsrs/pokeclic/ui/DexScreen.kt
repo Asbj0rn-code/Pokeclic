@@ -21,19 +21,19 @@
  *   se nombra en la fila.
  *
  * **Sprites reales**: cada fila resuelve su recurso por `dexNumber` con
- * `pokedexSprite` (mapa de `PokedexSprites.kt`) y se presenta el **canvas
- * oficial completo** de 96×96, centrado y a escala (`ContentScale.Fit`) en un
- * recuadro fijo (76×64 dp). Decisión de diseño: no se recorta el margen
- * transparente ni se normaliza el tamaño por especie, para preservar la
- * proporción relativa entre Pokémon; el filtro es `FilterQuality.None`
- * (`PixelImage`) porque el canvas se reescala y el pixel art no admite
- * interpolación bilineal. El estado CAUGHT lo marca la posesión de la run
+ * `pokedexSprite` (mapa de `PokedexSprites.kt`). Se recorta el margen
+ * transparente del PNG (`opaqueBounds`) y la figura se normaliza para llenar
+ * el recuadro fijo (88×72 dp): en una lista la figura es un identificador y
+ * prima que se lea; el tamaño relativo entre especies se conserva en la
+ * escena de captura. Se dibuja con `FilterQuality.None` (pixel art sin
+ * interpolación). El estado CAUGHT lo marca la posesión de la run
  * (`ownedSpecies` / `starterSpeciesId`), no el historial permanente.
  */
 package com.dsrs.pokeclic.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -72,13 +72,17 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -91,6 +95,7 @@ import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.viewmodel.GameUiState
 import java.util.Locale
+import kotlin.math.min
 
 /**
  * Paleta de tipos de la Pokédex (decoración, no reglas de juego): nombres en
@@ -132,6 +137,10 @@ private val DexRowDivider = DexLcdLine.copy(alpha = 0.35f)
 
 /** Área táctil de la flecha: su centro (24.dp) define la línea visual. */
 private val DexHeaderArrowTouch = 48.dp
+
+/** Recuadro del sprite en la fila (ancho × alto). */
+private val DexSpriteSlotWidth = 88.dp
+private val DexSpriteSlotHeight = 72.dp
 
 /** Métricas comunes de línea del encabezado: cifra/título y etiqueta. */
 private val DexHeaderValueSize = 16.sp
@@ -508,46 +517,54 @@ private fun BallIndicator(status: DexStatus, modifier: Modifier = Modifier) {
 }
 
 /**
- * Recuadro **fijo** del sprite: una misma geometría en todas las filas y
- * estados (ancho 76.dp, alto 64.dp); su tamaño no depende de la especie ni
- * del estado, y el sprite no modifica ni el recuadro ni la altura de la
- * fila. La resolución del recurso es **directa por número**: entrada n →
- * `pokedexSprite(entry.dexNumber)`, siempre por dato de la fila y nunca por
- * posición o índice desplazado.
+ * Recuadro fijo del sprite: una misma geometría en todas las filas y estados
+ * (ancho 88.dp, alto 72.dp); su tamaño no depende de la especie ni del estado,
+ * y el sprite no modifica ni el recuadro ni la altura de la fila. La resolución
+ * del recurso es **directa por número**: entrada n → `pokedexSprite(dexNumber)`,
+ * siempre por dato de la fila y nunca por posición o índice desplazado.
  *
  * - **UNKNOWN** (y `null` del mapa en especie conocida) → «?» pale green
  *   centrada de alto contraste, sin ningún texto accesible que revele la
  *   identidad en UNKNOWN (el número es el único dato de la fila).
- * - **SEEN/REGISTERED/CAUGHT** → **canvas oficial completo** de 96×96,
- *   centrado, a escala (`ContentScale.Fit`) y con margen de 4.dp. No se
- *   recorta el margen transparente ni se normaliza el tamaño por especie:
- *   se preserva la proporción relativa entre Pokémon (el canvas oficial ya
- *   la define). Se dibuja con `PixelImage` (`FilterQuality.None`) porque es
- *   pixel art reescalado y la interpolación bilineal emborrona los bordes.
- *   La opacidad es plena en los tres estados; el estado lo marca la Pokéball.
+ * - **SEEN/REGISTERED/CAUGHT** → se recorta el margen transparente del PNG
+ *   (`opaqueBounds`) y la figura se escala para **llenar el recuadro**, igual
+ *   para todas las especies. Es la diferencia con la escena de captura, donde
+ *   se preserva el tamaño relativo: en una lista de 151 filas la figura es un
+ *   identificador y se busca que se lea, no comparar tamaños. Se dibuja con
+ *   `FilterQuality.None` para no emborronar el pixel art; el estado lo marca
+ *   la Pokéball.
  */
 @Composable
 private fun DexSpriteSlot(entry: PokedexRow, known: Boolean) {
     val spriteRes = if (known) pokedexSprite(entry.dexNumber) else null
     Box(
         modifier = Modifier
-            .width(76.dp)
-            .height(64.dp)
+            .width(DexSpriteSlotWidth)
+            .height(DexSpriteSlotHeight)
             .border(1.dp, DexLcdLine, RoundedCornerShape(6.dp))
             .background(RetroColors.BarTrack, RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (spriteRes != null) {
-            PixelImage(
-                res = spriteRes,
-                // El nombre exterior de la fila es la descripción accesible:
-                // el sprite no añade ni repite texto.
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .padding(4.dp)
-                    .fillMaxSize()
-            )
+            val image = ImageBitmap.imageResource(spriteRes)
+            val bounds = remember(image) { image.opaqueBounds() }
+            Canvas(modifier = Modifier.padding(2.dp).fillMaxSize()) {
+                if (bounds.width <= 0 || bounds.height <= 0) return@Canvas
+                val scale = min(size.width / bounds.width, size.height / bounds.height)
+                val dstW = bounds.width * scale
+                val dstH = bounds.height * scale
+                drawImage(
+                    image = image,
+                    srcOffset = IntOffset(bounds.left, bounds.top),
+                    srcSize = IntSize(bounds.width, bounds.height),
+                    dstOffset = IntOffset(
+                        ((size.width - dstW) / 2f).toInt(),
+                        ((size.height - dstH) / 2f).toInt()
+                    ),
+                    dstSize = IntSize(dstW.toInt(), dstH.toInt()),
+                    filterQuality = FilterQuality.None
+                )
+            }
         } else {
             // «?» de alto contraste: verde pálido, grande y en negrita. Sin
             // voces de accesibilidad: la fila no puede revelar identidad.
