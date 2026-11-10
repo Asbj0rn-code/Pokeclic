@@ -328,12 +328,12 @@ class PokedexDexTest {
             state.seenSpecies
         )
         // La dex lo refleja: starter (CAUGHT) + caterpie en posesión (CAUGHT);
-        // rattata es historia permanente (recompensa anterior) → SEEN;
+        // rattata es captura histórica (recompensa anterior) → REGISTERED;
         // pidgey nunca conocida → UNKNOWN.
-        assertEquals(2, state.dexCaughtCount)
+        assertEquals(3, state.dexCaughtCount)
         assertEquals(DexStatus.CAUGHT, state.dexEntries.first { it.speciesId == "charmander" }.status)
         assertEquals(DexStatus.CAUGHT, state.dexEntries.first { it.speciesId == "caterpie" }.status)
-        assertEquals(DexStatus.SEEN, state.dexEntries.first { it.speciesId == "rattata" }.status)
+        assertEquals(DexStatus.REGISTERED, state.dexEntries.first { it.speciesId == "rattata" }.status)
         assertEquals(DexStatus.UNKNOWN, state.dexEntries.first { it.speciesId == "pidgey" }.status)
         assertEquals((1..4).toList(), state.dexEntries.map { it.dexNumber })
     }
@@ -474,7 +474,7 @@ class PokedexDexTest {
      * recapturarla la vuelve a poner en posesión **sin repetir la recompensa**.
      */
     @Test
-    fun captureThenReset_dropsOwnedToSeenKeepsStarterAndRewardsOnce() {
+    fun captureThenReset_leavesRegisteredKeepsStarterAndRewardsOnce() {
         val store = FakeStore()
         val vm = viewModel(random = DartosAlRielRandom(), store = store)
         vm.onFinishIntro("Ash", "charmander")
@@ -497,11 +497,11 @@ class PokedexDexTest {
             // Historia permanente intacta…
             assertEquals(setOf("charmander", "pidgey"), caughtSpecies)
             assertEquals(setOf("charmander", "pidgey"), seenSpecies)
-            // …pero los estados de la dex siguen la posesión: pidgey → SEEN.
+            // …y el estado histórico se conserva: pidgey → REGISTERED.
             assertEquals(DexStatus.CAUGHT, dexEntries.first { it.speciesId == "charmander" }.status)
-            assertEquals(DexStatus.SEEN, dexEntries.first { it.speciesId == "pidgey" }.status)
+            assertEquals(DexStatus.REGISTERED, dexEntries.first { it.speciesId == "pidgey" }.status)
             assertEquals(DexStatus.UNKNOWN, dexEntries.first { it.speciesId == "rattata" }.status)
-            assertEquals(1, dexCaughtCount)
+            assertEquals(2, dexCaughtCount)
             assertEquals(2, dexSeenCount)
             assertEquals(5L, coins) // el reset conserva la meta
         }
@@ -510,7 +510,7 @@ class PokedexDexTest {
         val restored = viewModel(saved = store.saved)
         with(restored.uiState.value) {
             assertEquals(DexStatus.CAUGHT, dexEntries.first { it.speciesId == "charmander" }.status)
-            assertEquals(DexStatus.SEEN, dexEntries.first { it.speciesId == "pidgey" }.status)
+            assertEquals(DexStatus.REGISTERED, dexEntries.first { it.speciesId == "pidgey" }.status)
             assertTrue(ownedSpecies.isEmpty())
             assertEquals(listOf("charmander"), leadOptions.map { it.id })
         }

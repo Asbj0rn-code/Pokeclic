@@ -12,20 +12,23 @@
  *   fuera del recuadro, tipo debajo del nombre y **Pokéball gris tenue**
  *   (escala de grises, opacidad 0.35): especie conocida que no está poseída
  *   en la partida actual.
- * - **CAUGHT**: mismo sprite y mismas condiciones, con Pokéball a color y
- *   opacidad plena: especie poseída en la partida actual o inicial elegido.
- *   La distinción no depende solo del color: cada Pokéball lleva su
- *   descripción accesible.
+ * - **REGISTERED**: mismo sprite, con **Pokéball sin color a opacidad plena**
+ *   y la etiqueta «Registrado» bajo el tipo: capturada en una run anterior y
+ *   no poseída ahora (es el estado que sobrevive al reset).
+ * - **CAUGHT**: mismo sprite, con Pokéball a color y opacidad plena: especie
+ *   poseída en la partida actual o inicial elegido. La distinción no depende
+ *   solo del color: cada Pokéball lleva su descripción accesible y REGISTERED
+ *   se nombra en la fila.
  *
  * **Sprites reales**: cada fila resuelve su recurso por `dexNumber` con
- * `pokedexSprite` (mapa de `PokedexSprites.kt`, aportado por dev) y se
- * presenta completo y centrado en un **recuadro fijo** (ancho y alto iguales
- * en todas las filas y estados), sin filtros, tintes, siluetas ni recortes.
- * Los sprites son PNG cuadrados de 96×96 con margenes transparentes, así
- * que `ContentScale.Fit` es suficiente: sin normalizaciones adicionales. La
- * diferencia SEEN/CAUGHT está únicamente en el indicador de Pokéball. El
- * estado CAUGHT lo marca la posesión de la run (`ownedSpecies` /
- * `starterSpeciesId`), no el historial permanente.
+ * `pokedexSprite` (mapa de `PokedexSprites.kt`) y se presenta el **canvas
+ * oficial completo** de 96×96, centrado y a escala (`ContentScale.Fit`) en un
+ * recuadro fijo (76×64 dp). Decisión de diseño: no se recorta el margen
+ * transparente ni se normaliza el tamaño por especie, para preservar la
+ * proporción relativa entre Pokémon; el filtro es `FilterQuality.None`
+ * (`PixelImage`) porque el canvas se reescala y el pixel art no admite
+ * interpolación bilineal. El estado CAUGHT lo marca la posesión de la run
+ * (`ownedSpecies` / `starterSpeciesId`), no el historial permanente.
  */
 package com.dsrs.pokeclic.ui
 
@@ -58,6 +61,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -371,7 +375,7 @@ private fun DexError(modifier: Modifier = Modifier) {
 @Composable
 private fun DexRow(entry: PokedexRow) {
     val known = entry.status != DexStatus.UNKNOWN
-    val caught = entry.status == DexStatus.CAUGHT
+    val registered = entry.status == DexStatus.REGISTERED
 
     Row(
         modifier = Modifier
@@ -411,14 +415,27 @@ private fun DexRow(entry: PokedexRow) {
                 if (entry.typeName != null) {
                     DexTypeBadge(entry.typeName)
                 }
+                if (registered) {
+                    // Distinción no cromática: el estado histórico se nombra.
+                    Text(
+                        text = stringResource(R.string.dex_registered),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        color = DexLcdTextDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
         // Hueco fijo del indicador: la Pokéball nunca desplaza al nombre ni a
-        // la interrogación, y ocupa la misma posición en SEEN y CAUGHT.
+        // la interrogación, y ocupa la misma posición en los tres estados
+        // conocidos.
         if (known) {
             BallIndicator(
-                isCaught = caught,
+                status = entry.status,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -426,23 +443,33 @@ private fun DexRow(entry: PokedexRow) {
 }
 
 /**
- * Indicador de posesión (marcador en fila): recorta los colores de la Pokéball
- * y baja su opacidad para la especie conocida pero no poseída; a plena opacidad
- * y a color cuando está en posesión. La distinción no depende solo del color:
- * cada variante lleva su descripción accesible.
+ * Indicador de posesión (marcador en fila), con tres variantes:
+ * - **CAUGHT**: Pokéball a color y opacidad plena.
+ * - **REGISTERED**: Pokéball sin color y opacidad plena (capturada antes,
+ *   no poseída ahora).
+ * - **SEEN**: Pokéball sin color y atenuada.
+ *
+ * La distinción no depende solo del color: cada variante lleva su descripción
+ * accesible y REGISTERED además se nombra en la fila.
  */
 @Composable
-private fun BallIndicator(isCaught: Boolean, modifier: Modifier = Modifier) {
-    val grayscale = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+private fun BallIndicator(status: DexStatus, modifier: Modifier = Modifier) {
+    val caught = status == DexStatus.CAUGHT
+    val registered = status == DexStatus.REGISTERED
+    val grayscale = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
     Image(
         painter = painterResource(R.drawable.pokeball_menu),
         contentDescription = stringResource(
-            if (isCaught) R.string.dex_caught_desc else R.string.dex_seen_desc
+            when (status) {
+                DexStatus.CAUGHT -> R.string.dex_caught_desc
+                DexStatus.REGISTERED -> R.string.dex_registered_desc
+                else -> R.string.dex_seen_desc
+            }
         ),
         modifier = modifier
             .size(22.dp)
-            .then(if (isCaught) Modifier else Modifier.alpha(0.35f)),
-        colorFilter = if (isCaught) null else grayscale
+            .then(if (caught || registered) Modifier else Modifier.alpha(0.35f)),
+        colorFilter = if (caught) null else grayscale
     )
 }
 
@@ -533,7 +560,7 @@ private const val DEX_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 
 /**
  * Estado de ejemplo: starter + capturas y avistamientos concretos. No sirve un
- * estado vacío: el preview debe enseñar los tres estados de fila.
+ * estado vacío: el preview debe enseñar los cuatro estados de fila.
  */
 private fun dexPreviewState(): GameUiState = GameUiState(
     caughtSpecies = setOf("charmander", "rattata"),
@@ -545,13 +572,13 @@ private fun dexPreviewState(): GameUiState = GameUiState(
         PokedexRow(1, "bulbasaur", null, null, DexStatus.UNKNOWN),
         PokedexRow(4, "charmander", "Charmander", "Fuego", DexStatus.CAUGHT),
         PokedexRow(16, "pidgey", "Pidgey", "Volador", DexStatus.SEEN),
-        PokedexRow(19, "rattata", "Rattata", "Normal", DexStatus.CAUGHT),
+        PokedexRow(19, "rattata", "Rattata", "Normal", DexStatus.REGISTERED),
         PokedexRow(41, "zubat", "Zubat", "Veneno", DexStatus.SEEN),
         PokedexRow(61, "poliwhirl", "Poliwhirl", "Agua", DexStatus.UNKNOWN)
     )
 )
 
-/** Dex con catálogo cargado: muestra los tres estados de fila. */
+/** Dex con catálogo cargado: muestra los cuatro estados de fila. */
 @androidx.compose.ui.tooling.preview.Preview(
     name = "Pokédex · listado",
     device = DEX_PREVIEW_DEVICE,

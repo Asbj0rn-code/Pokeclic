@@ -174,6 +174,12 @@ fun isGymPending(zone: Zone, gymClearedRun: Set<String>): Boolean =
  * run**: `ownedSpecies`, `leadSpeciesId`, `gymClearedRun` y el progreso de
  * zona; se vacían (o vuelven al starter) al resetear.
  *
+ * Los tres conjuntos permanentes **no son intercambiables**: `seenSpecies`
+ * registra conocimiento, `caughtSpecies` la historia que alimenta el estado
+ * REGISTERED de la Pokédex y `rewardedSpecies` el pago único de monedas. Se
+ * solapan en la práctica (capturar implica ver y, la primera vez, recompensar),
+ * pero consolidarlos acoplaría la regla de recompensa a la presentación.
+ *
  * Las mejoras comprables (potencia de clic y vida) se retiraron por no tener UI
  * ni forma de adquirirse; volverán como sistema de progresión en una etapa
  * futura y, con ellas, sus campos de guardado.
@@ -184,9 +190,11 @@ data class GameSnapshot(
     val seenSpecies: Set<String> = emptySet(),
     val rewardedSpecies: Set<String> = emptySet(),
     /**
-     * Capturas históricas (meta permanente): especies alguna vez obtenidas por
-     * el jugador, incluida la evolución del inicial elegido. Alimenta el
-     * estado **Capturado** de la Pokédex y sobrevive a los resets de run.
+     * Capturas históricas (meta permanente): especies alguna vez obtenidas,
+     * incluida la evolución del inicial elegido. Alimenta el estado
+     * **REGISTERED** de la Pokédex (capturada en una run anterior y no poseída
+     * ahora) y sobrevive a los resets; **CAUGHT** sigue siendo la posesión de
+     * la run actual (`ownedSpecies` o el starter).
      *
      * Se separa a propósito de `ownedSpecies` (posesión de la run actual) y de
      * `rewardedSpecies` (especies ya recompensadas una única vez).

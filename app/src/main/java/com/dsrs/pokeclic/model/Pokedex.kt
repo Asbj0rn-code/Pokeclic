@@ -34,10 +34,16 @@ enum class DexStatus {
     /** Nunca avistada ni obtenida: solo se muestra el número. */
     UNKNOWN,
 
-    /** Avistada y sin atrapar: número, nombre e imagen; sin Pokéball. */
+    /** Avistada y sin atrapar: número, nombre, imagen y Pokéball sin color. */
     SEEN,
 
-    /** Atrapada: número, nombre, imagen y Pokéball como indicador. */
+    /**
+     * Capturada en una run anterior y no poseída ahora (sobre todo tras un
+     * reset): número, nombre, imagen y Pokéball "registrada".
+     */
+    REGISTERED,
+
+    /** Atrapada y en posesión actual: número, nombre, imagen y Pokéball a color. */
     CAUGHT
 }
 
@@ -76,17 +82,18 @@ data class PokedexRow(
 
 /**
  * Estado de una fila de la Pokédex, derivado de la **posesión en la partida
- * actual** y del historial permanente:
+ * actual** y del historial permanente. El orden de las ramas es la prioridad:
  *
- * - **CAUGHT**: especie poseída **ahora** (en `ownedSpecies`) o el inicial
- *   elegido (`starterSpeciesId`). Tras un reset, solo el inicial conserva el
- *   estado: las demás especies pasan a SEEN aunque se hubieran capturado
- *   antes (no se usa `caughtSpecies` ni `rewardedSpecies`, que son historia
- *   permanente).
- * - **SEEN**: especie conocida (avistada alguna vez o con captura histórica)
- *   pero no poseída en la partida actual. `caughtSpecies` **sí** sirve para
- *   "reconocer" especies conocidas, pero **no** para darle el estado CAUGHT.
- * - **UNKNOWN**: especie nunca conocida.
+ * - **CAUGHT**: especie poseída **ahora** (`ownedSpecies`) o el inicial
+ *   elegido (`starterSpeciesId`). Lo poseído siempre gana.
+ * - **REGISTERED**: capturada alguna vez (`caughtSpecies`) pero no poseída en
+ *   esta run. Es el estado que sobrevive al reset: el jugador ya la atrapó.
+ * - **SEEN**: conocida solo por avistamiento (`seenSpecies`).
+ * - **UNKNOWN**: nunca conocida.
+ *
+ * `caughtSpecies ⊆ seenSpecies` se mantiene por construcción (todo camino que
+ * registra una captura registra también el avistamiento), así que REGISTERED
+ * se evalúa antes que SEEN sin ambigüedad.
  */
 fun dexStatusFor(
     speciesId: String,
@@ -98,9 +105,10 @@ fun dexStatusFor(
     // Posesión en la partida actual: lo poseído siempre gana, y el inicial
     // elegido es posesión por definición (sobrevive al reset).
     speciesId in ownedSpecies || speciesId == starterSpeciesId -> DexStatus.CAUGHT
-    // Historia permanente: conocida de antes de esta run (avistada o con
-    // captura histórica) queda como avistada, sin poseerla ahora.
-    speciesId in seenSpecies || speciesId in caughtSpecies -> DexStatus.SEEN
+    // Historia permanente: ya se capturó, aunque el reset la sacara de la run.
+    speciesId in caughtSpecies -> DexStatus.REGISTERED
+    // Solo avistada: conocida, nunca capturada.
+    speciesId in seenSpecies -> DexStatus.SEEN
     else -> DexStatus.UNKNOWN
 }
 

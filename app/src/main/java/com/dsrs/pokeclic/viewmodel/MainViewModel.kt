@@ -1192,7 +1192,9 @@ class MainViewModel(
             dexHistorySignature = signature
         }
         val dexSeenCount = dexEntriesCache.count { it.status != DexStatus.UNKNOWN }
-        val dexCaughtCount = dexEntriesCache.count { it.status == DexStatus.CAUGHT }
+        val dexCaughtCount = dexEntriesCache.count {
+            it.status == DexStatus.CAUGHT || it.status == DexStatus.REGISTERED
+        }
 
         return state.copy(
             zoneName = zone.name,
