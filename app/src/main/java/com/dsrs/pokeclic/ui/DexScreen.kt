@@ -484,10 +484,13 @@ private fun BallIndicator(status: DexStatus, modifier: Modifier = Modifier) {
  * - **UNKNOWN** (y `null` del mapa en especie conocida) → «?» pale green
  *   centrada de alto contraste, sin ningún texto accesible que revele la
  *   identidad en UNKNOWN (el número es el único dato de la fila).
- * - **SEEN/CAUGHT** → el PNG original completo (96×96 cuadrado, con su
- *   margen transparente ya integrado), centrado, a escala
- *   (`ContentScale.Fit`) y con margen de 4.dp: sin recortes, deformación,
- *   filtros ni tinte; la opacidad es plena en los dos estados.
+ * - **SEEN/REGISTERED/CAUGHT** → **canvas oficial completo** de 96×96,
+ *   centrado, a escala (`ContentScale.Fit`) y con margen de 4.dp. No se
+ *   recorta el margen transparente ni se normaliza el tamaño por especie:
+ *   se preserva la proporción relativa entre Pokémon (el canvas oficial ya
+ *   la define). Se dibuja con `PixelImage` (`FilterQuality.None`) porque es
+ *   pixel art reescalado y la interpolación bilineal emborrona los bordes.
+ *   La opacidad es plena en los tres estados; el estado lo marca la Pokéball.
  */
 @Composable
 private fun DexSpriteSlot(entry: PokedexRow, known: Boolean) {
@@ -501,8 +504,8 @@ private fun DexSpriteSlot(entry: PokedexRow, known: Boolean) {
         contentAlignment = Alignment.Center
     ) {
         if (spriteRes != null) {
-            Image(
-                painter = painterResource(spriteRes),
+            PixelImage(
+                res = spriteRes,
                 // El nombre exterior de la fila es la descripción accesible:
                 // el sprite no añade ni repite texto.
                 contentDescription = null,
