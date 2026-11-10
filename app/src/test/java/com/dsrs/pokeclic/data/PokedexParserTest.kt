@@ -1,13 +1,11 @@
 ﻿/**
- * Pruebas del parser del catálogo adaptado de la Pokédex y del propio asset:
- * paridad con `pokemon_tipo_unico.json` (números, nombres y tipos), validez de
- * los identificadores, referencias cruzadas con `SpeciesCatalog` y errores de
- * esquema.
+ * Pruebas del parser del catálogo de la Pokédex y del propio asset:
+ * validez de los identificadores, referencias cruzadas con `SpeciesCatalog` y
+ * errores de esquema.
  */
 package com.dsrs.pokeclic.data
 
 import java.io.File
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
@@ -27,22 +25,6 @@ private fun assetText(name: String): String {
     return file.readText()
 }
 
-/**
- * Lee el **JSON original de referencia** (`pokemon_tipo_unico.json`) del
- * classpath de **recursos de test** (`src/test/resources`), vía
- * [Class.getResourceAsStream]. Es un recurso de prueba: no forma parte del
- * APK y por eso no se busca en `assets`. Si falta, la prueba falla con un
- * mensaje claro en lugar de devolver basura.
- */
-private fun originalJsonText(name: String = "pokemon_tipo_unico.json"): String {
-    val stream = PokedexParserTest::class.java
-        .getResourceAsStream("/$name")
-        ?: throw IllegalStateException(
-            "Recurso de test ausente: /$name (debe estar en app/src/test/resources)"
-        )
-    return stream.use { input -> input.readBytes().toString(Charsets.UTF_8) }
-}
-
 class PokedexParserTest {
 
     /** Ids de `SpeciesCatalog` (contenido del juego) que deben existir en la dex. */
@@ -59,24 +41,6 @@ class PokedexParserTest {
 
         assertEquals(151, catalog.size)
         assertEquals((1..151).toList(), catalog.ordered.map { it.dexNumber })
-    }
-
-    @Test
-    fun adaptedCatalog_keepsNameTypeAndNumberFromOriginal() {
-        val original = JSONObject(originalJsonText())
-        val originalArray = original.getJSONArray("pokemon")
-        val catalog = parsePokedexCatalog(assetText(DEX_CATALOG_ASSET))
-
-        // Misma longitud, mismo orden y mismos datos de presentación: el
-        // catálogo adaptado solo añade `id`, no toca nombre, número ni tipo.
-        assertEquals(originalArray.length(), catalog.size)
-        (0 until originalArray.length()).forEach { index ->
-            val source = originalArray.getJSONObject(index)
-            val adapted = catalog.ordered[index]
-            assertEquals(source.getInt("id"), adapted.dexNumber)
-            assertEquals(source.getString("nombre"), adapted.name)
-            assertEquals(source.getJSONArray("tipos").getString(0), adapted.typeName)
-        }
     }
 
     @Test

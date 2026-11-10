@@ -18,9 +18,10 @@
  *   no depende solo del color: cada Pokéball lleva su descripción accesible.
  *
  * **Imágenes (decisión de alcance TEST): no se carga, decodifica ni presenta
- * ninguna imagen de Pokémon.** Las referencias de sprite se conservan para el
- * futuro. El estado CAUGHT lo marca la posesión de la run (`ownedSpecies` /
- * `starterSpeciesId`), no el historial permanente.
+ * ninguna imagen de Pokémon.** Los sprites disponibles viven aparte
+ * (`PokedexSprites`) y esta pantalla todavía no los usa. El estado CAUGHT lo
+ * marca la posesión de la run (`ownedSpecies` / `starterSpeciesId`), no el
+ * historial permanente.
  */
 package com.dsrs.pokeclic.ui
 
@@ -79,21 +80,6 @@ import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.viewmodel.GameUiState
-
-/**
- * Referencias de sprite por especie, **reservadas para una versión futura**:
- * la Pokédex (TEST) actual NO carga, decodifica ni presenta imágenes de
- * Pokémon (decisión: no mostrar imágenes reales aunque los recursos existan).
- * El mapa se conserva como punto de reintroducción documentado.
- */
-private val DEX_SPRITES: Map<String, Int> = mapOf(
-    "bulbasaur" to R.drawable.bulbasaur,
-    "charmander" to R.drawable.charmander,
-    "squirtle" to R.drawable.squirtle,
-    "golem" to R.drawable.golem,
-    "raichu" to R.drawable.raichu,
-    "starmie" to R.drawable.starmie
-)
 
 /**
  * Paleta de tipos de la Pokédex (decoración, no reglas de juego): nombres en

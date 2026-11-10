@@ -10,11 +10,10 @@
  * funcionando; el diagnóstico queda en `Logcat` con la etiqueta
  * [DEX_LOG_TAG].
  *
- * Fuente de datos: `assets/pokedex_catalogo.json`, un catálogo **adaptado e
- * independiente** con identificadores explícitos y estables, derivado de
- * `pokemon_tipo_unico.json`. Ese original no se usa en ejecución: vive como
- * recurso de **test** (`app/src/test/resources`) para comprobar la paridad de
- * números, nombres y tipos en el parseo, y no se empaqueta en el APK.
+ * Fuente de datos: `assets/pokedex_catalogo.json`, catálogo único de la
+ * Pokédex con identificadores explícitos y estables, independizado del juego
+ * (`SpeciesCatalog`): es la única fuente que lee la ejecución y no se empaqueta
+ * nada adicional del catálogo en el APK.
  */
 package com.dsrs.pokeclic.data
 

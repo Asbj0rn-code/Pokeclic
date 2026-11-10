@@ -342,7 +342,7 @@ class MainViewModel(
      * la hoja de opciones que la invocó.
      *
      * El VM manda: además del cierre de la hoja, **bloquea** la apertura en
-     * estados incompatibles (sin starter, pesca, gimnasio o modales en curso):
+     * estados incompatibles (sin starter, captura, gimnasio o modales en curso):
      * la capa de opciones ya no es el único camino y duplicar el guard aquí
      * es lo que impide entrar con un minijuego abajo.
      *
@@ -867,8 +867,9 @@ class MainViewModel(
      * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
      * encuentro.
      *
-     * La captura es la del **producto final** de la pesca (fase CAPTURED), es
-     * decir, la que entra en posesión; el avistamiento ya se registró en
+     * El registro con captura aplica al **resultado final** del minijuego
+     * (fase CAPTURED), es decir, la especie que entra en posesión; el
+     * avistamiento ya se registró en
      * `spawnEncounter`. Aquí se añade también al historial permanente de la
      * Pokédex (`caughtSpecies`).
      */

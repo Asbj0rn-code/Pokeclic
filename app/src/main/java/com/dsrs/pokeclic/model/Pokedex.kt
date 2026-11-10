@@ -8,9 +8,7 @@
  *
  * **Tipo de Pokédex separado del combate** (decisión de alcance): `typeName`
  * es el nombre del tipo tal como lo aporta el catálogo adaptado
- * (`assets/pokedex_catalogo.json`, derivado y verificado contra
- * `pokemon_tipo_unico.json`, que vive como recurso de test en
- * `app/src/test/resources` y no se empaqueta), conservado como texto para
+ * (`assets/pokedex_catalogo.json`), conservado como texto para
  * **no tocar** `PokemonType` ni sus tablas de efectividad (los tipos Bicho,
  * Tierra, Lucha, Psíquico, Hielo, Fantasma y Dragón no existen en el enum del
  * combate).
