@@ -1,6 +1,7 @@
 package com.dsrs.pokeclic.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.dsrs.pokeclic.model.GameSnapshot
 
 /**
@@ -36,10 +37,13 @@ interface GameStateStore {
  * El sistema de mejoras se retiró del modelo por no tener UI; cuando vuelva,
  * habrá que añadir aquí su mapa persistido (`upgrades`).
  */
-class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
+class SharedPreferencesGameStateStore internal constructor(
+    private val prefs: SharedPreferences
+) : GameStateStore {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    )
 
     override fun load(): GameSnapshot? {
         if (!prefs.contains(KEY_COINS)) return null

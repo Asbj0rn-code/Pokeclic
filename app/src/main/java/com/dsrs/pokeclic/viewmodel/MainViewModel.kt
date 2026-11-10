@@ -342,9 +342,11 @@ class MainViewModel(
      * la hoja de opciones que la invocó.
      *
      * El VM manda: además del cierre de la hoja, **bloquea** la apertura en
-     * estados incompatibles (sin starter, captura, gimnasio o modales en curso):
-     * la capa de opciones ya no es el único camino y duplicar el guard aquí
-     * es lo que impide entrar con un minijuego abajo.
+     * estados incompatibles (sin starter, encuentro/captura, gimnasio o
+     * modales en curso): la capa de opciones ya no es el único camino y
+     * duplicar el guard aquí es lo que impide entrar con un minijuego abajo.
+     * `encounter` ya implica `catching` (el minijuego arranca con el encuentro
+     * y ambos se limpian juntos), así que no se comprueba por separado.
      *
      * La pantalla de Pokédex es una **rama de composición** de su propia
      * pantalla a pantalla completa: se pausa el avance de caminar
@@ -356,7 +358,6 @@ class MainViewModel(
         val blocked = state.needsStarter ||
             state.isLeadOpen ||
             state.encounter != null ||
-            state.catching != null ||
             state.gym != null ||
             state.gymIntro != null
         if (blocked) return
