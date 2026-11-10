@@ -48,6 +48,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
             coins = prefs.getLong(KEY_COINS, 0L),
             seenSpecies = decodeSet(prefs.getString(KEY_SEEN, null)),
             rewardedSpecies = decodeSet(prefs.getString(KEY_REWARDED, null)),
+            caughtSpecies = decodeSet(prefs.getString(KEY_CAUGHT, null)),
             medals = decodeSet(prefs.getString(KEY_MEDALS, null)),
             starterSpeciesId = decodeNullable(prefs.getString(KEY_STARTER, null)),
             starterBond = prefs.getInt(KEY_BOND, 0),
@@ -65,6 +66,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
             .putLong(KEY_COINS, snapshot.coins)
             .putString(KEY_SEEN, encodeSet(snapshot.seenSpecies))
             .putString(KEY_REWARDED, encodeSet(snapshot.rewardedSpecies))
+            .putString(KEY_CAUGHT, encodeSet(snapshot.caughtSpecies))
             .putString(KEY_MEDALS, encodeSet(snapshot.medals))
             .putString(KEY_STARTER, encodeNullable(snapshot.starterSpeciesId))
             .putInt(KEY_BOND, snapshot.starterBond)
@@ -97,6 +99,7 @@ class SharedPreferencesGameStateStore(context: Context) : GameStateStore {
         const val KEY_COINS = "coins"
         const val KEY_SEEN = "seen"
         const val KEY_REWARDED = "rewarded"
+        const val KEY_CAUGHT = "caught"
         const val KEY_MEDALS = "medals"
         const val KEY_STARTER = "starter"
         const val KEY_BOND = "starter_bond"

@@ -162,9 +162,11 @@ fun isGymPending(zone: Zone, gymClearedRun: Set<String>): Boolean =
  * navegación y animación del entrenador) queda fuera a propósito.
  *
  * **Permanentes**: `playerName`, `seenSpecies`, `rewardedSpecies`, `medals`,
- * `starterSpeciesId` y `starterBond`. **De la run**: `ownedSpecies`,
- * `leadSpeciesId`, `gymClearedRun` y el progreso de zona; se vacían (o vuelven
- * al starter) al resetear.
+ * `starterSpeciesId`, `starterBond` y `caughtSpecies` (capturas históricas
+ * para la Pokédex); los avistamientos y las capturas históricas **sobreviven
+ * al reset de la run** y solo desaparecen con el borrado total. **De la
+ * run**: `ownedSpecies`, `leadSpeciesId`, `gymClearedRun` y el progreso de
+ * zona; se vacían (o vuelven al starter) al resetear.
  *
  * Las mejoras comprables (potencia de clic y vida) se retiraron por no tener UI
  * ni forma de adquirirse; volverán como sistema de progresión en una etapa
@@ -175,6 +177,15 @@ data class GameSnapshot(
     val coins: Long = 0L,
     val seenSpecies: Set<String> = emptySet(),
     val rewardedSpecies: Set<String> = emptySet(),
+    /**
+     * Capturas históricas (meta permanente): especies alguna vez obtenidas por
+     * el jugador, incluida la evolución del inicial elegido. Alimenta el
+     * estado **Capturado** de la Pokédex y sobrevive a los resets de run.
+     *
+     * Se separa a propósito de `ownedSpecies` (posesión de la run actual) y de
+     * `rewardedSpecies` (especies ya recompensadas una única vez).
+     */
+    val caughtSpecies: Set<String> = emptySet(),
     val medals: Set<String> = emptySet(),
     val starterSpeciesId: String? = null,
     val starterBond: Int = 0,

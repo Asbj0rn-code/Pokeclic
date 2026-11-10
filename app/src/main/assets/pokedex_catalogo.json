@@ -1,0 +1,911 @@
+{
+    "schemaVersion":  1,
+    "especies":  [
+                     {
+                         "id":  "bulbasaur",
+                         "dex":  1,
+                         "nombre":  "Bulbasaur",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "ivysaur",
+                         "dex":  2,
+                         "nombre":  "Ivysaur",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "venusaur",
+                         "dex":  3,
+                         "nombre":  "Venusaur",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "charmander",
+                         "dex":  4,
+                         "nombre":  "Charmander",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "charmeleon",
+                         "dex":  5,
+                         "nombre":  "Charmeleon",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "charizard",
+                         "dex":  6,
+                         "nombre":  "Charizard",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "squirtle",
+                         "dex":  7,
+                         "nombre":  "Squirtle",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "wartortle",
+                         "dex":  8,
+                         "nombre":  "Wartortle",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "blastoise",
+                         "dex":  9,
+                         "nombre":  "Blastoise",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "caterpie",
+                         "dex":  10,
+                         "nombre":  "Caterpie",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "metapod",
+                         "dex":  11,
+                         "nombre":  "Metapod",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "butterfree",
+                         "dex":  12,
+                         "nombre":  "Butterfree",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "weedle",
+                         "dex":  13,
+                         "nombre":  "Weedle",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "kakuna",
+                         "dex":  14,
+                         "nombre":  "Kakuna",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "beedrill",
+                         "dex":  15,
+                         "nombre":  "Beedrill",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "pidgey",
+                         "dex":  16,
+                         "nombre":  "Pidgey",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "pidgeotto",
+                         "dex":  17,
+                         "nombre":  "Pidgeotto",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "pidgeot",
+                         "dex":  18,
+                         "nombre":  "Pidgeot",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "rattata",
+                         "dex":  19,
+                         "nombre":  "Rattata",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "raticate",
+                         "dex":  20,
+                         "nombre":  "Raticate",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "spearow",
+                         "dex":  21,
+                         "nombre":  "Spearow",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "fearow",
+                         "dex":  22,
+                         "nombre":  "Fearow",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "ekans",
+                         "dex":  23,
+                         "nombre":  "Ekans",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "arbok",
+                         "dex":  24,
+                         "nombre":  "Arbok",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "pikachu",
+                         "dex":  25,
+                         "nombre":  "Pikachu",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "raichu",
+                         "dex":  26,
+                         "nombre":  "Raichu",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "sandshrew",
+                         "dex":  27,
+                         "nombre":  "Sandshrew",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "sandslash",
+                         "dex":  28,
+                         "nombre":  "Sandslash",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "nidoran_f",
+                         "dex":  29,
+                         "nombre":  "Nidoran♀",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "nidorina",
+                         "dex":  30,
+                         "nombre":  "Nidorina",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "nidoqueen",
+                         "dex":  31,
+                         "nombre":  "Nidoqueen",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "nidoran_m",
+                         "dex":  32,
+                         "nombre":  "Nidoran♂",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "nidorino",
+                         "dex":  33,
+                         "nombre":  "Nidorino",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "nidoking",
+                         "dex":  34,
+                         "nombre":  "Nidoking",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "clefairy",
+                         "dex":  35,
+                         "nombre":  "Clefairy",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "clefable",
+                         "dex":  36,
+                         "nombre":  "Clefable",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "vulpix",
+                         "dex":  37,
+                         "nombre":  "Vulpix",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "ninetales",
+                         "dex":  38,
+                         "nombre":  "Ninetales",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "jigglypuff",
+                         "dex":  39,
+                         "nombre":  "Jigglypuff",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "wigglytuff",
+                         "dex":  40,
+                         "nombre":  "Wigglytuff",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "zubat",
+                         "dex":  41,
+                         "nombre":  "Zubat",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "golbat",
+                         "dex":  42,
+                         "nombre":  "Golbat",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "oddish",
+                         "dex":  43,
+                         "nombre":  "Oddish",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "gloom",
+                         "dex":  44,
+                         "nombre":  "Gloom",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "vileplume",
+                         "dex":  45,
+                         "nombre":  "Vileplume",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "paras",
+                         "dex":  46,
+                         "nombre":  "Paras",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "parasect",
+                         "dex":  47,
+                         "nombre":  "Parasect",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "venonat",
+                         "dex":  48,
+                         "nombre":  "Venonat",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "venomoth",
+                         "dex":  49,
+                         "nombre":  "Venomoth",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "diglett",
+                         "dex":  50,
+                         "nombre":  "Diglett",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "dugtrio",
+                         "dex":  51,
+                         "nombre":  "Dugtrio",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "meowth",
+                         "dex":  52,
+                         "nombre":  "Meowth",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "persian",
+                         "dex":  53,
+                         "nombre":  "Persian",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "psyduck",
+                         "dex":  54,
+                         "nombre":  "Psyduck",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "golduck",
+                         "dex":  55,
+                         "nombre":  "Golduck",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "mankey",
+                         "dex":  56,
+                         "nombre":  "Mankey",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "primeape",
+                         "dex":  57,
+                         "nombre":  "Primeape",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "growlithe",
+                         "dex":  58,
+                         "nombre":  "Growlithe",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "arcanine",
+                         "dex":  59,
+                         "nombre":  "Arcanine",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "poliwag",
+                         "dex":  60,
+                         "nombre":  "Poliwag",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "poliwhirl",
+                         "dex":  61,
+                         "nombre":  "Poliwhirl",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "poliwrath",
+                         "dex":  62,
+                         "nombre":  "Poliwrath",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "abra",
+                         "dex":  63,
+                         "nombre":  "Abra",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "kadabra",
+                         "dex":  64,
+                         "nombre":  "Kadabra",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "alakazam",
+                         "dex":  65,
+                         "nombre":  "Alakazam",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "machop",
+                         "dex":  66,
+                         "nombre":  "Machop",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "machoke",
+                         "dex":  67,
+                         "nombre":  "Machoke",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "machamp",
+                         "dex":  68,
+                         "nombre":  "Machamp",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "bellsprout",
+                         "dex":  69,
+                         "nombre":  "Bellsprout",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "weepinbell",
+                         "dex":  70,
+                         "nombre":  "Weepinbell",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "victreebel",
+                         "dex":  71,
+                         "nombre":  "Victreebel",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "tentacool",
+                         "dex":  72,
+                         "nombre":  "Tentacool",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "tentacruel",
+                         "dex":  73,
+                         "nombre":  "Tentacruel",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "geodude",
+                         "dex":  74,
+                         "nombre":  "Geodude",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "graveler",
+                         "dex":  75,
+                         "nombre":  "Graveler",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "golem",
+                         "dex":  76,
+                         "nombre":  "Golem",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "ponyta",
+                         "dex":  77,
+                         "nombre":  "Ponyta",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "rapidash",
+                         "dex":  78,
+                         "nombre":  "Rapidash",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "slowpoke",
+                         "dex":  79,
+                         "nombre":  "Slowpoke",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "slowbro",
+                         "dex":  80,
+                         "nombre":  "Slowbro",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "magnemite",
+                         "dex":  81,
+                         "nombre":  "Magnemite",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "magneton",
+                         "dex":  82,
+                         "nombre":  "Magneton",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "farfetchd",
+                         "dex":  83,
+                         "nombre":  "Farfetch\u0027d",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "doduo",
+                         "dex":  84,
+                         "nombre":  "Doduo",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "dodrio",
+                         "dex":  85,
+                         "nombre":  "Dodrio",
+                         "tipo":  "Volador"
+                     },
+                     {
+                         "id":  "seel",
+                         "dex":  86,
+                         "nombre":  "Seel",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "dewgong",
+                         "dex":  87,
+                         "nombre":  "Dewgong",
+                         "tipo":  "Hielo"
+                     },
+                     {
+                         "id":  "grimer",
+                         "dex":  88,
+                         "nombre":  "Grimer",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "muk",
+                         "dex":  89,
+                         "nombre":  "Muk",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "shellder",
+                         "dex":  90,
+                         "nombre":  "Shellder",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "cloyster",
+                         "dex":  91,
+                         "nombre":  "Cloyster",
+                         "tipo":  "Hielo"
+                     },
+                     {
+                         "id":  "gastly",
+                         "dex":  92,
+                         "nombre":  "Gastly",
+                         "tipo":  "Fantasma"
+                     },
+                     {
+                         "id":  "haunter",
+                         "dex":  93,
+                         "nombre":  "Haunter",
+                         "tipo":  "Fantasma"
+                     },
+                     {
+                         "id":  "gengar",
+                         "dex":  94,
+                         "nombre":  "Gengar",
+                         "tipo":  "Fantasma"
+                     },
+                     {
+                         "id":  "onix",
+                         "dex":  95,
+                         "nombre":  "Onix",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "drowzee",
+                         "dex":  96,
+                         "nombre":  "Drowzee",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "hypno",
+                         "dex":  97,
+                         "nombre":  "Hypno",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "krabby",
+                         "dex":  98,
+                         "nombre":  "Krabby",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "kingler",
+                         "dex":  99,
+                         "nombre":  "Kingler",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "voltorb",
+                         "dex":  100,
+                         "nombre":  "Voltorb",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "electrode",
+                         "dex":  101,
+                         "nombre":  "Electrode",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "exeggcute",
+                         "dex":  102,
+                         "nombre":  "Exeggcute",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "exeggutor",
+                         "dex":  103,
+                         "nombre":  "Exeggutor",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "cubone",
+                         "dex":  104,
+                         "nombre":  "Cubone",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "marowak",
+                         "dex":  105,
+                         "nombre":  "Marowak",
+                         "tipo":  "Tierra"
+                     },
+                     {
+                         "id":  "hitmonlee",
+                         "dex":  106,
+                         "nombre":  "Hitmonlee",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "hitmonchan",
+                         "dex":  107,
+                         "nombre":  "Hitmonchan",
+                         "tipo":  "Lucha"
+                     },
+                     {
+                         "id":  "lickitung",
+                         "dex":  108,
+                         "nombre":  "Lickitung",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "koffing",
+                         "dex":  109,
+                         "nombre":  "Koffing",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "weezing",
+                         "dex":  110,
+                         "nombre":  "Weezing",
+                         "tipo":  "Veneno"
+                     },
+                     {
+                         "id":  "rhyhorn",
+                         "dex":  111,
+                         "nombre":  "Rhyhorn",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "rhydon",
+                         "dex":  112,
+                         "nombre":  "Rhydon",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "chansey",
+                         "dex":  113,
+                         "nombre":  "Chansey",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "tangela",
+                         "dex":  114,
+                         "nombre":  "Tangela",
+                         "tipo":  "Planta"
+                     },
+                     {
+                         "id":  "kangaskhan",
+                         "dex":  115,
+                         "nombre":  "Kangaskhan",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "horsea",
+                         "dex":  116,
+                         "nombre":  "Horsea",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "seadra",
+                         "dex":  117,
+                         "nombre":  "Seadra",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "goldeen",
+                         "dex":  118,
+                         "nombre":  "Goldeen",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "seaking",
+                         "dex":  119,
+                         "nombre":  "Seaking",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "staryu",
+                         "dex":  120,
+                         "nombre":  "Staryu",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "starmie",
+                         "dex":  121,
+                         "nombre":  "Starmie",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "mr_mime",
+                         "dex":  122,
+                         "nombre":  "Mr. Mime",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "scyther",
+                         "dex":  123,
+                         "nombre":  "Scyther",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "jynx",
+                         "dex":  124,
+                         "nombre":  "Jynx",
+                         "tipo":  "Hielo"
+                     },
+                     {
+                         "id":  "electabuzz",
+                         "dex":  125,
+                         "nombre":  "Electabuzz",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "magmar",
+                         "dex":  126,
+                         "nombre":  "Magmar",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "pinsir",
+                         "dex":  127,
+                         "nombre":  "Pinsir",
+                         "tipo":  "Bicho"
+                     },
+                     {
+                         "id":  "tauros",
+                         "dex":  128,
+                         "nombre":  "Tauros",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "magikarp",
+                         "dex":  129,
+                         "nombre":  "Magikarp",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "gyarados",
+                         "dex":  130,
+                         "nombre":  "Gyarados",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "lapras",
+                         "dex":  131,
+                         "nombre":  "Lapras",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "ditto",
+                         "dex":  132,
+                         "nombre":  "Ditto",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "eevee",
+                         "dex":  133,
+                         "nombre":  "Eevee",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "vaporeon",
+                         "dex":  134,
+                         "nombre":  "Vaporeon",
+                         "tipo":  "Agua"
+                     },
+                     {
+                         "id":  "jolteon",
+                         "dex":  135,
+                         "nombre":  "Jolteon",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "flareon",
+                         "dex":  136,
+                         "nombre":  "Flareon",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "porygon",
+                         "dex":  137,
+                         "nombre":  "Porygon",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "omanyte",
+                         "dex":  138,
+                         "nombre":  "Omanyte",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "omastar",
+                         "dex":  139,
+                         "nombre":  "Omastar",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "kabuto",
+                         "dex":  140,
+                         "nombre":  "Kabuto",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "kabutops",
+                         "dex":  141,
+                         "nombre":  "Kabutops",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "aerodactyl",
+                         "dex":  142,
+                         "nombre":  "Aerodactyl",
+                         "tipo":  "Roca"
+                     },
+                     {
+                         "id":  "snorlax",
+                         "dex":  143,
+                         "nombre":  "Snorlax",
+                         "tipo":  "Normal"
+                     },
+                     {
+                         "id":  "articuno",
+                         "dex":  144,
+                         "nombre":  "Articuno",
+                         "tipo":  "Hielo"
+                     },
+                     {
+                         "id":  "zapdos",
+                         "dex":  145,
+                         "nombre":  "Zapdos",
+                         "tipo":  "Eléctrico"
+                     },
+                     {
+                         "id":  "moltres",
+                         "dex":  146,
+                         "nombre":  "Moltres",
+                         "tipo":  "Fuego"
+                     },
+                     {
+                         "id":  "dratini",
+                         "dex":  147,
+                         "nombre":  "Dratini",
+                         "tipo":  "Dragón"
+                     },
+                     {
+                         "id":  "dragonair",
+                         "dex":  148,
+                         "nombre":  "Dragonair",
+                         "tipo":  "Dragón"
+                     },
+                     {
+                         "id":  "dragonite",
+                         "dex":  149,
+                         "nombre":  "Dragonite",
+                         "tipo":  "Dragón"
+                     },
+                     {
+                         "id":  "mewtwo",
+                         "dex":  150,
+                         "nombre":  "Mewtwo",
+                         "tipo":  "Psíquico"
+                     },
+                     {
+                         "id":  "mew",
+                         "dex":  151,
+                         "nombre":  "Mew",
+                         "tipo":  "Psíquico"
+                     }
+                 ]
+}

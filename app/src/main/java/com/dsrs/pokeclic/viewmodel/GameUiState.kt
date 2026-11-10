@@ -7,6 +7,7 @@ import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.model.TrainerState
@@ -22,7 +23,7 @@ import com.dsrs.pokeclic.model.TrainerState
  *
  * Grupos:
  * - **meta permanente**: [playerName], [coins], [seenSpecies], [rewardedSpecies],
- *   [medals], [starterSpeciesId], [starterBond].
+ *   [caughtSpecies], [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [gymClearedRun], [zoneIndex], [zoneClicks].
  * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [fishing],
@@ -35,6 +36,14 @@ data class GameUiState(
     val coins: Long = 0L,
     val seenSpecies: Set<String> = emptySet(),
     val rewardedSpecies: Set<String> = emptySet(),
+    /**
+     * Capturas históricas (meta permanente): especies alguna vez obtenidas.
+     * Sobrevive al reset y muere con el borrado total. Para la Pokédex sirve
+     * para **reconocer especies conocidas** (avistadas), pero **NO**
+     * determina el estado CAUGHT: ese lo marca la posesión de la run actual
+     * (`ownedSpecies` o `starterSpeciesId`).
+     */
+    val caughtSpecies: Set<String> = emptySet(),
     val medals: Set<String> = emptySet(),
     val starterSpeciesId: String? = null,
     val starterBond: Int = 0,
@@ -68,6 +77,13 @@ data class GameUiState(
     val contentTab: AppTab = AppTab.Home,
     val isOptionsOpen: Boolean = false,
     val isLeadOpen: Boolean = false,
+    /**
+     * Pantalla propia de Pokédex a pantalla completa (TEST). No es un overlay:
+     * mientras esté abierta no se compone el escenario, el mapa, el HUD ni el
+     * menú inferior, y el avance de caminar queda en pausa (exige una
+     * pulsación nueva al volver).
+     */
+    val isPokedexOpen: Boolean = false,
 
     // --- derivados (los rellena el ViewModel) ---
     val zoneName: String = "",
@@ -93,7 +109,17 @@ data class GameUiState(
     val hasWilds: Boolean = true,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
-    val starterOptions: List<StarterOption> = emptyList()
+    val starterOptions: List<StarterOption> = emptyList(),
+
+    // --- Pokédex (derivados del catálogo + historial) ---
+    /** Filas 001..151 con el estado de cada especie, ya resuelto para la UI. */
+    val dexEntries: List<PokedexRow> = emptyList(),
+    /** Especies avistadas que constan en el catálogo (para el encabezado). */
+    val dexSeenCount: Int = 0,
+    /** Especies capturadas que constan en el catálogo (para el encabezado). */
+    val dexCaughtCount: Int = 0,
+    /** La carga del catálogo falló: la Pokédex muestra un error y permite volver. */
+    val dexLoadFailed: Boolean = false
 ) {
     /** Fracción 0f..1f de progreso en la zona actual, lista para la barra. */
     val zoneProgress: Float
