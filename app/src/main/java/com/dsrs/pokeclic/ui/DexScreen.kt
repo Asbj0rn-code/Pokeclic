@@ -2,26 +2,30 @@
  * Pantalla de la Pokédex con estética de dispositivo: carcasa roja plana,
  * **franja de estado compacta** de rojo oscuro y **una única pantalla LCD**
  * oscura y redondeada que ocupa el resto. Todo con los tokens compartidos
- * (`RetroTheme`); sin imágenes reales de Pokémon.
+ * (`RetroTheme`).
  *
  * Reglas de la información (estados):
- * - **UNKNOWN**: número y visor con «?» pale green de alto contraste; sin
- *   nombre, tipo ni Pokéball (y sin textos de accesibilidad que revelen
- *   identidad).
- * - **SEEN**: identificador provisional (nombre + «Falta imagen» dentro del
- *   visor, que crece en alto para nombres largos), nombre independiente
- *   fuera del visor, tipo debajo del nombre y **Pokéball gris tenue**
+ * - **UNKNOWN**: número y recuadro con «?» pale green de alto contraste; sin
+ *   sprite, nombre, tipo ni Pokéball (y sin textos de accesibilidad que
+ *   revelen identidad).
+ * - **SEEN**: sprite completo y a color del Pokémon, nombre independiente
+ *   fuera del recuadro, tipo debajo del nombre y **Pokéball gris tenue**
  *   (escala de grises, opacidad 0.35): especie conocida que no está poseída
  *   en la partida actual.
- * - **CAUGHT**: misma estructura, con Pokéball a color y opacidad plena:
- *   especie poseída en la partida actual o inicial elegido. La distinción
- *   no depende solo del color: cada Pokéball lleva su descripción accesible.
+ * - **CAUGHT**: mismo sprite y mismas condiciones, con Pokéball a color y
+ *   opacidad plena: especie poseída en la partida actual o inicial elegido.
+ *   La distinción no depende solo del color: cada Pokéball lleva su
+ *   descripción accesible.
  *
- * **Imágenes (decisión de alcance TEST): no se carga, decodifica ni presenta
- * ninguna imagen de Pokémon.** Los sprites disponibles viven aparte
- * (`PokedexSprites`) y esta pantalla todavía no los usa. El estado CAUGHT lo
- * marca la posesión de la run (`ownedSpecies` / `starterSpeciesId`), no el
- * historial permanente.
+ * **Sprites reales**: cada fila resuelve su recurso por `dexNumber` con
+ * `pokedexSprite` (mapa de `PokedexSprites.kt`, aportado por dev) y se
+ * presenta completo y centrado en un **recuadro fijo** (ancho y alto iguales
+ * en todas las filas y estados), sin filtros, tintes, siluetas ni recortes.
+ * Los sprites son PNG cuadrados de 96×96 con margenes transparentes, así
+ * que `ContentScale.Fit` es suficiente: sin normalizaciones adicionales. La
+ * diferencia SEEN/CAUGHT está únicamente en el indicador de Pokéball. El
+ * estado CAUGHT lo marca la posesión de la run (`ownedSpecies` /
+ * `starterSpeciesId`), no el historial permanente.
  */
 package com.dsrs.pokeclic.ui
 
@@ -38,7 +42,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -67,6 +70,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -362,7 +366,7 @@ private fun DexError(modifier: Modifier = Modifier) {
 
 /**
  * Una fila del listado dentro de la pantalla LCD, en el orden pactado:
- * número → visor provisional → nombre exterior y tipo → Pokéball.
+ * número → sprite en recuadro fijo → nombre exterior y tipo → Pokéball.
  */
 @Composable
 private fun DexRow(entry: PokedexRow) {
@@ -385,7 +389,7 @@ private fun DexRow(entry: PokedexRow) {
             modifier = Modifier.width(44.dp)
         )
 
-        ReservedImageSlot(entry, known)
+        DexSpriteSlot(entry, known)
 
         Column(
             modifier = Modifier
@@ -443,47 +447,43 @@ private fun BallIndicator(isCaught: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * Visor **reservado para la futura imagen** de la especie: ventana oscura con
- * una sola línea de marco fino, sin bisel ni sombras (adorno repetido evitado
- * por diseño). Su **geometría es uniforme en los tres estados**: ancho fijo
- * 76.dp y altura mínima 48.dp que crece con los nombres largos para no
- * recortarlos. Contenido provisional (sin decodificar ni pintar imágenes):
- * - **UNKNOWN** → «?» pale green centrada de alto contraste (verde pálido
- *   sobre casi negro), sin ningún texto accesible que revele la identidad
- *   (el número es el único dato de la fila).
- * - **SEEN/CAUGHT** → nombre de la especie como identificador temporal con
- *   la etiqueta «Falta imagen» debajo. La imagen futura sustituirá a este
- *   bloque; el nombre exterior de la fila ya es permanente.
+ * Recuadro **fijo** del sprite: una misma geometría en todas las filas y
+ * estados (ancho 76.dp, alto 64.dp); su tamaño no depende de la especie ni
+ * del estado, y el sprite no modifica ni el recuadro ni la altura de la
+ * fila. La resolución del recurso es **directa por número**: entrada n →
+ * `pokedexSprite(entry.dexNumber)`, siempre por dato de la fila y nunca por
+ * posición o índice desplazado.
+ *
+ * - **UNKNOWN** (y `null` del mapa en especie conocida) → «?» pale green
+ *   centrada de alto contraste, sin ningún texto accesible que revele la
+ *   identidad en UNKNOWN (el número es el único dato de la fila).
+ * - **SEEN/CAUGHT** → el PNG original completo (96×96 cuadrado, con su
+ *   margen transparente ya integrado), centrado, a escala
+ *   (`ContentScale.Fit`) y con margen de 4.dp: sin recortes, deformación,
+ *   filtros ni tinte; la opacidad es plena en los dos estados.
  */
 @Composable
-private fun ReservedImageSlot(entry: PokedexRow, known: Boolean) {
+private fun DexSpriteSlot(entry: PokedexRow, known: Boolean) {
+    val spriteRes = if (known) pokedexSprite(entry.dexNumber) else null
     Box(
         modifier = Modifier
             .width(76.dp)
-            .heightIn(min = 48.dp)
+            .height(64.dp)
             .border(1.dp, DexLcdLine, RoundedCornerShape(6.dp))
             .background(RetroColors.BarTrack, RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center
     ) {
-        if (known) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 3.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = entry.name ?: "",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    color = DexLcdText
-                )
-                Text(
-                    text = stringResource(R.string.dex_missing_image),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                    textAlign = TextAlign.Center,
-                    color = DexLcdTextDim
-                )
-            }
+        if (spriteRes != null) {
+            Image(
+                painter = painterResource(spriteRes),
+                // El nombre exterior de la fila es la descripción accesible:
+                // el sprite no añade ni repite texto.
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .padding(4.dp)
+                    .fillMaxSize()
+            )
         } else {
             // «?» de alto contraste: verde pálido, grande y en negrita. Sin
             // voces de accesibilidad: la fila no puede revelar identidad.

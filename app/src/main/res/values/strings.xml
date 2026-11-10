@@ -123,7 +123,6 @@
         <item quantity="one">Capturado</item>
         <item quantity="other">Capturados</item>
     </plurals>
-    <string name="dex_missing_image">Falta imagen</string>
     <string name="dex_caught_desc">En posesión</string>
     <string name="dex_seen_desc">Avistado, no poseído actualmente</string>
     <string name="dex_error_title">Pokédex no disponible</string>
