@@ -36,6 +36,7 @@ internal object RetroColors {
     // Chasis / hardware
     val PokedexRed = Color(0xFFDC0A2D)
     val PokedexDarkRed = Color(0xFF8B001D)
+    val HeaderBurgundy = Color(0xFF430D18)
     val SteelPanel = Color(0xFF303840)
     val SteelEdge = Color(0xFF14181D)
     val SteelBevel = Color(0xFF55636F)
@@ -139,6 +140,9 @@ internal fun RetroLcdPanel(
     selected: Boolean = false,
     fill: Boolean = false,
     shadowOffset: Dp = 2.dp,
+    shape: Shape = CellShape,
+    borderWidth: Dp = 2.dp,
+    innerGap: Dp = 1.dp,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -147,9 +151,9 @@ internal fun RetroLcdPanel(
         backgroundColor = if (selected) RetroColors.PokedexRed else RetroColors.LcdDark,
         outerBorder = if (selected) RetroColors.PokedexDarkRed else RetroColors.DialogBorderOuter,
         innerBorder = if (selected) Color(0xFFE8ACB2) else Color(0xFF4E5A66),
-        shape = CellShape,
-        borderWidth = 2.dp,
-        innerGap = 1.dp,
+        shape = shape,
+        borderWidth = borderWidth,
+        innerGap = innerGap,
         shadowOffset = shadowOffset,
         fill = fill,
         contentPadding = contentPadding,

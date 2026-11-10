@@ -114,6 +114,8 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
  * @param onSelectTab cambia de pantalla de contenido.
  * @param onOpenOptions / @param onCloseOptions gestionan la hoja de opciones.
  * @param onOpenLead / @param onCloseLead gestionan el selector de principal.
+ * @param onOpenDex abre la Pokédex (TEST).
+ * @param onCloseDex cierra la Pokédex (TEST) y vuelve al juego.
  * @param onPokeBallExpanded avisa del resultado del gesto de arrastre.
  */
 @Composable
@@ -145,12 +147,25 @@ fun AppRoot(
     onCloseOptions: () -> Unit,
     onOpenLead: () -> Unit,
     onCloseLead: () -> Unit,
+    onOpenDex: () -> Unit,
+    onCloseDex: () -> Unit,
     onPokeBallExpanded: (Boolean) -> Unit
 ) {
     // Contador de pulsaciones sobre la Pokébola: es lo único que mueve el fondo
     // de ruta y, con él, la dirección en la que camina el entrenador. Estado
     // efímero de UI, sin relación con la lógica de negocio.
     val pokePulses = remember { mutableLongStateOf(0L) }
+
+    // Pokédex (TEST): rama de composición propia, a pantalla completa y sin
+    // HUD, mapa ni menú inferior. Nada de lo demás se compone y la vuelta es
+    // con su callback (el glyph de atrás y el botón físico gestionados dentro).
+    if (state.isPokedexOpen) {
+        DexScreen(
+            state = state,
+            onBack = onCloseDex
+        )
+        return
+    }
 
     // Fondo de la zona actual: arte + trayectoria. La **misma** instancia mueve el
     // dibujo y decide la dirección del entrenador, así que no pueden desincronizarse.
@@ -188,7 +203,7 @@ fun AppRoot(
     // el consumo de toques y solo su ausencia la aísla. El contenido del juego
     // solo desaparece bajo capas opacas (escena e intro).
     val menuHidden = sceneActive || state.needsStarter ||
-        state.isLeadOpen || isSplashShowing
+        state.isLeadOpen || isSplashShowing || state.isPokedexOpen
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
@@ -372,6 +387,7 @@ fun AppRoot(
                 onCloseOptions()
                 onOpenLead()
             },
+            onOpenPokedex = onOpenDex,
             onWipeGame = onWipeGame,
             onDebugJumpToZone = { zoneId ->
                 onCloseOptions()
@@ -526,6 +542,8 @@ private fun AppRootStage(state: GameUiState) {
         onCloseOptions = {},
         onOpenLead = {},
         onCloseLead = {},
+        onOpenDex = {},
+        onCloseDex = {},
         onPokeBallExpanded = {}
     )
 }

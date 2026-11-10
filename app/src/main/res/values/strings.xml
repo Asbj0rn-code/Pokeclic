@@ -110,6 +110,25 @@
     <string name="options_debug_plateada">Ir a Ciudad Plateada (test)</string>
     <string name="options_debug_celeste">Ir a Ciudad Celeste (test)</string>
     <string name="options_debug_carmin">Ir a Ciudad Carmín (test)</string>
+    <string name="options_pokedex_test">Pokédex (TEST)</string>
+
+    <!-- Pokédex (TEST) -->
+    <string name="dex_title">Pokédex</string>
+    <string name="dex_close">Volver</string>
+    <plurals name="dex_stat_seen">
+        <item quantity="one">Avistado</item>
+        <item quantity="other">Avistados</item>
+    </plurals>
+    <plurals name="dex_stat_caught">
+        <item quantity="one">Capturado</item>
+        <item quantity="other">Capturados</item>
+    </plurals>
+    <string name="dex_caught_desc">En posesión</string>
+    <string name="dex_seen_desc">Avistado, no poseído actualmente</string>
+    <string name="dex_error_title">Pokédex no disponible</string>
+        <string name="dex_error_body">No se pudo cargar el catálogo de especies. El resto del juego sigue funcionando.</string>
+
+
     <string name="wipe_confirm_title">¿Borrar partida?</string>
     <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>
     <string name="wipe_confirm_accept">Borrar</string>

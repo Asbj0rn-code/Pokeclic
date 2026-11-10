@@ -20,6 +20,9 @@ import com.dsrs.pokeclic.model.GymCatalog
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.PokedexCatalog
+import com.dsrs.pokeclic.model.PokedexRow
+import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.Projectile
 import com.dsrs.pokeclic.model.RingFeedback
 import com.dsrs.pokeclic.model.RingOutcome
@@ -74,14 +77,43 @@ import kotlin.random.Random
  * @param zones catálogo ordenado de zonas (inyectable para tests).
  * @param random fuente de aleatoriedad (inyectable para tests).
  * @param nowMs reloj en ms (inyectable para tests: se congelan los combates).
+ * @param pokedex catálogo de la Pokédex cargado fuera (MainActivity); vacío si
+ *   la carga falló.
+ * @param pokedexLoadFailed `true` si la carga del catálogo falló: la pantalla
+ *   muestra su error y el resto del juego no se ve afectado.
  */
 class MainViewModel(
     private val sprites: SpriteRepository,
     private val store: GameStateStore,
     private val zones: List<Zone> = ZoneCatalog.zones,
     private val random: Random = Random.Default,
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val pokedex: PokedexCatalog = PokedexCatalog.EMPTY,
+    private val pokedexLoadFailed: Boolean = false
 ) : ViewModel() {
+
+    /**
+     * Firma con la que se generó [dexEntriesCache]: posesión de la run
+     * (poseídas + inicial) e historia permanente (vistos + capturas
+     * históricas). Evita reconstruir las 151 filas en cada `derive` de un
+     * tick: la dex solo cambia cuando cambia lo que las filas representan.
+     * Declarado ANTES de `_uiState`: su inicializador ya llama a `derive`.
+     */
+    private var dexHistorySignature: NestedDexHistory? = null
+
+    /**
+     * `ownedSpecies` / `starterSpeciesId` / `seenSpecies` / `caughtSpecies`
+     * agrupados para la comparación memoizada de la dex.
+     */
+    private data class NestedDexHistory(
+        val ownedSpecies: Set<String>,
+        val starterSpeciesId: String?,
+        val seenSpecies: Set<String>,
+        val caughtSpecies: Set<String>
+    )
+
+    /** Último listado de la Pokédex generado, reutilizado mientras no cambie la firma. */
+    private var dexEntriesCache: List<PokedexRow> = emptyList()
 
     private val _uiState = MutableStateFlow(derive(restoreState()))
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
@@ -267,6 +299,11 @@ class MainViewModel(
      * Cierra la introducción de la primera partida: fija el nombre del entrenador
      * (permanente) y el starter elegido en una sola operación. Se llama una vez,
      * cuando el jugador ya pasó el diálogo del Profesor Oak.
+     *
+     * El starter entra también en el historial de la Pokédex: queda **capturado
+     * y avistado**. Es la captura inicial del jugador (decisión: se marca como
+     * capturado para que la dex arranque con su primer «atrapado»; los otros
+     * iniciales NO se marcan).
      */
     fun onFinishIntro(playerName: String, starterSpeciesId: String) {
         if (SpeciesCatalog.starters.none { it.id == starterSpeciesId }) return
@@ -277,7 +314,9 @@ class MainViewModel(
                 playerName = name,
                 starterSpeciesId = starterSpeciesId,
                 starterBond = 0,
-                leadSpeciesId = starterSpeciesId
+                leadSpeciesId = starterSpeciesId,
+                seenSpecies = it.seenSpecies + starterSpeciesId,
+                caughtSpecies = it.caughtSpecies + starterSpeciesId
             )
         }
     }
@@ -297,6 +336,39 @@ class MainViewModel(
     fun onOpenOptions() = _uiState.update { it.copy(isOptionsOpen = true) }
 
     fun onCloseOptions() = _uiState.update { it.copy(isOptionsOpen = false) }
+
+    /**
+     * **Pokédex (TEST)**: abre la pantalla propia a pantalla completa y cierra
+     * la hoja de opciones que la invocó.
+     *
+     * El VM manda: además del cierre de la hoja, **bloquea** la apertura en
+     * estados incompatibles (sin starter, captura, gimnasio o modales en curso):
+     * la capa de opciones ya no es el único camino y duplicar el guard aquí
+     * es lo que impide entrar con un minijuego abajo.
+     *
+     * La pantalla de Pokédex es una **rama de composición** de su propia
+     * pantalla a pantalla completa: se pausa el avance de caminar
+     * (`lastWalkTapMs = 0L`) y, al cerrarla, la Pokébola exige una pulsación
+     * nueva para reactivar el temporizador de caminar.
+     */
+    fun onOpenDex() {
+        val state = _uiState.value
+        val blocked = state.needsStarter ||
+            state.isLeadOpen ||
+            state.encounter != null ||
+            state.catching != null ||
+            state.gym != null ||
+            state.gymIntro != null
+        if (blocked) return
+        lastWalkTapMs = 0L
+        _uiState.update { it.copy(isOptionsOpen = false, isPokedexOpen = true) }
+    }
+
+    /** Cierra la Pokédex y vuelve al juego sin contenido en curso. */
+    fun onCloseDex() {
+        lastWalkTapMs = 0L
+        _uiState.update { it.copy(isPokedexOpen = false) }
+    }
 
     /** Abre el selector de Pokémon principal. */
     fun onOpenLead() = _uiState.update { it.copy(isLeadOpen = true) }
@@ -794,6 +866,12 @@ class MainViewModel(
      * la especie (y las monedas, solo la primera vez); **escapado** no cambia
      * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
      * encuentro.
+     *
+     * El registro con captura aplica al **resultado final** del minijuego
+     * (fase CAPTURED), es decir, la especie que entra en posesión; el
+     * avistamiento ya se registró en
+     * `spawnEncounter`. Aquí se añade también al historial permanente de la
+     * Pokédex (`caughtSpecies`).
      */
     fun onCatchingResultContinue() {
         val catching = _uiState.value.catching ?: return
@@ -813,7 +891,9 @@ class MainViewModel(
                 state.copy(
                     ownedSpecies = state.ownedSpecies + encounter.speciesId,
                     rewardedSpecies = state.rewardedSpecies + encounter.speciesId,
-                    coins = state.coins + reward
+                    coins = state.coins + reward,
+                    caughtSpecies = state.caughtSpecies + encounter.speciesId,
+                    seenSpecies = state.seenSpecies + encounter.speciesId
                 ).withoutEncounter()
             } else {
                 state.withoutEncounter()
@@ -950,7 +1030,7 @@ class MainViewModel(
             while (isActive) {
                 delay(WALK_TICK_MS)
                 val state = _uiState.value
-                if (!state.isTallGrass || state.encounter != null || state.gym != null) continue
+                if (!state.isTallGrass || state.isPokedexOpen || state.encounter != null || state.gym != null) continue
                 if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
 
                 val next = state.walkProgress + WALK_TICK_MS / 1000f / ENCOUNTER_SECONDS
@@ -1013,11 +1093,22 @@ class MainViewModel(
         val saved = store.load() ?: return GameUiState(
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
         )
+        // Compatibilidad con guardados anteriores a `caughtSpecies`: la captura
+        // histórica se deduce de lo que ya era cierto (posesiones de la run,
+        // recompensas y el starter), y **toda especie deducida como capturada
+        // también queda avistada**. Para guardados nuevos, `caught ∪ seen`
+        // (la captura implica haber avistado) es idempotente.
+        val caughtDeduced = saved.caughtSpecies +
+            saved.ownedSpecies +
+            saved.rewardedSpecies +
+            setOfNotNull(saved.starterSpeciesId)
+        val seenRestored = saved.seenSpecies + caughtDeduced
         return GameUiState(
             playerName = saved.playerName,
             coins = saved.coins,
-            seenSpecies = saved.seenSpecies,
+            seenSpecies = seenRestored,
             rewardedSpecies = saved.rewardedSpecies,
+            caughtSpecies = caughtDeduced,
             medals = saved.medals,
             starterSpeciesId = saved.starterSpeciesId,
             starterBond = saved.starterBond,
@@ -1029,7 +1120,6 @@ class MainViewModel(
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
         )
     }
-
     /** Actualiza el estado derivado y, salvo [persist] = false, lo persiste. */
     private fun mutate(persist: Boolean = true, block: (GameUiState) -> GameUiState) {
         val updated = _uiState.updateAndGet { derive(block(it)) }
@@ -1083,6 +1173,27 @@ class MainViewModel(
             state.zoneClicks >= zone.clickRequirement &&
             !gymPending
 
+        // Pokédex: se rehacen las filas solo si cambia lo que las define
+        // (posesión de la run + historia permanente). Las 151 entradas son
+        // idénticas en el resto de ticks.
+        val signature = NestedDexHistory(
+            ownedSpecies = state.ownedSpecies,
+            starterSpeciesId = state.starterSpeciesId,
+            seenSpecies = state.seenSpecies,
+            caughtSpecies = state.caughtSpecies
+        )
+        if (signature != dexHistorySignature) {
+            dexEntriesCache = pokedex.rowsFor(
+                state.ownedSpecies,
+                state.starterSpeciesId,
+                state.seenSpecies,
+                state.caughtSpecies
+            )
+            dexHistorySignature = signature
+        }
+        val dexSeenCount = dexEntriesCache.count { it.status != DexStatus.UNKNOWN }
+        val dexCaughtCount = dexEntriesCache.count { it.status == DexStatus.CAUGHT }
+
         return state.copy(
             zoneName = zone.name,
             zoneId = zone.id,
@@ -1099,7 +1210,11 @@ class MainViewModel(
             canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,
             leadOptions = leadOptions,
-            starterOptions = starterOptions
+            starterOptions = starterOptions,
+            dexEntries = dexEntriesCache,
+            dexSeenCount = dexSeenCount,
+            dexCaughtCount = dexCaughtCount,
+            dexLoadFailed = pokedexLoadFailed
         )
     }
 
@@ -1108,6 +1223,7 @@ class MainViewModel(
         coins = coins,
         seenSpecies = seenSpecies,
         rewardedSpecies = rewardedSpecies,
+        caughtSpecies = caughtSpecies,
         medals = medals,
         starterSpeciesId = starterSpeciesId,
         starterBond = starterBond,

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.dsrs.pokeclic.data.PokedexCatalogLoader
 import com.dsrs.pokeclic.data.SharedPreferencesGameStateStore
 import com.dsrs.pokeclic.model.DefaultSpriteRepository
 import com.dsrs.pokeclic.ui.AppRoot
@@ -38,9 +39,15 @@ class MainActivity : AppCompatActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         viewModelFactory {
             initializer {
+                // Pokédex (TEST): el catálogo se carga **una sola vez** por proceso
+                // (el loader cachea el resultado y nunca lanza: ante un fallo,
+                // `loadFailed` avisa a la pantalla y el juego sigue funcionando).
+                val dexLoad = PokedexCatalogLoader.load(applicationContext)
                 MainViewModel(
                     sprites = DefaultSpriteRepository(),
-                    store = SharedPreferencesGameStateStore(applicationContext)
+                    store = SharedPreferencesGameStateStore(applicationContext),
+                    pokedex = dexLoad.catalog,
+                    pokedexLoadFailed = dexLoad.loadFailed
                 )
             }
         }
@@ -89,6 +96,8 @@ class MainActivity : AppCompatActivity() {
                         onCloseOptions = mainViewModel::onCloseOptions,
                         onOpenLead = mainViewModel::onOpenLead,
                         onCloseLead = mainViewModel::onCloseLead,
+                        onOpenDex = mainViewModel::onOpenDex,
+                        onCloseDex = mainViewModel::onCloseDex,
                         onPokeBallExpanded = mainViewModel::onPokeBallExpanded
                     )
 

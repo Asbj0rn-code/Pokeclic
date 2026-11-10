@@ -14,7 +14,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -50,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -72,81 +70,9 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
 import kotlin.math.min
 import kotlin.random.Random
 
-/**
- * Botón táctil con hundimiento físico: al pulsar, la cara del botón se
- * desplaza hasta cubrir la sombra dura, como si se clavara en el chasis.
- * El desplazamiento se anima con un muelle rígido y se lee en la fase de
- * dibujo, así que la pulsación no recompone el resto del árbol.
- */
-@Composable
-private fun RetroButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    base: Color = RetroColors.ButtonBlue,
-    edge: Color = RetroColors.ButtonBlueEdge,
-    fontSize: TextUnit = 13.sp
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val sink by animateDpAsState(
-        targetValue = if (pressed) 3.dp else 0.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "buttonSink"
-    )
-
-    Box(
-        modifier = modifier
-            .padding(bottom = 3.dp, end = 3.dp)
-            .drawBehind {
-                val off = 3.dp.toPx()
-                drawRect(color = RetroColors.HardShadow, topLeft = Offset(off, off), size = Size(size.width, size.height))
-            }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            )
-    ) {
-        // Cara del botón: bisel oscuro + núcleo plano + brillo superior plano.
-        Box(
-            modifier = Modifier
-                .offset(x = sink, y = sink)
-                .clip(ButtonShape)
-                .background(edge)
-        ) {
-            Box(modifier = Modifier.padding(2.dp).clip(ButtonShape).background(base)) {
-                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = label,
-                            color = Color.White,
-                            fontSize = fontSize,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.6.sp,
-                            maxLines = 1,
-                            style = TextStyle(
-                                shadow = Shadow(
-                                    color = RetroColors.HardShadow,
-                                    offset = Offset(0f, 1.4f),
-                                    blurRadius = 0f
-                                )
-                            )
-                        )
-                    }
-                    // Filete de luz superior 2.dp: cara "plástica" del botón.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(Color(0x3BFFFFFF))
-                    )
-                }
-            }
-        }
-    }
-}
+// ───────────────────────────── Pantalla ─────────────────────────────
+// (El botón táctil hundible `RetroButton` vive en `GameUiComponents.kt`:
+// la Pokédex comparte el mismo skin.)
 
 /**
  * Barra cuadrada estilo consola: marco negro grueso, riel oscuro, relleno
