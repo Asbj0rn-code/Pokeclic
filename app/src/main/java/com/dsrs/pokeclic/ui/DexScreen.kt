@@ -66,7 +66,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -88,6 +90,7 @@ import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.viewmodel.GameUiState
+import java.util.Locale
 
 /**
  * Paleta de tipos de la Pokédex (decoración, no reglas de juego): nombres en
@@ -200,27 +203,15 @@ fun DexScreen(
                 fill = true,
                 shape = RoundedCornerShape(8.dp),
                 borderWidth = 1.dp,
-                innerGap = 1.dp,
                 shadowOffset = 0.dp,
                 contentPadding = PaddingValues(6.dp)
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
                     itemsIndexed(
                         state.entries,
                         key = { _, entry -> entry.dexNumber }
                     ) { index, entry ->
-                        if (index > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(DexRowDivider)
-                            )
-                        }
-                        DexRow(entry)
+                        DexRow(entry, showTopDivider = index > 0)
                     }
                 }
             }
@@ -236,12 +227,14 @@ fun DexScreen(
  * blanco, legibles. **Sin scanlines** en este módulo.
  *
  * **Alineación (estructura común de filas, sin compensaciones
- * independientes):** la línea visual del encabezado es el **centro del área
- * táctil de la flecha** (la mitad de [DexHeaderArrowTouch]). Cada celda de
- * texto reserva exactamente ese aire con el mismo desplazamiento (`lineTop`,
- * calculado una vez con las métricas compartidas) — el título y las cifras
- * comparten tipografía y `lineHeight` ([DexHeaderValueLine]), así que sus
- * cajas de línea quedan centradas en esa misma línea y las etiquetas
+ * independientes):** la línea visual del encabezado es el centro de la caja
+ * de la flecha, que mide `max(48.dp, lineHeight)`: crece con la línea de
+ * cifra/título, así que el centro se conserva a cualquier escala de fuente y
+ * el aire superior nunca queda negativo. Cada celda de texto reserva ese
+ * mismo aire con el mismo desplazamiento (`lineTop`, calculado una vez con
+ * las métricas compartidas) — el título y las cifras comparten tipografía y
+ * `lineHeight` ([DexHeaderValueLine]), así que sus cajas de línea quedan
+ * centradas en esa misma línea y las etiquetas
  * «Avistados»/«Capturados» cuelgan debajo de sus cifras dentro de la propia
  * celda, sin desplazar la línea. No se centra el título contra la altura
  * completa del bloque cifra+etiqueta (el desajuste que había antes): el
@@ -254,12 +247,12 @@ private fun DexHeader(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Aire desde la fila hasta la línea visual: mitad del área táctil menos
-    // la mitad de la línea de cifra/título. Con escala de fuente ajustada,
-    // `sp.toDp()` sigue la métrica y la alineación se conserva.
-    val headerLineTop = with(LocalDensity.current) {
-        DexHeaderArrowTouch / 2 - DexHeaderValueLine.toDp() / 2
-    }
+    // Ancla de la línea visual: el área de la flecha nunca es menor que la
+    // línea de cifra/título, así que el centro se mantiene a cualquier
+    // fontScale y el aire superior nunca queda negativo.
+    val lineHeight = with(LocalDensity.current) { DexHeaderValueLine.toDp() }
+    val anchorHeight = maxOf(DexHeaderArrowTouch, lineHeight)
+    val headerLineTop = ((anchorHeight - lineHeight) / 2).coerceAtLeast(0.dp)
 
     RetroPanel(
         modifier = modifier,
@@ -272,21 +265,27 @@ private fun DexHeader(
         shadowOffset = 0.dp,
         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 5.dp)
     ) {
-        // La Row es top-aligned: la flecha ocupa su área táctil completa y
-        // las celdas de texto descienden hasta la línea compartida.
+        // La Row es top-aligned: la caja de la flecha mide el ancla y las
+        // celdas de texto descienden hasta la línea compartida.
         Row(modifier = Modifier.fillMaxWidth()) {
             // Flecha sin texto; IconButton = área táctil de 48.dp (suficiente)
-            // y descripción accesible «Volver».
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.dex_close),
-                    tint = Color.White
-                )
+            // y descripción accesible «Volver». La caja crece con la línea de
+            // texto para conservar el centro a cualquier escala de fuente.
+            Box(
+                modifier = Modifier.height(anchorHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.dex_close),
+                        tint = Color.White
+                    )
+                }
             }
 
             Text(
-                text = stringResource(R.string.dex_title).uppercase(),
+                text = stringResource(R.string.dex_title).uppercase(Locale.ROOT),
                 color = Color.White,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
@@ -376,12 +375,17 @@ private fun DexError(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = stringResource(R.string.dex_error_title),
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    color = RetroColors.InkBlack
                 )
                 Text(
                     text = stringResource(R.string.dex_error_body),
-                    style = MaterialTheme.typography.bodyMedium
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = RetroColors.InkBlack.copy(alpha = 0.8f)
                 )
             }
         }
@@ -391,20 +395,30 @@ private fun DexError(modifier: Modifier = Modifier) {
 /**
  * Una fila del listado dentro de la pantalla LCD, en el orden pactado:
  * número → sprite en recuadro fijo → nombre exterior y tipo → Pokéball.
+ * El divisor de 1 dp se dibuja en la propia fila (no como item aparte), así
+ * que el `LazyColumn` solo tiene una entrada por especie.
  */
 @Composable
-private fun DexRow(entry: PokedexRow) {
+private fun DexRow(entry: PokedexRow, showTopDivider: Boolean) {
     val known = entry.status != DexStatus.UNKNOWN
     val registered = entry.status == DexStatus.REGISTERED
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .drawBehind {
+                if (showTopDivider) {
+                    drawRect(
+                        color = DexRowDivider,
+                        size = Size(size.width, 1.dp.toPx())
+                    )
+                }
+            }
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "%03d".format(entry.dexNumber),
+            text = String.format(Locale.ROOT, "%03d", entry.dexNumber),
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
             fontSize = 12.sp,

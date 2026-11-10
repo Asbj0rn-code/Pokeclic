@@ -147,8 +147,9 @@ fun CoinDisc(modifier: Modifier = Modifier, size: Dp = 18.dp) {
  * El desplazamiento se anima con un muelle rígido y se lee en la fase de
  * dibujo, así que la pulsación no recompone el resto del árbol.
  *
- * Extraído desde `MainScreen.kt` para que la Pokédex comparta el mismo botón:
- * el HUD conserva idéntica apariencia y comportamiento.
+ * Componente compartido de la UI retro: vive acá (junto al resto del skin) y
+ * no en `MainScreen.kt`, para que cualquier pantalla lo reutilice sin
+ * duplicarlo. El HUD conserva idéntica apariencia y comportamiento.
  */
 @Composable
 internal fun RetroButton(

@@ -213,7 +213,7 @@ class PokedexCatalogTest {
     @Test
     fun emptyCatalog_isAValidCatalogWithNoEntries() {
         val empty = PokedexCatalog.EMPTY
-        assertEquals(0, empty.size)
+        assertEquals(0, empty.entries.size)
         assertEquals(
             emptyList<PokedexRow>(),
             empty.rowsFor(

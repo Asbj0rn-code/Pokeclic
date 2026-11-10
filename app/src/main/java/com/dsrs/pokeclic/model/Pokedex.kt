@@ -149,11 +149,6 @@ data class PokedexCatalog(val entries: List<PokedexSpecies>) {
         }
     }
 
-    val size: Int get() = entries.size
-
-    /** Vista ordenada por número de Pokédex (1..151), lista para el listado. */
-    val ordered: List<PokedexSpecies> get() = entries
-
     fun bySpeciesId(id: String): PokedexSpecies? =
         bySpeciesIdMap[id]
 
