@@ -538,6 +538,7 @@ private fun TrainerGrassStack(
                 offsetY = MainLayout.TALL_GRASS_Y_OFFSET
             )
         }
+
     }
 }
 

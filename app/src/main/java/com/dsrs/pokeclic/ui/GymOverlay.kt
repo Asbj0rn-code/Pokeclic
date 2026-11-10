@@ -142,7 +142,7 @@ fun GymOverlay(
     // debajo de la barra de navegación.
     //
     // El minijuego de anillos juzga los toques en la **raíz** del overlay, como
-    // hace la pesca: así ningún sprite, barra o capa intermedia puede dejar el
+    // hace la captura: así ningún sprite, barra o capa intermedia puede dejar el
     // gesto sin receptor.
     Box(
         modifier = modifier
@@ -440,7 +440,7 @@ private fun GymScene(
  * el anillo que se cierra lo toca. El modelo decide aciertos y fallos: aquí solo
  * se pinta el radio derivado del tiempo y se envía el toque.
  *
- * El gesto se captura en la raíz de [GymOverlay], igual que en la pesca: esta
+ * El gesto se captura en la raíz de [GymOverlay], igual que en la captura: esta
  * escena solo pinta. No hay acierto por posición: el minijuego es de **momento**,
  * no de puntería.
  */

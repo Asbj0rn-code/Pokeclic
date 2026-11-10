@@ -2,7 +2,7 @@ package com.dsrs.pokeclic.viewmodel
 
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
-import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
@@ -26,7 +26,7 @@ import com.dsrs.pokeclic.model.TrainerState
  *   [caughtSpecies], [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [gymClearedRun], [zoneIndex], [zoneClicks].
- * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [fishing],
+ * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [catching],
  *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
  */
@@ -61,8 +61,8 @@ data class GameUiState(
     val walkProgress: Float = 0f,
     val encounter: Encounter? = null,
 
-    // --- minijuego de pesca (activo con encounter, no se persiste) ---
-    val fishing: FishingState? = null,
+    // --- minijuego de captura (activo con encounter, no se persiste) ---
+    val catching: CatchingState? = null,
 
     // --- gimnasio ---
     val gym: GymState? = null,

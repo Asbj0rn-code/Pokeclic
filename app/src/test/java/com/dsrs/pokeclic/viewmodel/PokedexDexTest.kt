@@ -6,9 +6,9 @@
 package com.dsrs.pokeclic.viewmodel
 
 import com.dsrs.pokeclic.data.GameStateStore
+import com.dsrs.pokeclic.model.CatchingPhase
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.DexStatus
-import com.dsrs.pokeclic.model.FishingPhase
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.PokedexCatalog
 import com.dsrs.pokeclic.model.PokedexSpecies
@@ -43,14 +43,42 @@ class PokedexDexTest {
     /** Comparte el planificador virtual de `dispatcher`. */
     private val testScope = TestScope(dispatcher)
 
+    /**
+     * Reloj de juego mutable (**sincronizado con el tiempo virtual**): el
+     * ViewModel lo recibe como `nowMs` y todo avance del test lo incrementa
+     * [advance] con la misma cantidad que consume `advanceTimeBy`. Sin esto,
+     * el bucle de captura mediría `dt = 0` en cada tick.
+     */
+    private var clockNow = 0L
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
+        clockNow = 0L
     }
 
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    /**
+     * Avanza el tiempo virtual y el reloj de juego **en tandas de 16 ms**
+     * (`CATCHING_TICK_MS`): dentro de cada tanda, en tiempo virtual el bucle
+     * del ViewModel ejecuta un solo tick con `dt` real de 16 ms (
+     * `dt = nowMs() - lastTickMs` del reloj ya incrementado). Si se avanzara
+     * la ventana de golpe, `nowMs()` sería constante y el bucle de captura
+     * mediría `dt = 0` en todos sus ticks.
+     */
+    private fun advance(ms: Long) {
+        var remaining = ms
+        while (remaining > 0) {
+            val chunk = minOf(remaining, 16L)
+            testScope.advanceTimeBy(chunk)
+            testScope.runCurrent()
+            clockNow += chunk
+            remaining -= chunk
+        }
     }
 
     /// Duplicados a propósito de los dobles privados de `MainViewModelTest`
@@ -86,7 +114,7 @@ class PokedexDexTest {
 
     private fun viewModel(
         saved: GameSnapshot? = null,
-        nowMs: () -> Long = { 0L },
+        nowMs: () -> Long = { clockNow },
         zones: List<Zone> = grassZones,
         random: Random = Random.Default,
         catalog: PokedexCatalog = dexCatalog(),
@@ -152,8 +180,7 @@ class PokedexDexTest {
         vm.onFinishIntro("Ash", "charmander")
         vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
-        testScope.advanceTimeBy(4_000L)
-        testScope.runCurrent()
+        advanceUntilEncounter(vm)
         assertNotNull(vm.uiState.value.encounter)
 
         vm.onOpenDex()
@@ -194,8 +221,7 @@ class PokedexDexTest {
         // "Omitir" consigue la cuenta atrás y, al caducar, el combate arranca:
         // sigue bloqueada.
         vm.onGymIntroSkip()
-        testScope.advanceTimeBy(2_000L)
-        testScope.runCurrent()
+        advance(2_000L)
         assertNull(vm.uiState.value.gymIntro)
         assertNotNull(vm.uiState.value.gym)
         vm.onOpenDex()
@@ -211,19 +237,20 @@ class PokedexDexTest {
      */
     @Test
     fun dexOpen_pausesWalkingAndClosingRequiresANewTap() {
-        var now = 5_000L
-        val vm = viewModel(nowMs = { now })
+        val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
         vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
-        testScope.advanceTimeBy(1_000L)
-        testScope.runCurrent()
+        // Ritmo real de toques: dos tandas de 500 ms con re-toque (la ventana
+        // de actividad es de 1000 ms). El progreso avanza (~1/3 en 1 s).
+        advance(500L)
+        vm.onPokeBallTouch(Direction.BACK)
+        advance(500L)
         val progressAtOpen = vm.uiState.value.walkProgress
         assertTrue(progressAtOpen > 0f)
 
         vm.onOpenDex()
-        testScope.advanceTimeBy(5_000L)
-        testScope.runCurrent()
+        advance(5_000L)
 
         // Congelado: ni crecimiento ni spawns debajo de la dex.
         assertNull(vm.uiState.value.encounter)
@@ -235,16 +262,18 @@ class PokedexDexTest {
 
         // Cierre: la ventana de actividad queda invalidada (lastWalkTapMs = 0).
         vm.onCloseDex()
-        now = 100_000L
-        testScope.advanceTimeBy(3_000L)
-        testScope.runCurrent()
+        advance(3_000L)
         assertNull(vm.uiState.value.encounter)
         assertTrue(abs(vm.uiState.value.walkProgress - frozen) < 1e-4f)
 
-        // Una pulsación nueva reactiva el temporizador de caminar.
+        // Una pulsación nueva reactiva el temporizador de caminar (con su
+        // ritmo de re-toque: el encuentro llega a los 3 s de caminar activo).
         vm.onPokeBallTouch(Direction.BACK)
-        testScope.advanceTimeBy(3_000L)
-        testScope.runCurrent()
+        repeat(12) {
+            advance(500L)
+            if (vm.uiState.value.encounter != null) return@repeat
+            vm.onPokeBallTouch(Direction.BACK)
+        }
         assertNotNull(vm.uiState.value.encounter)
         // Y el avistamiento llega a la dex.
         assertEquals(2, vm.uiState.value.dexSeenCount)
@@ -331,27 +360,41 @@ class PokedexDexTest {
     // --- Captura confirmada (determinista) -----------------------------------
 
     /**
-     * Doble de `Random` que **fija la cola del riel**: todo `nextFloat` devuelve
-     * [tail]. Con la pesca esto es determinista sin depender de la suerte:
-     * - El sprite nace y vagabundea pegado a la zona alta del riel (≈0,82–0,9),
-     *   siempre dentro del margen de solape de la barra cuando el jugador
-     *   mantiene pulsado (la barra sube hasta ≈0,89).
-     * - Los dardos (probabilidad por tick) nunca salen porque
-     *   `[tail] > dartChance·dt`.
-     * Mantener `held = true` desde que aparece el encuentro hace que el solape
-     * sea continuo y el progreso llegue a 1: fase `CAPTURED` garantizada.
+     * Doble de `Random` que **guía al sprite con dardos** hacia la banda del
+     * tope del riel (el mismo punto donde la barra queda clavada con
+     * `held = true`: ≈0,89 = `1 - BAR_SIZE/2`). Mientras el minijuego sea el
+     * único consumidor de `nextFloat`, cada `step` hace exactamente **dos
+     * llamadas** (comprobación de dardo y, al disparar, su objetivo), así que
+     * devolver alternativamente `0,005` (`< dartChance·dt`: dardo garantizado)
+     * y `0,95` (`randomSpriteTarget` → `0,1+0,95·0,8 = 0,86`) repite el patrón
+     * en TODOS los ticks: dardo cada tick, boost de suavizado permanente y
+     * sprite pegado a ≈0,86, siempre en solape con la barra.
+     *
+     * Con el solape desde el primer tick el progreso llena a `0,4/s` sin
+     * pasar por `progress ≤ 0`, de modo que la fase `CAPTURED` se alcanza en
+     * ~2,5–3 s de juego sin apelar a la suerte: los dardos del minijuego (que
+     * dispersan al jugador real) se usan aquí como palanca determinista.
      */
-    private class HighRielRandom(private val tail: Float = 0.9f) : Random() {
+    private class DartosAlRielRandom : Random() {
+        private var dartTick = false
         override fun nextBits(bitCount: Int): Int = 0
-        override fun nextFloat(): Float = tail
+        override fun nextFloat(): Float {
+            dartTick = !dartTick
+            return if (dartTick) 0.005f else 0.95f
+        }
     }
 
-    /** Avanza el reloj virtual en tandas de 100 ms hasta que hay encuentro. */
+    /**
+     * Avanza en tandas de 500 ms **re-tocando la Pokébola** cada tanda: con el
+     * reloj inyectado sincronizado, la ventana de actividad (`_WINDOW_MS =
+     * 1000`) expira de verdad, y caminar requiere el ritmo real de toques (el
+     * encuentro llega a los 3 s de caminar activo: `ENCOUNTER_SECONDS = 3f`).
+     */
     private fun advanceUntilEncounter(vm: MainViewModel) {
         repeat(60) {
-            testScope.advanceTimeBy(100L)
-            testScope.runCurrent()
+            advance(500L)
             if (vm.uiState.value.encounter != null) return
+            vm.onPokeBallTouch(Direction.BACK)
         }
         fail("La hierba alta no generó un encuentro")
     }
@@ -360,22 +403,24 @@ class PokedexDexTest {
     private fun playToCaptured(vm: MainViewModel) {
         advanceUntilEncounter(vm)
         assertEquals("pidgey", vm.uiState.value.encounter?.speciesId)
-        // Pulso inmediato: el progreso no puede quedarse a 0 con la gracia agotada.
-        vm.onFishingHold(true)
-        testScope.advanceTimeBy(7_000L)
-        testScope.runCurrent()
-        assertEquals(FishingPhase.CAPTURED, vm.uiState.value.fishing?.phase)
+        // Pulso inmediato: al abrir la partida, barra y sprite están centrados
+        // y el lanzamiento (_THROW_MS + REACTION_MS = 1100 ms, barras y sprite
+        // clavados en el centro) no consume gracia; después el solape llena
+        // hasta CAPTURED. Ticks del bucle: 16 ms, con dt real del reloj.
+        vm.onCatchingHold(true)
+        advance(12_000L)
+        assertEquals(CatchingPhase.CAPTURED, vm.uiState.value.catching?.phase)
     }
 
     /**
-     * Captura confirmada sin ganar la partida al azar: se prepara el `CAPTURED`
-     * con el `Random` inyectado del ViewModel (mecanismo de prueba ya existente)
-     * y se verifica que continuar registra captura, avistamiento y posesión,
-     * con la recompensa **una única vez**.
+     * Captura confirmada sin ganar la partida al azar: se prepara la fase
+     * `CAPTURED` con el `Random` inyectado del ViewModel (mecanismo de prueba
+     * ya existente) y se verifica que continuar registra captura,
+     * avistamiento y posesión, con la recompensa **una única vez**.
      */
     @Test
-    fun fishingResultContinue_capturedRegistersHistoryAndRewardsOnce() {
-        val vm = viewModel(random = HighRielRandom())
+    fun catchingResultContinue_capturedRegistersHistoryAndRewardsOnce() {
+        val vm = viewModel(random = DartosAlRielRandom())
         vm.onFinishIntro("Ash", "charmander")
         vm.onTallGrassToggle()
 
@@ -387,7 +432,7 @@ class PokedexDexTest {
 
         val coinsBefore = vm.uiState.value.coins
         val expectedCoins = SpeciesCatalog.require("pidgey").coinReward.toLong()
-        vm.onFishingResultContinue()
+        vm.onCatchingResultContinue()
 
         with(vm.uiState.value) {
             assertTrue(caughtSpecies.contains("pidgey"))
@@ -395,7 +440,7 @@ class PokedexDexTest {
             assertTrue(ownedSpecies.contains("pidgey"))
             assertEquals(setOf("charmander", "pidgey"), caughtSpecies)
             assertNull(encounter)
-            assertNull(fishing)
+            assertNull(catching)
         }
         assertEquals(coinsBefore + expectedCoins, vm.uiState.value.coins)
         assertTrue("pidgey" in vm.uiState.value.rewardedSpecies)
@@ -410,7 +455,7 @@ class PokedexDexTest {
         vm.onPokeBallTouch(Direction.BACK)
         playToCaptured(vm)
         val coinsAfterFirst = vm.uiState.value.coins
-        vm.onFishingResultContinue()
+        vm.onCatchingResultContinue()
 
         with(vm.uiState.value) {
             assertEquals(setOf("charmander", "pidgey"), caughtSpecies)
@@ -431,14 +476,14 @@ class PokedexDexTest {
     @Test
     fun captureThenReset_dropsOwnedToSeenKeepsStarterAndRewardsOnce() {
         val store = FakeStore()
-        val vm = viewModel(random = HighRielRandom(), store = store)
+        val vm = viewModel(random = DartosAlRielRandom(), store = store)
         vm.onFinishIntro("Ash", "charmander")
         vm.onTallGrassToggle()
 
         // Captura de pidgey: +5 monedas (primera vez), en posesión.
         vm.onPokeBallTouch(Direction.BACK)
         playToCaptured(vm)
-        vm.onFishingResultContinue()
+        vm.onCatchingResultContinue()
         assertEquals(DexStatus.CAUGHT, vm.uiState.value.dexEntries.first { it.speciesId == "pidgey" }.status)
         assertEquals(5L, vm.uiState.value.coins)
 
@@ -475,7 +520,7 @@ class PokedexDexTest {
         vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
         playToCaptured(vm)
-        vm.onFishingResultContinue()
+        vm.onCatchingResultContinue()
         with(vm.uiState.value) {
             assertEquals(DexStatus.CAUGHT, dexEntries.first { it.speciesId == "pidgey" }.status)
             assertEquals(setOf("pidgey"), ownedSpecies)

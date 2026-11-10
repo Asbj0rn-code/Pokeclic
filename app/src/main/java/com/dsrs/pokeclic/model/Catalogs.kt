@@ -17,21 +17,26 @@ import com.dsrs.pokeclic.R
 /** Catálogo de especies disponibles. */
 object SpeciesCatalog {
 
-    private val byId: Map<String, Species> = listOf(
-        Species("bulbasaur", "Bulbasaur", PokemonType.GRASS, 0.1f, 10),
-        Species("charmander", "Charmander", PokemonType.FIRE, 0.1f, 10),
-        Species("squirtle", "Squirtle", PokemonType.WATER, 0.1f, 10),
-        Species("pidgey", "Pidgey", PokemonType.FLYING, 0.2f, 5),
-        Species("rattata", "Rattata", PokemonType.NORMAL, 0.15f, 4),
-        Species("caterpie", "Caterpie", PokemonType.GRASS, 0.3f, 6),
-        Species("weedle", "Weedle", PokemonType.POISON, 0.35f, 7),
-        Species("spearow", "Spearow", PokemonType.FLYING, 0.25f, 6),
-        Species("jigglypuff", "Jigglypuff", PokemonType.NORMAL, 0.45f, 10),
-        Species("zubat", "Zubat", PokemonType.POISON, 0.5f, 10),
-        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12),
-        Species("meowth", "Meowth", PokemonType.NORMAL, 0.3f, 7),
-        Species("oddish", "Oddish", PokemonType.GRASS, 0.3f, 6)
-    ).associateBy { it.id }
+    private val species: List<Species> = listOf(
+        Species("bulbasaur", "Bulbasaur", PokemonType.GRASS, 0.1f, 10, dexNumber = 1),
+        Species("charmander", "Charmander", PokemonType.FIRE, 0.1f, 10, dexNumber = 4),
+        Species("squirtle", "Squirtle", PokemonType.WATER, 0.1f, 10, dexNumber = 7),
+        Species("pidgey", "Pidgey", PokemonType.FLYING, 0.2f, 5, dexNumber = 16),
+        Species("rattata", "Rattata", PokemonType.NORMAL, 0.15f, 4, dexNumber = 19),
+        Species("caterpie", "Caterpie", PokemonType.GRASS, 0.3f, 6, dexNumber = 10),
+        Species("weedle", "Weedle", PokemonType.POISON, 0.35f, 7, dexNumber = 13),
+        Species("spearow", "Spearow", PokemonType.FLYING, 0.25f, 6, dexNumber = 21),
+        Species("jigglypuff", "Jigglypuff", PokemonType.NORMAL, 0.45f, 10, dexNumber = 39),
+        Species("zubat", "Zubat", PokemonType.POISON, 0.5f, 10, dexNumber = 41),
+        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12, dexNumber = 74),
+        Species("meowth", "Meowth", PokemonType.NORMAL, 0.3f, 7, dexNumber = 52),
+        Species("oddish", "Oddish", PokemonType.GRASS, 0.3f, 6, dexNumber = 43)
+    )
+
+    private val byId: Map<String, Species> = species.associateBy { it.id }
+
+    /** Todas las especies del catálogo, en el orden en que se declararon. */
+    val all: List<Species> = species
 
     /** Starters de Kanto entre los que se elige al empezar. En orden de pantalla. */
     val starters: List<Species> = listOf("bulbasaur", "charmander", "squirtle").map { require(it) }
