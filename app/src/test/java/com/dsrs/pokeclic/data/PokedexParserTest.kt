@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pruebas del parser del catálogo de la Pokédex y del propio asset:
  * validez de los identificadores, referencias cruzadas con `SpeciesCatalog` y
  * errores de esquema.
