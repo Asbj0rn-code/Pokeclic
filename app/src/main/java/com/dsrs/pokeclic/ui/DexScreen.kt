@@ -137,13 +137,33 @@ private val DexHeaderLabelSize = 10.sp
 private val DexHeaderLabelLine = 12.sp
 
 /**
- * Pantalla de la Pokédex. Sin estado: recibe el [GameUiState] ya derivado
+ * Pantalla de la Pokédex. Sin estado: recibe el [DexUiState] ya derivado
  * (filas, contadores y flag de error) y notifica la vuelta con [onBack]. El
  * botón físico «Atrás» también vuelve, con `BackHandler`.
  */
+/**
+ * Estado mínimo que consume la pantalla de Pokédex: filas y contadores ya
+ * resueltos, más el flag de error de carga. Desacopla la UI del estado
+ * completo del juego y mantiene los previews chicos.
+ */
+data class DexUiState(
+    val entries: List<PokedexRow> = emptyList(),
+    val seenCount: Int = 0,
+    val caughtCount: Int = 0,
+    val loadFailed: Boolean = false
+)
+
+/** Adapta el estado del juego a lo que la pantalla necesita. */
+fun GameUiState.toDexUiState(): DexUiState = DexUiState(
+    entries = dexEntries,
+    seenCount = dexSeenCount,
+    caughtCount = dexCaughtCount,
+    loadFailed = dexLoadFailed
+)
+
 @Composable
 fun DexScreen(
-    state: GameUiState,
+    state: DexUiState,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -161,13 +181,13 @@ fun DexScreen(
         // de modo que ambos comparten anchura exterior. Envuelve su
         // contenido; la LCD central recibe el resto con `weight(1f)`.
         DexHeader(
-            seenCount = state.dexSeenCount,
-            caughtCount = state.dexCaughtCount,
+            seenCount = state.seenCount,
+            caughtCount = state.caughtCount,
             onBack = onBack,
             modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp)
         )
 
-        if (state.dexLoadFailed) {
+        if (state.loadFailed) {
             DexError(modifier = Modifier.fillMaxSize().padding(16.dp))
         } else {
             // Única pantalla LCD: esquinas suavizadas, borde fino y sin sombra
@@ -189,7 +209,7 @@ fun DexScreen(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     itemsIndexed(
-                        state.dexEntries,
+                        state.entries,
                         key = { _, entry -> entry.dexNumber }
                     ) { index, entry ->
                         if (index > 0) {
@@ -565,13 +585,10 @@ private const val DEX_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
  * Estado de ejemplo: starter + capturas y avistamientos concretos. No sirve un
  * estado vacío: el preview debe enseñar los cuatro estados de fila.
  */
-private fun dexPreviewState(): GameUiState = GameUiState(
-    caughtSpecies = setOf("charmander", "rattata"),
-    seenSpecies = setOf("charmander", "rattata", "pidgey", "zubat"),
-    isPokedexOpen = true,
-    dexSeenCount = 4,
-    dexCaughtCount = 2,
-    dexEntries = listOf(
+private fun dexPreviewState(): DexUiState = DexUiState(
+    seenCount = 4,
+    caughtCount = 2,
+    entries = listOf(
         PokedexRow(1, "bulbasaur", null, null, DexStatus.UNKNOWN),
         PokedexRow(4, "charmander", "Charmander", "Fuego", DexStatus.CAUGHT),
         PokedexRow(16, "pidgey", "Pidgey", "Volador", DexStatus.SEEN),
@@ -601,7 +618,7 @@ private fun DexScreenPreview() = MaterialTheme {
 @Composable
 private fun DexErrorPreview() = MaterialTheme {
     DexScreen(
-        state = dexPreviewState().copy(dexLoadFailed = true, dexEntries = emptyList()),
+        state = dexPreviewState().copy(loadFailed = true, entries = emptyList()),
         onBack = {}
     )
 }

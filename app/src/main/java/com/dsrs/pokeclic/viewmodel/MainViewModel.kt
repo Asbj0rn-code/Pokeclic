@@ -20,9 +20,8 @@ import com.dsrs.pokeclic.model.GymCatalog
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
-import com.dsrs.pokeclic.model.PokedexCatalog
-import com.dsrs.pokeclic.model.PokedexRow
-import com.dsrs.pokeclic.model.DexStatus
+import com.dsrs.pokeclic.model.PokedexCatalogLoad
+import com.dsrs.pokeclic.model.PokedexProjector
 import com.dsrs.pokeclic.model.Projectile
 import com.dsrs.pokeclic.model.RingFeedback
 import com.dsrs.pokeclic.model.RingOutcome
@@ -77,10 +76,9 @@ import kotlin.random.Random
  * @param zones catálogo ordenado de zonas (inyectable para tests).
  * @param random fuente de aleatoriedad (inyectable para tests).
  * @param nowMs reloj en ms (inyectable para tests: se congelan los combates).
- * @param pokedex catálogo de la Pokédex cargado fuera (MainActivity); vacío si
- *   la carga falló.
- * @param pokedexLoadFailed `true` si la carga del catálogo falló: la pantalla
- *   muestra su error y el resto del juego no se ve afectado.
+ * @param pokedexLoad catálogo de la Pokédex y resultado de su carga, resueltos
+ *   fuera (`MainActivity`). Un único objeto impide el par inconsistente
+ *   "catálogo no vacío + carga fallida".
  */
 class MainViewModel(
     private val sprites: SpriteRepository,
@@ -88,32 +86,15 @@ class MainViewModel(
     private val zones: List<Zone> = ZoneCatalog.zones,
     private val random: Random = Random.Default,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
-    private val pokedex: PokedexCatalog = PokedexCatalog.EMPTY,
-    private val pokedexLoadFailed: Boolean = false
+    private val pokedexLoad: PokedexCatalogLoad = PokedexCatalogLoad.EMPTY
 ) : ViewModel() {
 
     /**
-     * Firma con la que se generó [dexEntriesCache]: posesión de la run
-     * (poseídas + inicial) e historia permanente (vistos + capturas
-     * históricas). Evita reconstruir las 151 filas en cada `derive` de un
-     * tick: la dex solo cambia cuando cambia lo que las filas representan.
-     * Declarado ANTES de `_uiState`: su inicializador ya llama a `derive`.
+     * Proyección memoizada de la Pokédex (catálogo + historial → filas y
+     * contadores). Declarada ANTES de `_uiState`: su inicializador ya llama a
+     * `derive`.
      */
-    private var dexHistorySignature: NestedDexHistory? = null
-
-    /**
-     * `ownedSpecies` / `starterSpeciesId` / `seenSpecies` / `caughtSpecies`
-     * agrupados para la comparación memoizada de la dex.
-     */
-    private data class NestedDexHistory(
-        val ownedSpecies: Set<String>,
-        val starterSpeciesId: String?,
-        val seenSpecies: Set<String>,
-        val caughtSpecies: Set<String>
-    )
-
-    /** Último listado de la Pokédex generado, reutilizado mientras no cambie la firma. */
-    private var dexEntriesCache: List<PokedexRow> = emptyList()
+    private val pokedexProjector = PokedexProjector(pokedexLoad.catalog)
 
     private val _uiState = MutableStateFlow(derive(restoreState()))
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
@@ -1174,28 +1155,15 @@ class MainViewModel(
             state.zoneClicks >= zone.clickRequirement &&
             !gymPending
 
-        // Pokédex: se rehacen las filas solo si cambia lo que las define
-        // (posesión de la run + historia permanente). Las 151 entradas son
-        // idénticas en el resto de ticks.
-        val signature = NestedDexHistory(
+        // Pokédex: el proyector memoiza por firma (posesión de la run +
+        // historia permanente), así que el resto de ticks reutiliza las 151
+        // filas y sus contadores.
+        val dex = pokedexProjector.project(
             ownedSpecies = state.ownedSpecies,
             starterSpeciesId = state.starterSpeciesId,
             seenSpecies = state.seenSpecies,
             caughtSpecies = state.caughtSpecies
         )
-        if (signature != dexHistorySignature) {
-            dexEntriesCache = pokedex.rowsFor(
-                state.ownedSpecies,
-                state.starterSpeciesId,
-                state.seenSpecies,
-                state.caughtSpecies
-            )
-            dexHistorySignature = signature
-        }
-        val dexSeenCount = dexEntriesCache.count { it.status != DexStatus.UNKNOWN }
-        val dexCaughtCount = dexEntriesCache.count {
-            it.status == DexStatus.CAUGHT || it.status == DexStatus.REGISTERED
-        }
 
         return state.copy(
             zoneName = zone.name,
@@ -1214,10 +1182,10 @@ class MainViewModel(
             needsStarter = starterId == null,
             leadOptions = leadOptions,
             starterOptions = starterOptions,
-            dexEntries = dexEntriesCache,
-            dexSeenCount = dexSeenCount,
-            dexCaughtCount = dexCaughtCount,
-            dexLoadFailed = pokedexLoadFailed
+            dexEntries = dex.entries,
+            dexSeenCount = dex.seenCount,
+            dexCaughtCount = dex.caughtCount,
+            dexLoadFailed = pokedexLoad.loadFailed
         )
     }
 

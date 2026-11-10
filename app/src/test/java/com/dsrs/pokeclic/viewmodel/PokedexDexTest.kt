@@ -11,6 +11,7 @@ import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.PokedexCatalog
+import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexSpecies
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
@@ -126,8 +127,7 @@ class PokedexDexTest {
         zones = zones,
         random = random,
         nowMs = nowMs,
-        pokedex = catalog,
-        pokedexLoadFailed = loadFailed
+        pokedexLoad = PokedexCatalogLoad(catalog, loadFailed)
     )
 
     // --- Navegación ---------------------------------------------------------

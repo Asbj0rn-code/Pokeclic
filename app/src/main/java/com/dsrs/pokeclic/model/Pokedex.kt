@@ -216,5 +216,8 @@ data class PokedexCatalogLoad(
     companion object {
         /** Carga no disponible (por ejemplo, en previews o en tests sin asset). */
         val FAILED: PokedexCatalogLoad = PokedexCatalogLoad(PokedexCatalog.EMPTY, true)
+
+        /** Sin catálogo pero sin error: valor por defecto de tests y previews. */
+        val EMPTY: PokedexCatalogLoad = PokedexCatalogLoad(PokedexCatalog.EMPTY, false)
     }
 }
