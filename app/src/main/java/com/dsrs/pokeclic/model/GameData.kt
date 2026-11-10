@@ -63,33 +63,39 @@ data class TrainerState(
  * @param name nombre mostrado.
  * @param type tipo elemental, decide ventajas y desventajas.
  * @param captureDifficulty 0f (trivial) a 1f (muy difícil); alimenta la
- *   dificultad del minijuego de pesca (`FishingDefaults.configFor`).
+ *   dificultad del minijuego de captura (`CatchingDefaults.configFor`).
  * @param coinReward monedas otorgadas la **primera vez** que se captura la
  *   especie (una sola vez para siempre).
+ * @param dexNumber número de la Pokédex nacional; resuelve el sprite de
+ *   `Pokedex/` (`pokedexSprite`).
  */
 data class Species(
     val id: String,
     val name: String,
     val type: PokemonType,
     val captureDifficulty: Float,
-    val coinReward: Int
+    val coinReward: Int,
+    val dexNumber: Int
 )
 
 /**
  * Un Pokémon salvaje que ha aparecido en la hierba alta y espera a ser capturado.
  *
  * Es estado **transitorio**: no se persiste mientras está abierto. La captura
- * se juega con el minijuego de pesca (`FishingGame`); su estado en curso vive
- * en `GameUiState.fishing`, así que aquí solo viaja la especie en liza.
+ * se juega con el minijuego de captura (`CatchingGame`); su estado en curso vive
+ * en `GameUiState.catching`, así que aquí solo viaja la especie en liza.
  *
  * @param speciesId clave del catálogo (SpriteRepository y recompensas).
  * @param speciesName nombre mostrado, ya resuelto para la UI.
  * @param speciesType tipo elemental, para el color del sustituto de sprite.
+ * @param speciesDexNumber número de la Pokédex nacional, ya resuelto para que
+ *   la UI pinte el sprite de `Pokedex/` sin consultar el catálogo.
  */
 data class Encounter(
     val speciesId: String,
     val speciesName: String,
-    val speciesType: PokemonType
+    val speciesType: PokemonType,
+    val speciesDexNumber: Int = 0
 )
 
 /**

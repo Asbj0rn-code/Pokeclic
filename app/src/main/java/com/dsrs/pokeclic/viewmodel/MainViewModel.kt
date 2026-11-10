@@ -6,10 +6,10 @@ import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.Encounter
-import com.dsrs.pokeclic.model.FishingDefaults
-import com.dsrs.pokeclic.model.FishingGame
-import com.dsrs.pokeclic.model.FishingPhase
-import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.CatchingDefaults
+import com.dsrs.pokeclic.model.CatchingGame
+import com.dsrs.pokeclic.model.CatchingPhase
+import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.Gym
 import com.dsrs.pokeclic.model.GymCombat
@@ -60,7 +60,7 @@ import kotlin.random.Random
  *   ganado dentro de la run actual (`gymClearedRun`).
  * - En hierba alta, los toques **no** cuentan para el avance: marcan actividad de
  *   caminar (temporizador que solo corre con toques recientes).
- * - Con un encuentro activo se juega el minijuego de pesca (`FishingGame`): la
+ * - Con un encuentro activo se juega el minijuego de captura (`CatchingGame`): la
  *   UI registra la pulsación en toda la pantalla y el ViewModel mueve barra y
  *   sprite en un bucle de ticks.
  * - Con un gimnasio activo, romper proyectiles deja al líder expuesto; solo
@@ -98,11 +98,11 @@ class MainViewModel(
     /** Job del cartel de arranque del combate del gimnasio. */
     private var gymIntroJob: Job? = null
 
-    /** Job del bucle del minijuego de pesca. */
-    private var fishingJob: Job? = null
+    /** Job del bucle del minijuego de captura. */
+    private var catchingJob: Job? = null
 
-    /** ¿El jugador mantiene pulsado durante la partida de pesca? */
-    private var fishingHeld: Boolean = false
+    /** ¿El jugador mantiene pulsado durante la partida de captura? */
+    private var catchingHeld: Boolean = false
 
     /** Siguiente id de ataque (proyectil o anillo) del combate actual. */
     private var nextCombatId: Long = 0L
@@ -124,7 +124,7 @@ class MainViewModel(
      *   La Pokébola ya no elige dirección según el lado que se toca.
      *
      * Aplica el efecto del modo actual: caminar > avance de zona. Durante el
-     * minijuego de pesca la Pokébola no se dibuja (la escena ocupa toda la
+     * minijuego de captura la Pokébola no se dibuja (la escena ocupa toda la
      * pantalla), así que un toque que la alcanzara no cambia nada sustantivo.
      */
     fun onPokeBallTouch(direction: Direction) {
@@ -176,8 +176,8 @@ class MainViewModel(
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
     fun onTallGrassToggle() = mutate { state ->
         if (state.isTallGrass) {
-            cancelFishing()
-            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, fishing = null)
+            cancelCatching()
+            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, catching = null)
         } else {
             state.copy(isTallGrass = true)
         }
@@ -192,7 +192,7 @@ class MainViewModel(
     fun onReset() {
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         mutate { state ->
             state.copy(
                 ownedSpecies = emptySet(),
@@ -203,7 +203,7 @@ class MainViewModel(
                 isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
-                fishing = null,
+                catching = null,
                 gym = null,
                 gymIntro = null
             )
@@ -223,7 +223,7 @@ class MainViewModel(
     fun onWipeGame() {
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         resetJob?.cancel()
         lateralFrameJob?.cancel()
         lastWalkTapMs = 0L
@@ -245,7 +245,7 @@ class MainViewModel(
         if (index < 0) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         lastWalkTapMs = 0L
         nextCombatId = 0L
         mutate { state ->
@@ -256,7 +256,7 @@ class MainViewModel(
                 isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
-                fishing = null,
+                catching = null,
                 gym = null,
                 gymIntro = null
             )
@@ -509,7 +509,7 @@ class MainViewModel(
                     isTallGrass = false,
                     walkProgress = 0f,
                     encounter = null,
-                    fishing = null,
+                    catching = null,
                     gymIntro = null,
                     gym = GymState(
                         gymId = config.id,
@@ -782,11 +782,11 @@ class MainViewModel(
         }
     }
 
-    // --- Pesca (Etapa 3) ---------------------------------------------------
+    // --- Captura (Etapa 3) ---------------------------------------------------
 
     /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
-    fun onFishingHold(held: Boolean) {
-        fishingHeld = held
+    fun onCatchingHold(held: Boolean) {
+        catchingHeld = held
     }
 
     /**
@@ -795,12 +795,12 @@ class MainViewModel(
      * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
      * encuentro.
      */
-    fun onFishingResultContinue() {
-        val fishing = _uiState.value.fishing ?: return
-        if (fishing.phase == FishingPhase.PLAYING) return
-        cancelFishing()
+    fun onCatchingResultContinue() {
+        val catching = _uiState.value.catching ?: return
+        if (catching.phase == CatchingPhase.PLAYING) return
+        cancelCatching()
 
-        val captured = fishing.phase == FishingPhase.CAPTURED
+        val captured = catching.phase == CatchingPhase.CAPTURED
         mutate { state ->
             val encounter = state.encounter ?: return@mutate state.withoutEncounter()
             if (captured) {
@@ -823,28 +823,39 @@ class MainViewModel(
 
     /** Sale del encuentro y deja la hierba lista para el siguiente. */
     private fun GameUiState.withoutEncounter(): GameUiState =
-        copy(encounter = null, fishing = null, walkProgress = 0f)
+        copy(encounter = null, catching = null, walkProgress = 0f)
 
     /**
-     * Bucle del minijuego de pesca: avanza barra y sprite a 50 ms con la
+     * Bucle del minijuego de captura: avanza barra y sprite a 50 ms con la
      * pulsación registrada. Se detiene al terminar la partida (captura o huida);
-     * el panel de resultado espera el `onFishingResultContinue` del jugador.
+     * el panel de resultado espera el `onCatchingResultContinue` del jugador.
      */
-    private fun startFishingLoop() {
-        fishingJob?.cancel()
-        fishingHeld = false
-        fishingJob = viewModelScope.launch {
+    private fun startCatchingLoop() {
+        catchingJob?.cancel()
+        catchingHeld = false
+        catchingJob = viewModelScope.launch {
+            // La Pokébola se lanza y queda clavada en el centro antes de que el
+            // riel empiece a moverse: el estado se queda centrado durante el
+            // vuelo y la pausa de reacción.
+            delay(CatchingDefaults.THROW_MS + CatchingDefaults.REACTION_MS)
+            // `dt` sale del reloj real y no del tick nominal: así el movimiento
+            // no se ralentiza si un frame tarda más de lo previsto.
+            var lastTickMs = nowMs()
             while (isActive) {
-                delay(FISHING_TICK_MS)
+                delay(CATCHING_TICK_MS)
+                val now = nowMs()
+                val dt = ((now - lastTickMs) / 1000f).coerceIn(0f, MAX_CATCHING_DT_SECONDS)
+                lastTickMs = now
+                if (dt <= 0f) continue
                 var finished = false
-                updateFishing { current ->
-                    val next = FishingGame.step(
+                updateCatching { current ->
+                    val next = CatchingGame.step(
                         state = current,
-                        held = fishingHeld,
-                        dt = FISHING_TICK_MS / 1000f,
+                        held = catchingHeld,
+                        dt = dt,
                         random = random
                     )
-                    finished = next.phase != FishingPhase.PLAYING
+                    finished = next.phase != CatchingPhase.PLAYING
                     next
                 }
                 if (finished) break
@@ -853,18 +864,18 @@ class MainViewModel(
     }
 
     /** Actualiza el minijuego (estado transitorio, no se persiste). */
-    private fun updateFishing(block: (FishingState) -> FishingState) {
+    private fun updateCatching(block: (CatchingState) -> CatchingState) {
         _uiState.update { state ->
-            val fishing = state.fishing ?: return@update state
-            derive(state.copy(fishing = block(fishing)))
+            val catching = state.catching ?: return@update state
+            derive(state.copy(catching = block(catching)))
         }
     }
 
-    /** Cancela el bucle de pesca y suelta la pulsación que quedara a medias. */
-    private fun cancelFishing() {
-        fishingJob?.cancel()
-        fishingJob = null
-        fishingHeld = false
+    /** Cancela el bucle de captura y suelta la pulsación que quedara a medias. */
+    private fun cancelCatching() {
+        catchingJob?.cancel()
+        catchingJob = null
+        catchingHeld = false
     }
 
     /**
@@ -887,7 +898,7 @@ class MainViewModel(
      */
     fun onAdvanceZone() = mutate { state ->
         if (state.canAdvanceZone) {
-            cancelFishing()
+            cancelCatching()
             state.copy(
                 zoneIndex = state.zoneIndex + 1,
                 zoneClicks = 0L,
@@ -899,8 +910,8 @@ class MainViewModel(
     }
 
     /**
-     * Revierte un salvaje a la zona actual y abre su partida de pesca: el
-     * encuentro muestra la especie y `GameUiState.fishing` guarda el estado del
+     * Revierte un salvaje a la zona actual y abre su partida de captura: el
+     * encuentro muestra la especie y `GameUiState.catching` guarda el estado del
      * minijuego con los parámetros según su dificultad de captura.
      *
      * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
@@ -911,20 +922,21 @@ class MainViewModel(
         val zone = zoneAt(state.zoneIndex)
         if (zone.wildSpeciesIds.isEmpty()) return
         val species = SpeciesCatalog.require(zone.wildSpeciesIds.random(random))
-        val config = FishingDefaults.configFor(species.captureDifficulty)
+        val config = CatchingDefaults.configFor(species.captureDifficulty)
         mutate {
             it.copy(
                 encounter = Encounter(
                     speciesId = species.id,
                     speciesName = species.name,
-                    speciesType = species.type
+                    speciesType = species.type,
+                    speciesDexNumber = species.dexNumber
                 ),
-                fishing = FishingGame.initialState(config, random),
+                catching = CatchingGame.initialState(config),
                 walkProgress = 0f,
                 seenSpecies = it.seenSpecies + species.id
             )
         }
-        startFishingLoop()
+        startCatchingLoop()
     }
 
     // --- Bucles ------------------------------------------------------------
@@ -1125,8 +1137,14 @@ class MainViewModel(
         /** Segundos de caminar continuo necesarios para que aparezca un salvaje. */
         const val ENCOUNTER_SECONDS = 3f
 
-        /** Tick del bucle del minijuego de pesca. */
-        const val FISHING_TICK_MS = 50L
+        /**
+         * Tick del bucle del minijuego de captura. Apunta a 60 fps para que la
+         * barra y el sprite se muevan suave; el `dt` real corrige la deriva.
+         */
+        const val CATCHING_TICK_MS = 16L
+
+        /** Tope de `dt` por tick: un frame perdido no debe teletransportar nada. */
+        const val MAX_CATCHING_DT_SECONDS = 0.1f
 
         /** Cada especie en posesión suma este % a la potencia de clic. */
         const val PER_OWNED_SPECIES_BONUS = 0.05

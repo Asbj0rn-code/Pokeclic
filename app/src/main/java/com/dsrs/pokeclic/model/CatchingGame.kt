@@ -5,10 +5,9 @@ import kotlin.math.exp
 import kotlin.random.Random
 
 /**
- * Reglas y estado del minijuego de pesca (Etapa 3), el que sustituye a la
- * captura por lanzamientos.
+ * Reglas y estado del minijuego de captura (Etapa 3).
  *
- * Mecánica, al estilo del minijuego de pesca de Stardew Valley:
+ * Mecánica de riel vertical, presentada como la captura de un Pokémon salvaje:
  * - En un riel vertical vive el sprite del salvaje, que se mueve de forma
  *   errática: avanza suavemente hacia objetivos aleatorios y, con dificultad,
  *   da "dardos" bruscos hacia cualquier punto del riel.
@@ -25,12 +24,12 @@ import kotlin.random.Random
  */
 
 /** Fase del minijuego. La partida termina con un único `CAPTURED` o `ESCAPED`. */
-enum class FishingPhase { PLAYING, CAPTURED, ESCAPED }
+enum class CatchingPhase { PLAYING, CAPTURED, ESCAPED }
 
 /**
- * Parámetros de una partida de pesca, ya calculados para la especie en liza.
+ * Parámetros de una partida de captura, ya calculados para la especie en liza.
  *
- * Llevarlos dentro de [FishingState] (como hace `GymState` con sus duraciones)
+ * Llevarlos dentro de [CatchingState] (como hace `GymState` con sus duraciones)
  * mantiene el estado autocontenido: `step` no necesita más entradas.
  *
  * @param barSize tamaño de la barra de captura, como fracción del riel.
@@ -50,22 +49,22 @@ enum class FishingPhase { PLAYING, CAPTURED, ESCAPED }
  * @param wanderRange desviación máxima del vagabundeo suave con respecto a la
  *   posición actual del sprite.
  */
-data class FishingConfig(
-    val barSize: Float = FishingDefaults.BAR_SIZE,
-    val barRiseAccel: Float = FishingDefaults.BAR_RISE_ACCEL,
-    val gravity: Float = FishingDefaults.GRAVITY,
-    val maxBarSpeed: Float = FishingDefaults.MAX_BAR_SPEED,
-    val fillRate: Float = FishingDefaults.FILL_RATE,
-    val drainRate: Float = FishingDefaults.DRAIN_RATE,
-    val initialGraceSeconds: Float = FishingDefaults.INITIAL_GRACE_SECONDS,
+data class CatchingConfig(
+    val barSize: Float = CatchingDefaults.BAR_SIZE,
+    val barRiseAccel: Float = CatchingDefaults.BAR_RISE_ACCEL,
+    val gravity: Float = CatchingDefaults.GRAVITY,
+    val maxBarSpeed: Float = CatchingDefaults.MAX_BAR_SPEED,
+    val fillRate: Float = CatchingDefaults.FILL_RATE,
+    val drainRate: Float = CatchingDefaults.DRAIN_RATE,
+    val initialGraceSeconds: Float = CatchingDefaults.INITIAL_GRACE_SECONDS,
     val smoothingSeconds: Float,
     val dartChancePerSecond: Float,
-    val spriteMargin: Float = FishingDefaults.SPRITE_MARGIN,
-    val wanderRange: Float = FishingDefaults.WANDER_RANGE
+    val spriteMargin: Float = CatchingDefaults.SPRITE_MARGIN,
+    val wanderRange: Float = CatchingDefaults.WANDER_RANGE
 )
 
 /**
- * Estado transitorio de una partida de pesca.
+ * Estado transitorio de una partida de captura.
  *
  * Las posiciones están normalizadas a la altura del riel: `0f` es el borde
  * inferior y `1f` el superior (así la gravedad negativa tira hacia abajo).
@@ -81,8 +80,8 @@ data class FishingConfig(
  * @param elapsed segundos transcurridos de partida.
  * @param phase fase actual.
  */
-data class FishingState(
-    val config: FishingConfig,
+data class CatchingState(
+    val config: CatchingConfig,
     val barPos: Float,
     val barVel: Float,
     val spritePos: Float,
@@ -90,7 +89,7 @@ data class FishingState(
     val dartBoostRemaining: Float = 0f,
     val progress: Float,
     val elapsed: Float,
-    val phase: FishingPhase = FishingPhase.PLAYING
+    val phase: CatchingPhase = CatchingPhase.PLAYING
 )
 
 /**
@@ -102,7 +101,7 @@ data class FishingState(
  * (0,4/s fácil → 1,6/s difícil). Los ratios de la barra de progreso son fijos:
  * llenarla requiere ≈2,5 s de solape acumulado y perderla ≈5 s sin él.
  */
-object FishingDefaults {
+object CatchingDefaults {
 
     /** Tamaño de la barra de captura, como fracción del riel. */
     const val BAR_SIZE = 0.22f
@@ -124,6 +123,19 @@ object FishingDefaults {
 
     /** Segundo(s) iniciales sin huida aunque el progreso esté a 0. */
     const val INITIAL_GRACE_SECONDS = 1.0f
+
+    /**
+     * Duración del lanzamiento de la Pokébola al abrir el encuentro. El riel no
+     * avanza durante ese tiempo: la bola vuela desde el menú hasta el centro.
+     */
+    const val THROW_MS = 900L
+
+    /**
+     * Pausa después del lanzamiento con la Pokébola **clavada en el centro** del
+     * riel, para que el jugador tenga tiempo de reaccionar antes de que la
+     * gravedad la haga caer.
+     */
+    const val REACTION_MS = 200L
 
     /** Suavizado del sprite en la dificultad mínima. */
     const val SMOOTHING_EASY = 1.2f
@@ -156,9 +168,9 @@ object FishingDefaults {
      * Traduce la dificultad de captura de la especie (0..1) a los parámetros de
      * movimiento. Las entradas fuera de rango se recortan.
      */
-    fun configFor(captureDifficulty: Float): FishingConfig {
+    fun configFor(captureDifficulty: Float): CatchingConfig {
         val difficulty = captureDifficulty.coerceIn(0f, 1f)
-        return FishingConfig(
+        return CatchingConfig(
             smoothingSeconds = lerp(SMOOTHING_EASY, SMOOTHING_HARD, difficulty),
             dartChancePerSecond = lerp(DART_EASY, DART_HARD, difficulty)
         )
@@ -168,23 +180,23 @@ object FishingDefaults {
 }
 
 /**
- * Reglas puras del minijuego de pesca, sin reloj ni corrutinas: reciben un
- * [FishingState] y devuelven el siguiente ([step]), igual que `GymCombat`.
+ * Reglas puras del minijuego de captura, sin reloj ni corrutinas: reciben un
+ * [CatchingState] y devuelven el siguiente ([step]), igual que `GymCombat`.
  */
-object FishingGame {
+object CatchingGame {
 
     /**
-     * Abre la partida: barra parada en el centro, progreso a 0 y el sprite en
-     * una posición aleatoria dentro del riel.
+     * Abre la partida con **barra y sprite en el centro del riel**, progreso a 0
+     * y fase `PLAYING`. El sprite elige su primer objetivo de vagabundeo en el
+     * primer tick de [step], así que la partida arranca simétrica.
      */
-    fun initialState(config: FishingConfig, random: Random): FishingState {
-        val start = randomSpriteTarget(random)
-        return FishingState(
+    fun initialState(config: CatchingConfig): CatchingState {
+        return CatchingState(
             config = config,
             barPos = 0.5f,
             barVel = 0f,
-            spritePos = start,
-            spriteTarget = start,
+            spritePos = 0.5f,
+            spriteTarget = 0.5f,
             progress = 0f,
             elapsed = 0f
         )
@@ -202,8 +214,8 @@ object FishingGame {
      * @param dt segundos transcurridos desde el tick anterior.
      * @param random fuente de aleatoriedad (inyectada para poder testear).
      */
-    fun step(state: FishingState, held: Boolean, dt: Float, random: Random): FishingState {
-        if (state.phase != FishingPhase.PLAYING || dt <= 0f) return state
+    fun step(state: CatchingState, held: Boolean, dt: Float, random: Random): CatchingState {
+        if (state.phase != CatchingPhase.PLAYING || dt <= 0f) return state
         val config = state.config
         val elapsed = state.elapsed + dt
 
@@ -222,12 +234,12 @@ object FishingGame {
         var target = state.spriteTarget
         if (random.nextFloat() < config.dartChancePerSecond * dt) {
             target = randomSpriteTarget(random)
-            dartBoost = FishingDefaults.DART_BOOST_SECONDS
-        } else if (abs(target - state.spritePos) <= FishingDefaults.ARRIVAL_TOLERANCE) {
+            dartBoost = CatchingDefaults.DART_BOOST_SECONDS
+        } else if (abs(target - state.spritePos) <= CatchingDefaults.ARRIVAL_TOLERANCE) {
             target = wanderTarget(random, state.spritePos, config)
         }
         val smoothing = if (dartBoost > 0f) {
-            config.smoothingSeconds / FishingDefaults.DART_BOOST_SPEEDUP
+            config.smoothingSeconds / CatchingDefaults.DART_BOOST_SPEEDUP
         } else {
             config.smoothingSeconds
         }
@@ -238,9 +250,9 @@ object FishingGame {
         val rate = if (overlapping) config.fillRate else -config.drainRate
         val progress = (state.progress + rate * dt).coerceIn(0f, 1f)
         val phase = when {
-            progress >= 1f -> FishingPhase.CAPTURED
-            progress <= 0f && elapsed >= config.initialGraceSeconds -> FishingPhase.ESCAPED
-            else -> FishingPhase.PLAYING
+            progress >= 1f -> CatchingPhase.CAPTURED
+            progress <= 0f && elapsed >= config.initialGraceSeconds -> CatchingPhase.ESCAPED
+            else -> CatchingPhase.PLAYING
         }
 
         return state.copy(
@@ -257,12 +269,12 @@ object FishingGame {
 
     /** Objetivo aleatorio (dardo o inicio) en todo el riel, respetando el margen. */
     private fun randomSpriteTarget(random: Random): Float {
-        val margin = FishingDefaults.SPRITE_MARGIN
+        val margin = CatchingDefaults.SPRITE_MARGIN
         return margin + random.nextFloat() * (1f - 2f * margin)
     }
 
     /** Objetivo cercano para el vagabundeo suave, recortado al riel. */
-    private fun wanderTarget(random: Random, current: Float, config: FishingConfig): Float {
+    private fun wanderTarget(random: Random, current: Float, config: CatchingConfig): Float {
         val margin = config.spriteMargin
         val range = config.wanderRange
         return (current + (random.nextFloat() * 2f - 1f) * range).coerceIn(margin, 1f - margin)
