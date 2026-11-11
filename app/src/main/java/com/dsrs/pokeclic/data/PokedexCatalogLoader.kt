@@ -80,8 +80,9 @@ class PokedexDataException(message: String, cause: Throwable? = null) :
 
 /**
  * Lee el asset **una vez** por proceso. La paridad con el JSON original de la
- * primera generación no se comprueba en ejecución: la cubren los tests con el
- * recurso de `app/src/test/resources`.
+ * primera generación no se comprueba en ejecución: la cubren los tests, que
+ * leen el asset de ejecución (`app/src/main/assets/pokedex_catalogo.json`)
+ * desde el directorio del módulo.
  *
  * Nunca lanza: el fallo se refleja en `loadFailed` y en el log.
  */

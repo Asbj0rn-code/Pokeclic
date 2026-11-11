@@ -142,7 +142,6 @@ internal fun RetroLcdPanel(
     shadowOffset: Dp = 2.dp,
     shape: Shape = CellShape,
     borderWidth: Dp = 2.dp,
-    innerGap: Dp = 1.dp,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -153,7 +152,6 @@ internal fun RetroLcdPanel(
         innerBorder = if (selected) Color(0xFFE8ACB2) else Color(0xFF4E5A66),
         shape = shape,
         borderWidth = borderWidth,
-        innerGap = innerGap,
         shadowOffset = shadowOffset,
         fill = fill,
         contentPadding = contentPadding,

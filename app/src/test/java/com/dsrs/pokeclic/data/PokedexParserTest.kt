@@ -1,10 +1,12 @@
-﻿/**
+/**
  * Pruebas del parser del catálogo de la Pokédex y del propio asset:
  * validez de los identificadores, referencias cruzadas con `SpeciesCatalog` y
  * errores de esquema.
  */
 package com.dsrs.pokeclic.data
 
+import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.SpeciesCatalog
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
@@ -27,27 +29,21 @@ private fun assetText(name: String): String {
 
 class PokedexParserTest {
 
-    /** Ids de `SpeciesCatalog` (contenido del juego) que deben existir en la dex. */
-    private val speciesCatalogIds = listOf(
-        "bulbasaur", "charmander", "squirtle", "pidgey", "rattata", "caterpie",
-        "weedle", "spearow", "jigglypuff", "zubat", "geodude", "meowth", "oddish"
-    )
-
     // --- catálogo adaptado --------------------------------------------------
 
     @Test
     fun adaptedCatalog_holds151ConsecutiveEntries() {
         val catalog = parsePokedexCatalog(assetText(DEX_CATALOG_ASSET))
 
-        assertEquals(151, catalog.size)
-        assertEquals((1..151).toList(), catalog.ordered.map { it.dexNumber })
+        assertEquals(151, catalog.entries.size)
+        assertEquals((1..151).toList(), catalog.entries.map { it.dexNumber })
     }
 
     @Test
     fun adaptedCatalog_usesStableExplicitIds() {
         val catalog = parsePokedexCatalog(assetText(DEX_CATALOG_ASSET))
 
-        val ids = catalog.ordered.map { it.speciesId }
+        val ids = catalog.entries.map { it.speciesId }
         assertEquals(ids.size, ids.toSet().size)
         ids.forEach { id ->
             assertEquals(true, id.matches(Regex("[a-z0-9_]+")))
@@ -68,7 +64,9 @@ class PokedexParserTest {
     @Test
     fun adaptedCatalog_containsEveryGameSpecies() {
         val catalog = parsePokedexCatalog(assetText(DEX_CATALOG_ASSET))
-        val missing = speciesCatalogIds.filter { catalog.bySpeciesId(it) == null }
+        // Se deriva del catálogo de juego: una especie nueva sin entrada en la
+        // dex rompe este test en vez de pasar desapercibida.
+        val missing = SpeciesCatalog.all.map { it.id }.filter { catalog.bySpeciesId(it) == null }
         assertEquals(emptyList<String>(), missing)
     }
 
@@ -85,10 +83,10 @@ class PokedexParserTest {
         assertEquals("Bicho", catalog.bySpeciesId("caterpie")?.typeName)
         assertEquals("Bicho", catalog.bySpeciesId("weedle")?.typeName)
 
-        val combat = com.dsrs.pokeclic.model.SpeciesCatalog.byId("caterpie")
-        assertEquals(com.dsrs.pokeclic.model.PokemonType.GRASS, combat?.type)
-        val weedle = com.dsrs.pokeclic.model.SpeciesCatalog.byId("weedle")
-        assertEquals(com.dsrs.pokeclic.model.PokemonType.POISON, weedle?.type)
+        val combat = SpeciesCatalog.byId("caterpie")
+        assertEquals(PokemonType.GRASS, combat?.type)
+        val weedle = SpeciesCatalog.byId("weedle")
+        assertEquals(PokemonType.POISON, weedle?.type)
     }
 
     // --- parser puro --------------------------------------------------------

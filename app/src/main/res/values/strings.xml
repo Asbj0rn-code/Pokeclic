@@ -124,10 +124,11 @@
         <item quantity="other">Capturados</item>
     </plurals>
     <string name="dex_caught_desc">En posesión</string>
+    <string name="dex_registered">Registrado</string>
+    <string name="dex_registered_desc">Registrado, capturado en una partida anterior</string>
     <string name="dex_seen_desc">Avistado, no poseído actualmente</string>
     <string name="dex_error_title">Pokédex no disponible</string>
-        <string name="dex_error_body">No se pudo cargar el catálogo de especies. El resto del juego sigue funcionando.</string>
-
+    <string name="dex_error_body">No se pudo cargar el catálogo de especies. El resto del juego sigue funcionando.</string>
 
     <string name="wipe_confirm_title">¿Borrar partida?</string>
     <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>

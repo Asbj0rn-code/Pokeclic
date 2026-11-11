@@ -38,10 +38,10 @@ data class GameUiState(
     val rewardedSpecies: Set<String> = emptySet(),
     /**
      * Capturas históricas (meta permanente): especies alguna vez obtenidas.
-     * Sobrevive al reset y muere con el borrado total. Para la Pokédex sirve
-     * para **reconocer especies conocidas** (avistadas), pero **NO**
-     * determina el estado CAUGHT: ese lo marca la posesión de la run actual
-     * (`ownedSpecies` o `starterSpeciesId`).
+     * Sobrevive al reset y muere con el borrado total. Determina el estado
+     * **REGISTERED** de la Pokédex (capturada y no poseída); **CAUGHT** sigue
+     * marcándose por la posesión de la run actual (`ownedSpecies` o
+     * `starterSpeciesId`).
      */
     val caughtSpecies: Set<String> = emptySet(),
     val medals: Set<String> = emptySet(),
@@ -114,9 +114,12 @@ data class GameUiState(
     // --- Pokédex (derivados del catálogo + historial) ---
     /** Filas 001..151 con el estado de cada especie, ya resuelto para la UI. */
     val dexEntries: List<PokedexRow> = emptyList(),
-    /** Especies avistadas que constan en el catálogo (para el encabezado). */
+    /** Especies conocidas (avistadas, registradas o capturadas) del catálogo. */
     val dexSeenCount: Int = 0,
-    /** Especies capturadas que constan en el catálogo (para el encabezado). */
+    /**
+     * Especies capturadas **alguna vez** (CAUGHT ∪ REGISTERED): el contador
+     * no baja al resetear la run.
+     */
     val dexCaughtCount: Int = 0,
     /** La carga del catálogo falló: la Pokédex muestra un error y permite volver. */
     val dexLoadFailed: Boolean = false

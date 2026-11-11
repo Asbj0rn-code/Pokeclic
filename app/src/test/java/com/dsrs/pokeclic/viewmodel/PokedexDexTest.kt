@@ -5,15 +5,14 @@
  */
 package com.dsrs.pokeclic.viewmodel
 
-import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.CatchingPhase
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.PokedexCatalog
+import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexSpecies
 import com.dsrs.pokeclic.model.SpeciesCatalog
-import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.Zone
 import kotlin.math.abs
 import kotlin.random.Random
@@ -81,21 +80,6 @@ class PokedexDexTest {
         }
     }
 
-    /// Duplicados a propósito de los dobles privados de `MainViewModelTest`
-    /// (no hay forma de reutilizarlos sin hacerlos internos a producción).
-
-    private class FakeStore : GameStateStore {
-        var saved: GameSnapshot? = null
-        override fun load(): GameSnapshot? = saved
-        override fun save(snapshot: GameSnapshot) { saved = snapshot }
-        override fun clear(): Boolean { saved = null; return true }
-    }
-
-    private class FakeSprites : SpriteRepository {
-        override fun frameCount(direction: Direction): Int = 1
-        override fun frame(direction: Direction, index: Int): Int = 0
-    }
-
     /** Catálogo de dex de laboratorio (números de posición, no de Kanto). */
     private fun dexCatalog() = PokedexCatalog(
         listOf(
@@ -126,8 +110,7 @@ class PokedexDexTest {
         zones = zones,
         random = random,
         nowMs = nowMs,
-        pokedex = catalog,
-        pokedexLoadFailed = loadFailed
+        pokedexLoad = PokedexCatalogLoad(catalog, loadFailed)
     )
 
     // --- Navegación ---------------------------------------------------------
@@ -269,10 +252,12 @@ class PokedexDexTest {
         // Una pulsación nueva reactiva el temporizador de caminar (con su
         // ritmo de re-toque: el encuentro llega a los 3 s de caminar activo).
         vm.onPokeBallTouch(Direction.BACK)
-        repeat(12) {
+        var taps = 0
+        while (vm.uiState.value.encounter == null && taps < 12) {
             advance(500L)
-            if (vm.uiState.value.encounter != null) return@repeat
+            if (vm.uiState.value.encounter != null) break
             vm.onPokeBallTouch(Direction.BACK)
+            taps++
         }
         assertNotNull(vm.uiState.value.encounter)
         // Y el avistamiento llega a la dex.
@@ -328,12 +313,12 @@ class PokedexDexTest {
             state.seenSpecies
         )
         // La dex lo refleja: starter (CAUGHT) + caterpie en posesión (CAUGHT);
-        // rattata es historia permanente (recompensa anterior) → SEEN;
+        // rattata es captura histórica (recompensa anterior) → REGISTERED;
         // pidgey nunca conocida → UNKNOWN.
-        assertEquals(2, state.dexCaughtCount)
+        assertEquals(3, state.dexCaughtCount)
         assertEquals(DexStatus.CAUGHT, state.dexEntries.first { it.speciesId == "charmander" }.status)
         assertEquals(DexStatus.CAUGHT, state.dexEntries.first { it.speciesId == "caterpie" }.status)
-        assertEquals(DexStatus.SEEN, state.dexEntries.first { it.speciesId == "rattata" }.status)
+        assertEquals(DexStatus.REGISTERED, state.dexEntries.first { it.speciesId == "rattata" }.status)
         assertEquals(DexStatus.UNKNOWN, state.dexEntries.first { it.speciesId == "pidgey" }.status)
         assertEquals((1..4).toList(), state.dexEntries.map { it.dexNumber })
     }
@@ -474,7 +459,7 @@ class PokedexDexTest {
      * recapturarla la vuelve a poner en posesión **sin repetir la recompensa**.
      */
     @Test
-    fun captureThenReset_dropsOwnedToSeenKeepsStarterAndRewardsOnce() {
+    fun captureThenReset_leavesRegisteredKeepsStarterAndRewardsOnce() {
         val store = FakeStore()
         val vm = viewModel(random = DartosAlRielRandom(), store = store)
         vm.onFinishIntro("Ash", "charmander")
@@ -497,11 +482,11 @@ class PokedexDexTest {
             // Historia permanente intacta…
             assertEquals(setOf("charmander", "pidgey"), caughtSpecies)
             assertEquals(setOf("charmander", "pidgey"), seenSpecies)
-            // …pero los estados de la dex siguen la posesión: pidgey → SEEN.
+            // …y el estado histórico se conserva: pidgey → REGISTERED.
             assertEquals(DexStatus.CAUGHT, dexEntries.first { it.speciesId == "charmander" }.status)
-            assertEquals(DexStatus.SEEN, dexEntries.first { it.speciesId == "pidgey" }.status)
+            assertEquals(DexStatus.REGISTERED, dexEntries.first { it.speciesId == "pidgey" }.status)
             assertEquals(DexStatus.UNKNOWN, dexEntries.first { it.speciesId == "rattata" }.status)
-            assertEquals(1, dexCaughtCount)
+            assertEquals(2, dexCaughtCount)
             assertEquals(2, dexSeenCount)
             assertEquals(5L, coins) // el reset conserva la meta
         }
@@ -510,7 +495,7 @@ class PokedexDexTest {
         val restored = viewModel(saved = store.saved)
         with(restored.uiState.value) {
             assertEquals(DexStatus.CAUGHT, dexEntries.first { it.speciesId == "charmander" }.status)
-            assertEquals(DexStatus.SEEN, dexEntries.first { it.speciesId == "pidgey" }.status)
+            assertEquals(DexStatus.REGISTERED, dexEntries.first { it.speciesId == "pidgey" }.status)
             assertTrue(ownedSpecies.isEmpty())
             assertEquals(listOf("charmander"), leadOptions.map { it.id })
         }

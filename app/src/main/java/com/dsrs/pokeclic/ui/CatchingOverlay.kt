@@ -73,7 +73,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -178,7 +177,7 @@ fun CatchingOverlay(
             val spriteBitmap = pokedexSprite(encounter.speciesDexNumber)
                 ?.let { ImageBitmap.imageResource(it) }
             val spriteBounds = remember(spriteBitmap) {
-                spriteBitmap?.let { opaqueBounds(it) } ?: IntRect.Zero
+                spriteBitmap?.opaqueBounds() ?: IntRect.Zero
             }
             val spriteScaleDp = railHeight.value *
                 CatchingSceneDefaults.SPRITE_REFERENCE_FRACTION /
@@ -521,38 +520,6 @@ private fun WildSpriteBox(
             dstSize = IntSize(dstW.toInt(), dstH.toInt()),
             filterQuality = FilterQuality.None
         )
-    }
-}
-
-/** Caja opaca del sprite: recorta el padding transparente de los PNG. */
-private fun opaqueBounds(bitmap: ImageBitmap): IntRect {
-    val source = bitmap.asAndroidBitmap()
-    val w = source.width
-    val h = source.height
-    if (w <= 0 || h <= 0) return IntRect.Zero
-
-    val pixels = IntArray(w * h)
-    source.getPixels(pixels, 0, w, 0, 0, w, h)
-
-    var left = w
-    var top = h
-    var right = -1
-    var bottom = -1
-    for (y in 0 until h) {
-        val row = y * w
-        for (x in 0 until w) {
-            if (pixels[row + x] ushr 24 != 0) {
-                if (x < left) left = x
-                if (x > right) right = x
-                if (y < top) top = y
-                if (y > bottom) bottom = y
-            }
-        }
-    }
-    return if (right < left || bottom < top) {
-        IntRect.Zero
-    } else {
-        IntRect(left, top, right + 1, bottom + 1)
     }
 }
 

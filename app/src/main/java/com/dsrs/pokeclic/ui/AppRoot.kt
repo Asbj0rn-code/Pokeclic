@@ -161,7 +161,7 @@ fun AppRoot(
     // con su callback (el glyph de atrás y el botón físico gestionados dentro).
     if (state.isPokedexOpen) {
         DexScreen(
-            state = state,
+            state = state.toDexUiState(),
             onBack = onCloseDex
         )
         return

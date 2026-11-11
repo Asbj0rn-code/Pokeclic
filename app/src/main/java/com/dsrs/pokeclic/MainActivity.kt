@@ -46,8 +46,7 @@ class MainActivity : AppCompatActivity() {
                 MainViewModel(
                     sprites = DefaultSpriteRepository(),
                     store = SharedPreferencesGameStateStore(applicationContext),
-                    pokedex = dexLoad.catalog,
-                    pokedexLoadFailed = dexLoad.loadFailed
+                    pokedexLoad = dexLoad
                 )
             }
         }

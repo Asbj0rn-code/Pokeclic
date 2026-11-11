@@ -71,8 +71,8 @@ import kotlin.math.min
 import kotlin.random.Random
 
 // ───────────────────────────── Pantalla ─────────────────────────────
-// (El botón táctil hundible `RetroButton` vive en `GameUiComponents.kt`:
-// la Pokédex comparte el mismo skin.)
+// (El botón táctil hundible `RetroButton` vive en `GameUiComponents.kt`,
+// junto al resto de los componentes compartidos del skin retro.)
 
 /**
  * Barra cuadrada estilo consola: marco negro grueso, riel oscuro, relleno

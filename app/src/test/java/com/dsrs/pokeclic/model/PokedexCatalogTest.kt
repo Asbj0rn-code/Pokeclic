@@ -55,10 +55,11 @@ class PokedexCatalogTest {
     }
 
     @Test
-    fun dexStatusFor_seenWithHistoryButNotOwned() {
-        // La captura histórica no marca la posesión de la run actual: queda SEEN.
+    fun dexStatusFor_registeredWithHistoryButNotOwned() {
+        // La captura histórica no marca la posesión de la run actual: queda
+        // REGISTERED (capturada antes, no poseída ahora).
         assertEquals(
-            DexStatus.SEEN,
+            DexStatus.REGISTERED,
             dexStatusFor(
                 "pidgey",
                 ownedSpecies = emptySet(),
@@ -67,6 +68,10 @@ class PokedexCatalogTest {
                 caughtSpecies = setOf("pidgey")
             )
         )
+    }
+
+    @Test
+    fun dexStatusFor_seenWithSightingOnly() {
         assertEquals(
             DexStatus.SEEN,
             dexStatusFor(
@@ -141,7 +146,7 @@ class PokedexCatalogTest {
         )
 
         assertEquals(listOf("charmander"), rows.filter { it.status == DexStatus.CAUGHT }.map { it.speciesId })
-        assertEquals(DexStatus.SEEN, rows.first { it.speciesId == "pidgey" }.status)
+        assertEquals(DexStatus.REGISTERED, rows.first { it.speciesId == "pidgey" }.status)
         assertEquals(DexStatus.UNKNOWN, rows.first { it.speciesId == "rattata" }.status)
     }
 
@@ -208,7 +213,7 @@ class PokedexCatalogTest {
     @Test
     fun emptyCatalog_isAValidCatalogWithNoEntries() {
         val empty = PokedexCatalog.EMPTY
-        assertEquals(0, empty.size)
+        assertEquals(0, empty.entries.size)
         assertEquals(
             emptyList<PokedexRow>(),
             empty.rowsFor(

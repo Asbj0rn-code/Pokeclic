@@ -12,25 +12,28 @@
  *   fuera del recuadro, tipo debajo del nombre y **Pokéball gris tenue**
  *   (escala de grises, opacidad 0.35): especie conocida que no está poseída
  *   en la partida actual.
- * - **CAUGHT**: mismo sprite y mismas condiciones, con Pokéball a color y
- *   opacidad plena: especie poseída en la partida actual o inicial elegido.
- *   La distinción no depende solo del color: cada Pokéball lleva su
- *   descripción accesible.
+ * - **REGISTERED**: mismo sprite, con **Pokéball sin color a opacidad plena**
+ *   y la etiqueta «Registrado» bajo el tipo: capturada en una run anterior y
+ *   no poseída ahora (es el estado que sobrevive al reset).
+ * - **CAUGHT**: mismo sprite, con Pokéball a color y opacidad plena: especie
+ *   poseída en la partida actual o inicial elegido. La distinción no depende
+ *   solo del color: cada Pokéball lleva su descripción accesible y REGISTERED
+ *   se nombra en la fila.
  *
  * **Sprites reales**: cada fila resuelve su recurso por `dexNumber` con
- * `pokedexSprite` (mapa de `PokedexSprites.kt`, aportado por dev) y se
- * presenta completo y centrado en un **recuadro fijo** (ancho y alto iguales
- * en todas las filas y estados), sin filtros, tintes, siluetas ni recortes.
- * Los sprites son PNG cuadrados de 96×96 con margenes transparentes, así
- * que `ContentScale.Fit` es suficiente: sin normalizaciones adicionales. La
- * diferencia SEEN/CAUGHT está únicamente en el indicador de Pokéball. El
- * estado CAUGHT lo marca la posesión de la run (`ownedSpecies` /
- * `starterSpeciesId`), no el historial permanente.
+ * `pokedexSprite` (mapa de `PokedexSprites.kt`). Se recorta el margen
+ * transparente del PNG (`opaqueBounds`) y la figura se normaliza para llenar
+ * el recuadro fijo (88×72 dp): en una lista la figura es un identificador y
+ * prima que se lea; el tamaño relativo entre especies se conserva en la
+ * escena de captura. Se dibuja con `FilterQuality.None` (pixel art sin
+ * interpolación). El estado CAUGHT lo marca la posesión de la run
+ * (`ownedSpecies` / `starterSpeciesId`), no el historial permanente.
  */
 package com.dsrs.pokeclic.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -58,21 +61,28 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,6 +94,8 @@ import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.viewmodel.GameUiState
+import java.util.Locale
+import kotlin.math.min
 
 /**
  * Paleta de tipos de la Pokédex (decoración, no reglas de juego): nombres en
@@ -126,6 +138,10 @@ private val DexRowDivider = DexLcdLine.copy(alpha = 0.35f)
 /** Área táctil de la flecha: su centro (24.dp) define la línea visual. */
 private val DexHeaderArrowTouch = 48.dp
 
+/** Recuadro del sprite en la fila (ancho × alto). */
+private val DexSpriteSlotWidth = 88.dp
+private val DexSpriteSlotHeight = 72.dp
+
 /** Métricas comunes de línea del encabezado: cifra/título y etiqueta. */
 private val DexHeaderValueSize = 16.sp
 private val DexHeaderValueLine = 19.sp
@@ -133,13 +149,33 @@ private val DexHeaderLabelSize = 10.sp
 private val DexHeaderLabelLine = 12.sp
 
 /**
- * Pantalla de la Pokédex. Sin estado: recibe el [GameUiState] ya derivado
+ * Pantalla de la Pokédex. Sin estado: recibe el [DexUiState] ya derivado
  * (filas, contadores y flag de error) y notifica la vuelta con [onBack]. El
  * botón físico «Atrás» también vuelve, con `BackHandler`.
  */
+/**
+ * Estado mínimo que consume la pantalla de Pokédex: filas y contadores ya
+ * resueltos, más el flag de error de carga. Desacopla la UI del estado
+ * completo del juego y mantiene los previews chicos.
+ */
+data class DexUiState(
+    val entries: List<PokedexRow> = emptyList(),
+    val seenCount: Int = 0,
+    val caughtCount: Int = 0,
+    val loadFailed: Boolean = false
+)
+
+/** Adapta el estado del juego a lo que la pantalla necesita. */
+fun GameUiState.toDexUiState(): DexUiState = DexUiState(
+    entries = dexEntries,
+    seenCount = dexSeenCount,
+    caughtCount = dexCaughtCount,
+    loadFailed = dexLoadFailed
+)
+
 @Composable
 fun DexScreen(
-    state: GameUiState,
+    state: DexUiState,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -157,13 +193,13 @@ fun DexScreen(
         // de modo que ambos comparten anchura exterior. Envuelve su
         // contenido; la LCD central recibe el resto con `weight(1f)`.
         DexHeader(
-            seenCount = state.dexSeenCount,
-            caughtCount = state.dexCaughtCount,
+            seenCount = state.seenCount,
+            caughtCount = state.caughtCount,
             onBack = onBack,
             modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp)
         )
 
-        if (state.dexLoadFailed) {
+        if (state.loadFailed) {
             DexError(modifier = Modifier.fillMaxSize().padding(16.dp))
         } else {
             // Única pantalla LCD: esquinas suavizadas, borde fino y sin sombra
@@ -176,27 +212,15 @@ fun DexScreen(
                 fill = true,
                 shape = RoundedCornerShape(8.dp),
                 borderWidth = 1.dp,
-                innerGap = 1.dp,
                 shadowOffset = 0.dp,
                 contentPadding = PaddingValues(6.dp)
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
                     itemsIndexed(
-                        state.dexEntries,
+                        state.entries,
                         key = { _, entry -> entry.dexNumber }
                     ) { index, entry ->
-                        if (index > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(DexRowDivider)
-                            )
-                        }
-                        DexRow(entry)
+                        DexRow(entry, showTopDivider = index > 0)
                     }
                 }
             }
@@ -212,12 +236,14 @@ fun DexScreen(
  * blanco, legibles. **Sin scanlines** en este módulo.
  *
  * **Alineación (estructura común de filas, sin compensaciones
- * independientes):** la línea visual del encabezado es el **centro del área
- * táctil de la flecha** (la mitad de [DexHeaderArrowTouch]). Cada celda de
- * texto reserva exactamente ese aire con el mismo desplazamiento (`lineTop`,
- * calculado una vez con las métricas compartidas) — el título y las cifras
- * comparten tipografía y `lineHeight` ([DexHeaderValueLine]), así que sus
- * cajas de línea quedan centradas en esa misma línea y las etiquetas
+ * independientes):** la línea visual del encabezado es el centro de la caja
+ * de la flecha, que mide `max(48.dp, lineHeight)`: crece con la línea de
+ * cifra/título, así que el centro se conserva a cualquier escala de fuente y
+ * el aire superior nunca queda negativo. Cada celda de texto reserva ese
+ * mismo aire con el mismo desplazamiento (`lineTop`, calculado una vez con
+ * las métricas compartidas) — el título y las cifras comparten tipografía y
+ * `lineHeight` ([DexHeaderValueLine]), así que sus cajas de línea quedan
+ * centradas en esa misma línea y las etiquetas
  * «Avistados»/«Capturados» cuelgan debajo de sus cifras dentro de la propia
  * celda, sin desplazar la línea. No se centra el título contra la altura
  * completa del bloque cifra+etiqueta (el desajuste que había antes): el
@@ -230,12 +256,12 @@ private fun DexHeader(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Aire desde la fila hasta la línea visual: mitad del área táctil menos
-    // la mitad de la línea de cifra/título. Con escala de fuente ajustada,
-    // `sp.toDp()` sigue la métrica y la alineación se conserva.
-    val headerLineTop = with(LocalDensity.current) {
-        DexHeaderArrowTouch / 2 - DexHeaderValueLine.toDp() / 2
-    }
+    // Ancla de la línea visual: el área de la flecha nunca es menor que la
+    // línea de cifra/título, así que el centro se mantiene a cualquier
+    // fontScale y el aire superior nunca queda negativo.
+    val lineHeight = with(LocalDensity.current) { DexHeaderValueLine.toDp() }
+    val anchorHeight = maxOf(DexHeaderArrowTouch, lineHeight)
+    val headerLineTop = ((anchorHeight - lineHeight) / 2).coerceAtLeast(0.dp)
 
     RetroPanel(
         modifier = modifier,
@@ -248,21 +274,27 @@ private fun DexHeader(
         shadowOffset = 0.dp,
         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 5.dp)
     ) {
-        // La Row es top-aligned: la flecha ocupa su área táctil completa y
-        // las celdas de texto descienden hasta la línea compartida.
+        // La Row es top-aligned: la caja de la flecha mide el ancla y las
+        // celdas de texto descienden hasta la línea compartida.
         Row(modifier = Modifier.fillMaxWidth()) {
             // Flecha sin texto; IconButton = área táctil de 48.dp (suficiente)
-            // y descripción accesible «Volver».
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.dex_close),
-                    tint = Color.White
-                )
+            // y descripción accesible «Volver». La caja crece con la línea de
+            // texto para conservar el centro a cualquier escala de fuente.
+            Box(
+                modifier = Modifier.height(anchorHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.dex_close),
+                        tint = Color.White
+                    )
+                }
             }
 
             Text(
-                text = stringResource(R.string.dex_title).uppercase(),
+                text = stringResource(R.string.dex_title).uppercase(Locale.ROOT),
                 color = Color.White,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
@@ -352,12 +384,17 @@ private fun DexError(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = stringResource(R.string.dex_error_title),
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    color = RetroColors.InkBlack
                 )
                 Text(
                     text = stringResource(R.string.dex_error_body),
-                    style = MaterialTheme.typography.bodyMedium
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = RetroColors.InkBlack.copy(alpha = 0.8f)
                 )
             }
         }
@@ -367,20 +404,30 @@ private fun DexError(modifier: Modifier = Modifier) {
 /**
  * Una fila del listado dentro de la pantalla LCD, en el orden pactado:
  * número → sprite en recuadro fijo → nombre exterior y tipo → Pokéball.
+ * El divisor de 1 dp se dibuja en la propia fila (no como item aparte), así
+ * que el `LazyColumn` solo tiene una entrada por especie.
  */
 @Composable
-private fun DexRow(entry: PokedexRow) {
+private fun DexRow(entry: PokedexRow, showTopDivider: Boolean) {
     val known = entry.status != DexStatus.UNKNOWN
-    val caught = entry.status == DexStatus.CAUGHT
+    val registered = entry.status == DexStatus.REGISTERED
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .drawBehind {
+                if (showTopDivider) {
+                    drawRect(
+                        color = DexRowDivider,
+                        size = Size(size.width, 1.dp.toPx())
+                    )
+                }
+            }
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "%03d".format(entry.dexNumber),
+            text = String.format(Locale.ROOT, "%03d", entry.dexNumber),
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
             fontSize = 12.sp,
@@ -411,14 +458,27 @@ private fun DexRow(entry: PokedexRow) {
                 if (entry.typeName != null) {
                     DexTypeBadge(entry.typeName)
                 }
+                if (registered) {
+                    // Distinción no cromática: el estado histórico se nombra.
+                    Text(
+                        text = stringResource(R.string.dex_registered),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        color = DexLcdTextDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
         // Hueco fijo del indicador: la Pokéball nunca desplaza al nombre ni a
-        // la interrogación, y ocupa la misma posición en SEEN y CAUGHT.
+        // la interrogación, y ocupa la misma posición en los tres estados
+        // conocidos.
         if (known) {
             BallIndicator(
-                isCaught = caught,
+                status = entry.status,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -426,64 +486,85 @@ private fun DexRow(entry: PokedexRow) {
 }
 
 /**
- * Indicador de posesión (marcador en fila): recorta los colores de la Pokéball
- * y baja su opacidad para la especie conocida pero no poseída; a plena opacidad
- * y a color cuando está en posesión. La distinción no depende solo del color:
- * cada variante lleva su descripción accesible.
+ * Indicador de posesión (marcador en fila), con tres variantes:
+ * - **CAUGHT**: Pokéball a color y opacidad plena.
+ * - **REGISTERED**: Pokéball sin color y opacidad plena (capturada antes,
+ *   no poseída ahora).
+ * - **SEEN**: Pokéball sin color y atenuada.
+ *
+ * La distinción no depende solo del color: cada variante lleva su descripción
+ * accesible y REGISTERED además se nombra en la fila.
  */
 @Composable
-private fun BallIndicator(isCaught: Boolean, modifier: Modifier = Modifier) {
-    val grayscale = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+private fun BallIndicator(status: DexStatus, modifier: Modifier = Modifier) {
+    val caught = status == DexStatus.CAUGHT
+    val registered = status == DexStatus.REGISTERED
+    val grayscale = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
     Image(
         painter = painterResource(R.drawable.pokeball_menu),
         contentDescription = stringResource(
-            if (isCaught) R.string.dex_caught_desc else R.string.dex_seen_desc
+            when (status) {
+                DexStatus.CAUGHT -> R.string.dex_caught_desc
+                DexStatus.REGISTERED -> R.string.dex_registered_desc
+                else -> R.string.dex_seen_desc
+            }
         ),
         modifier = modifier
             .size(22.dp)
-            .then(if (isCaught) Modifier else Modifier.alpha(0.35f)),
-        colorFilter = if (isCaught) null else grayscale
+            .then(if (caught || registered) Modifier else Modifier.alpha(0.35f)),
+        colorFilter = if (caught) null else grayscale
     )
 }
 
 /**
- * Recuadro **fijo** del sprite: una misma geometría en todas las filas y
- * estados (ancho 76.dp, alto 64.dp); su tamaño no depende de la especie ni
- * del estado, y el sprite no modifica ni el recuadro ni la altura de la
- * fila. La resolución del recurso es **directa por número**: entrada n →
- * `pokedexSprite(entry.dexNumber)`, siempre por dato de la fila y nunca por
- * posición o índice desplazado.
+ * Recuadro fijo del sprite: una misma geometría en todas las filas y estados
+ * (ancho 88.dp, alto 72.dp); su tamaño no depende de la especie ni del estado,
+ * y el sprite no modifica ni el recuadro ni la altura de la fila. La resolución
+ * del recurso es **directa por número**: entrada n → `pokedexSprite(dexNumber)`,
+ * siempre por dato de la fila y nunca por posición o índice desplazado.
  *
  * - **UNKNOWN** (y `null` del mapa en especie conocida) → «?» pale green
  *   centrada de alto contraste, sin ningún texto accesible que revele la
  *   identidad en UNKNOWN (el número es el único dato de la fila).
- * - **SEEN/CAUGHT** → el PNG original completo (96×96 cuadrado, con su
- *   margen transparente ya integrado), centrado, a escala
- *   (`ContentScale.Fit`) y con margen de 4.dp: sin recortes, deformación,
- *   filtros ni tinte; la opacidad es plena en los dos estados.
+ * - **SEEN/REGISTERED/CAUGHT** → se recorta el margen transparente del PNG
+ *   (`opaqueBounds`) y la figura se escala para **llenar el recuadro**, igual
+ *   para todas las especies. Es la diferencia con la escena de captura, donde
+ *   se preserva el tamaño relativo: en una lista de 151 filas la figura es un
+ *   identificador y se busca que se lea, no comparar tamaños. Se dibuja con
+ *   `FilterQuality.None` para no emborronar el pixel art; el estado lo marca
+ *   la Pokéball.
  */
 @Composable
 private fun DexSpriteSlot(entry: PokedexRow, known: Boolean) {
     val spriteRes = if (known) pokedexSprite(entry.dexNumber) else null
     Box(
         modifier = Modifier
-            .width(76.dp)
-            .height(64.dp)
+            .width(DexSpriteSlotWidth)
+            .height(DexSpriteSlotHeight)
             .border(1.dp, DexLcdLine, RoundedCornerShape(6.dp))
             .background(RetroColors.BarTrack, RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (spriteRes != null) {
-            Image(
-                painter = painterResource(spriteRes),
-                // El nombre exterior de la fila es la descripción accesible:
-                // el sprite no añade ni repite texto.
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .padding(4.dp)
-                    .fillMaxSize()
-            )
+            val image = ImageBitmap.imageResource(spriteRes)
+            val bounds = remember(image) { image.opaqueBounds() }
+            Canvas(modifier = Modifier.padding(2.dp).fillMaxSize()) {
+                if (bounds.width <= 0 || bounds.height <= 0) return@Canvas
+                val scale = min(size.width / bounds.width, size.height / bounds.height)
+                val dstW = bounds.width * scale
+                val dstH = bounds.height * scale
+                drawImage(
+                    image = image,
+                    srcOffset = IntOffset(bounds.left, bounds.top),
+                    srcSize = IntSize(bounds.width, bounds.height),
+                    dstOffset = IntOffset(
+                        ((size.width - dstW) / 2f).toInt(),
+                        ((size.height - dstH) / 2f).toInt()
+                    ),
+                    dstSize = IntSize(dstW.toInt(), dstH.toInt()),
+                    filterQuality = FilterQuality.None
+                )
+            }
         } else {
             // «?» de alto contraste: verde pálido, grande y en negrita. Sin
             // voces de accesibilidad: la fila no puede revelar identidad.
@@ -533,25 +614,22 @@ private const val DEX_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 
 /**
  * Estado de ejemplo: starter + capturas y avistamientos concretos. No sirve un
- * estado vacío: el preview debe enseñar los tres estados de fila.
+ * estado vacío: el preview debe enseñar los cuatro estados de fila.
  */
-private fun dexPreviewState(): GameUiState = GameUiState(
-    caughtSpecies = setOf("charmander", "rattata"),
-    seenSpecies = setOf("charmander", "rattata", "pidgey", "zubat"),
-    isPokedexOpen = true,
-    dexSeenCount = 4,
-    dexCaughtCount = 2,
-    dexEntries = listOf(
+private fun dexPreviewState(): DexUiState = DexUiState(
+    seenCount = 4,
+    caughtCount = 2,
+    entries = listOf(
         PokedexRow(1, "bulbasaur", null, null, DexStatus.UNKNOWN),
         PokedexRow(4, "charmander", "Charmander", "Fuego", DexStatus.CAUGHT),
         PokedexRow(16, "pidgey", "Pidgey", "Volador", DexStatus.SEEN),
-        PokedexRow(19, "rattata", "Rattata", "Normal", DexStatus.CAUGHT),
+        PokedexRow(19, "rattata", "Rattata", "Normal", DexStatus.REGISTERED),
         PokedexRow(41, "zubat", "Zubat", "Veneno", DexStatus.SEEN),
         PokedexRow(61, "poliwhirl", "Poliwhirl", "Agua", DexStatus.UNKNOWN)
     )
 )
 
-/** Dex con catálogo cargado: muestra los tres estados de fila. */
+/** Dex con catálogo cargado: muestra los cuatro estados de fila. */
 @androidx.compose.ui.tooling.preview.Preview(
     name = "Pokédex · listado",
     device = DEX_PREVIEW_DEVICE,
@@ -571,7 +649,7 @@ private fun DexScreenPreview() = MaterialTheme {
 @Composable
 private fun DexErrorPreview() = MaterialTheme {
     DexScreen(
-        state = dexPreviewState().copy(dexLoadFailed = true, dexEntries = emptyList()),
+        state = dexPreviewState().copy(loadFailed = true, entries = emptyList()),
         onBack = {}
     )
 }
