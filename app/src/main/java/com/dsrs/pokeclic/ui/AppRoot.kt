@@ -160,7 +160,12 @@ fun AppRoot(
     // Contador de pulsaciones sobre la Pokébola: es lo único que mueve el fondo
     // de ruta y, con él, la dirección en la que camina el entrenador. Estado
     // efímero de UI, sin relación con la lógica de negocio.
-    val pokePulses = remember { mutableLongStateOf(0L) }
+    //
+    // La clave es `state.zoneId`: la fase del recorrido es **por zona**. Al entrar
+    // en otra zona el contador vuelve a cero y su trayectoria arranca por el primer
+    // clic, en vez de heredar el punto en el que se quedó la zona anterior (que
+    // hacía, por ejemplo, empezar con los últimos clics de una pierna lateral).
+    val pokePulses = remember(state.zoneId) { mutableLongStateOf(0L) }
 
     // Pokédex: carcasa a pantalla (cabecera, marco NinePatch y base roja) con
     // el menú real compuesto encima de la base. Los destinos del menú cierran
@@ -220,8 +225,8 @@ fun AppRoot(
     // menú por completo.
     val sceneActive = gymScene || catchingActive
     // Fondo de ruta animado: solo en la pantalla de juego, en zonas con fauna
-    // (rutas, bosque y cueva) o con arte propio (Pueblo Paleta). Las ciudades sin
-    // fondo propio y la pestaña Mapa conservan el fondo liso de siempre.
+    // (rutas, bosque y cueva) o con arte propio (Pueblo Paleta, Ciudad Verde). Las
+    // ciudades sin fondo propio y la pestaña Mapa conservan el fondo liso.
     //
     // La captura es la excepción: la escena del minijuego es transparente y
     // quiere la ruta congelada detrás, así que el fondo se compone también con
