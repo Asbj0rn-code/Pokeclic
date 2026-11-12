@@ -40,7 +40,6 @@
     <string name="catching_wild">SALVAJE</string>
 
     <!-- Starter y principal -->
-    <string name="starter_type">Tipo: %s</string>
     <string name="lead_title">Pokémon principal</string>
     <string name="lead_hint">Elige quién te representa en los gimnasios</string>
     <string name="lead_change">Cambiar principal</string>
@@ -138,12 +137,28 @@
     <!-- Introducción (Profesor Oak) -->
     <string name="intro_oak_desc">Profesor Oak</string>
     <string name="intro_line_welcome">¡Hola! Soy el Profesor Oak.</string>
-    <string name="intro_line_world">¡Bienvenido al mundo Pokémon!</string>
-    <string name="intro_line_creatures">Este mundo está habitado por unas criaturas llamadas Pokémon.</string>
     <string name="intro_ask_name">Antes de empezar, dime… ¿cómo te llamas?</string>
     <string name="intro_greet">¡Encantado, %1$s! Estoy seguro de que seremos grandes amigos.</string>
-    <string name="intro_ask_starter">Ahora elige tu primer compañero Pokémon.</string>
+    <string name="intro_line_danger">Aunque no hay nada que me gustaría más que hablar contigo acerca de los Pokémon. Kanto está en peligro y necesito tu ayuda.</string>
+    <string name="intro_line_rocket_power">El Team Rocket ha conseguido canalizar el poder de Palkia y Dialga.</string>
+    <string name="intro_line_loop">Con ese poder han sumido toda la región en un bucle espacio-temporal.</string>
+    <string name="intro_line_trapped">Nadie puede salir de su ciudad: los caminos se repiten una y otra vez.</string>
+    <string name="intro_line_pokedex">Por eso he desarrollado este dispositivo: una Pokédex especial.</string>
+    <string name="intro_line_charge">Cuando se carga por completo, su portador puede salir del bucle.</string>
+    <string name="intro_line_needs">Para hacerse más efectiva, necesita acumular registros de Pokémon y medallas.</string>
+    <string name="intro_line_green">Ya le he dado la otra Pokédex a mi nieto, Green.</string>
+    <string name="intro_line_green_impulsive">No es que no me fíe de él, pero su carácter impulsivo puede desviarle del objetivo.</string>
+    <string name="intro_line_green_risk">Si se obsesiona con los combates Pokémon, se olvidará de completar los registros y frenar al Team Rocket.</string>
+    <string name="intro_line_ask_help">Por eso te necesito a ti. ¿Me ayudarás a frenarlo?</string>
+    <string name="intro_ask_starter">Toma la otra Pokédex. Elige también a tu primer compañero Pokémon.</string>
+    <string name="intro_starter_brief_bulbasaur">Bulbasaur lleva un bulbo en la espalda desde que nace y crece con él. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_charmander">Charmander tiene una llama en la cola que arde según su ánimo. Es valiente y algo terco. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_squirtle">Squirtle se protege con un caparazón duro y dispara agua con gran puntería. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_default">¿Será este tu Pokémon?</string>
     <string name="intro_goodbye">¡%1$s será tu compañero! ¡Que comience la aventura!</string>
     <string name="intro_name_label">Tu nombre</string>
     <string name="intro_accept">Aceptar</string>
+    <string name="intro_confirm_name">¿%1$s, dices? ¿Es ese tu nombre?</string>
+    <string name="intro_confirm_yes">Sí</string>
+    <string name="intro_confirm_no">No</string>
 </resources>
