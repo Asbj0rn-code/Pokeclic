@@ -11,21 +11,25 @@ import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -114,8 +118,8 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
  * @param onSelectTab cambia de pantalla de contenido.
  * @param onOpenOptions / @param onCloseOptions gestionan la hoja de opciones.
  * @param onOpenLead / @param onCloseLead gestionan el selector de principal.
- * @param onOpenDex abre la Pokédex (TEST).
- * @param onCloseDex cierra la Pokédex (TEST) y vuelve al juego.
+ * @param onOpenDex abre la Pokédex.
+ * @param onCloseDex cierra la Pokédex y vuelve al juego.
  * @param onPokeBallExpanded avisa del resultado del gesto de arrastre.
  */
 @Composable
@@ -156,14 +160,45 @@ fun AppRoot(
     // efímero de UI, sin relación con la lógica de negocio.
     val pokePulses = remember { mutableLongStateOf(0L) }
 
-    // Pokédex (TEST): rama de composición propia, a pantalla completa y sin
-    // HUD, mapa ni menú inferior. Nada de lo demás se compone y la vuelta es
-    // con su callback (el glyph de atrás y el botón físico gestionados dentro).
+    // Pokédex: carcasa a pantalla (cabecera, marco NinePatch y base roja) con
+    // el menú real compuesto encima de la base. Los destinos del menú cierran
+    // la Dex y navegan; la Pokébola expandida no mueve al entrenador desde la
+    // Pokédex y el botón Pokédex ya no abre la hoja de opciones en este
+    // contexto. La vuelta también está con el botón físico (BackHandler
+    // interno de la pantalla).
     if (state.isPokedexOpen) {
-        DexScreen(
-            state = state.toDexUiState(),
-            onBack = onCloseDex
-        )
+        val density = LocalDensity.current
+        // Espacio que el menú ocupa abajo: su contenedor derivado
+        // (`BottomMenuDefaults.CONTAINER_HEIGHT`) más la franja de navegación
+        // del sistema que el propio menú rellena de acero. La base roja de la
+        // Dex se dibuja exactamente detrás de esa zona.
+        val menuReserved = BottomMenuDefaults.CONTAINER_HEIGHT +
+            with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+        Box(modifier = Modifier.fillMaxSize()) {
+            DexScreen(
+                state = state.toDexUiState(),
+                bottomReserved = menuReserved,
+                onBack = onCloseDex
+            )
+            PokemonBottomMenu(
+                modifier = Modifier.align(Alignment.BottomCenter),
+                isPokedexSelected = true,
+                // Sin juego bajo la bola: el arrastre no la estira y cuenta
+                // como toque, que devuelve a la aventura.
+                expansionEnabled = false,
+                onMapClick = {
+                    onCloseDex()
+                    onSelectTab(AppTab.Map)
+                },
+                onPokedexClick = {},
+                onHomeClick = {
+                    onCloseDex()
+                    onSelectTab(AppTab.Home)
+                },
+                onPokeBallGameClick = {},
+                onExpandedChange = onPokeBallExpanded
+            )
+        }
         return
     }
 
@@ -201,9 +236,10 @@ fun AppRoot(
     // cubierta por `sceneActive`), la intro, el selector de principal o la
     // cortinilla de arranque activos, el menú no se compone: su Pokéball ignora
     // el consumo de toques y solo su ausencia la aísla. El contenido del juego
-    // solo desaparece bajo capas opacas (escena e intro).
+    // solo desaparece bajo capas opacas (escena e intro). La Pokédex compone
+    // su propio menú en su rama, así que aquí no hace falta ocultarlo.
     val menuHidden = sceneActive || state.needsStarter ||
-        state.isLeadOpen || isSplashShowing || state.isPokedexOpen
+        state.isLeadOpen || isSplashShowing
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
@@ -457,7 +493,8 @@ private fun previewGameState(
     gymIntro: GymIntroPhase? = null,
     needsStarter: Boolean = false,
     encounter: Encounter? = null,
-    catching: CatchingState? = null
+    catching: CatchingState? = null,
+    isPokedexOpen: Boolean = false
 ) = GameUiState(
     playerName = if (needsStarter) null else "Sergio",
     coins = if (needsStarter) 0L else 40L,
@@ -474,6 +511,7 @@ private fun previewGameState(
     gymIntro = gymIntro,
     encounter = encounter,
     catching = catching,
+    isPokedexOpen = isPokedexOpen,
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 20L,
@@ -653,4 +691,16 @@ private fun AppRootCatchingPreview() = MaterialTheme {
             catching = CatchingGame.initialState(config)
         )
     )
+}
+
+/** Pokédex: carcasa completa (cabecera, marco y base) con el menú real. */
+@Preview(
+    name = "6 · Pokédex",
+    device = PREVIEW_DEVICE,
+    showSystemUi = true,
+    showBackground = true
+)
+@Composable
+private fun AppRootDexPreview() = MaterialTheme {
+    AppRootStage(state = previewGameState(isPokedexOpen = true))
 }
