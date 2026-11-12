@@ -1,8 +1,27 @@
 /**
- * Pantalla de la Pokédex con estética de dispositivo: carcasa roja plana,
- * **franja de estado compacta** de rojo oscuro y **una única pantalla LCD**
- * oscura y redondeada que ocupa el resto. Todo con los tokens compartidos
- * (`RetroTheme`).
+ * Pantalla de la Pokédex con la **carcasa adaptable**: cabecera, marco
+ * NinePatch y base roja, más el respaldo a pantalla completa para evitar
+ * franjas de otro color.
+ *
+ * Estructura (de arriba a abajo):
+ * - **Cabecera** (`pokedex_cabecera.webp`, 941×280 px): imagen del chasis
+ *   escalada proporcionalmente al ancho disponible; su alto es
+ *   `ancho × 280/941` y nunca se estira de forma independiente. El asset no
+ *   trae controles dibujados: los contadores «Avistados/Capturados» se
+ *   superponen como componentes reales sobre la zona plana roja derecha. La
+ *   flecha de vuelta y el título desaparecieron: la vuelta la ofrece el menú
+ *   inferior real y el botón físico (`BackHandler`).
+ * - **Marco** (`pokedex_marco.9.png`, 943×1106 px): el único elemento
+ *   extensible. Se carga como `NinePatchDrawable` mediante los recursos de
+ *   Android (`painterResource` no soporta NinePatch) y se dibuja estirando
+ *   solo los parches declarados, sin tocar esquinas ni luces. El centro del
+ *   asset es transparente; detrás se compone la **pantalla LCD** oscura, y la
+ *   lista vive **solo** dentro del interior declarado por el propio
+ *   NinePatch (`getPadding`, marcadores inferior y derecho). Sin lista
+ *   residual sobre la cabecera ni bajo la base.
+ * - **Base** (`pokedex_base.webp`, 941×288 px): fondo rojo sin controles,
+ *   dibujado detrás del espacio que ocupa el menú de la aplicación. Como no
+ *   contiene círculos ni botones, se ajusta (estira) a la altura reservada.
  *
  * Reglas de la información (estados):
  * - **UNKNOWN**: número y recuadro con «?» pale green de alto contraste; sin
@@ -31,9 +50,10 @@
  */
 package com.dsrs.pokeclic.ui
 
+import android.graphics.drawable.NinePatchDrawable
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +62,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,42 +75,40 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.dsrs.pokeclic.R
 import com.dsrs.pokeclic.model.DexStatus
 import com.dsrs.pokeclic.model.PokedexRow
@@ -123,6 +142,17 @@ private val DEX_TYPE_COLORS: Map<String, Color> = mapOf(
 /** Color de respaldo para un tipo fuera de la paleta. */
 private val DEX_TYPE_FALLBACK = Color(0xFF9DA0A4)
 
+/**
+ * Rojo de la carcasa: respaldo a pantalla completa detrás de cabecera, marco
+ * y base, para que nunca se vean franjas de otro color en los huecos. Es el
+ * color medido del propio asset (el LEEME admite `#FA1B1C`); no es el
+ * `RetroColors.PokedexRed` del HUD, que no coincide con la carcasa.
+ */
+private val DexCarcasaRed = Color(0xFFFA1B1C)
+
+/** Proporción nativa de la cabecera (ancho ÷ alto en px del asset). */
+private const val DEX_HEADER_ASPECT = 941f / 280f
+
 /** Texto principal sobre la pantalla LCD: verde pálido como el HUD. */
 private val DexLcdText = RetroColors.LcdText
 
@@ -135,14 +165,11 @@ private val DexLcdLine = Color(0xFF4E5A66)
 /** Divisor fino entre filas dentro de la pantalla LCD. */
 private val DexRowDivider = DexLcdLine.copy(alpha = 0.35f)
 
-/** Área táctil de la flecha: su centro (24.dp) define la línea visual. */
-private val DexHeaderArrowTouch = 48.dp
-
 /** Recuadro del sprite en la fila (ancho × alto). */
 private val DexSpriteSlotWidth = 88.dp
 private val DexSpriteSlotHeight = 72.dp
 
-/** Métricas comunes de línea del encabezado: cifra/título y etiqueta. */
+/** Métricas de los contadores superpuestos en la cabecera. */
 private val DexHeaderValueSize = 16.sp
 private val DexHeaderValueLine = 19.sp
 private val DexHeaderLabelSize = 10.sp
@@ -150,7 +177,8 @@ private val DexHeaderLabelLine = 12.sp
 
 /**
  * Pantalla de la Pokédex. Sin estado: recibe el [DexUiState] ya derivado
- * (filas, contadores y flag de error) y notifica la vuelta con [onBack]. El
+ * (filas, contadores y flag de error), el espacio que la aplicación reserva
+ * abajo para el menú ([bottomReserved]) y notifica la vuelta con [onBack]. El
  * botón físico «Atrás» también vuelve, con `BackHandler`.
  */
 /**
@@ -176,173 +204,118 @@ fun GameUiState.toDexUiState(): DexUiState = DexUiState(
 @Composable
 fun DexScreen(
     state: DexUiState,
+    bottomReserved: Dp = 0.dp,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Atrás físico y de gesto: siempre vuelve al juego.
+    // Atrás físico y de gesto: siempre vuelve al juego. Sin flecha en
+    // pantalla: la vuelta visual la ofrece el menú inferior real.
     BackHandler(enabled = true) { onBack() }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(RetroColors.PokedexRed)
+            // Respaldo rojo a pantalla completa: cabecera, marco y base tienen
+            // variaciones propias del original; el hueco entre piezas nunca
+            // debe enseñar blanco.
+            .background(DexCarcasaRed)
             .statusBarsPadding()
     ) {
-        // Módulo de encabezado: mismo lenguaje que el listado (LCD oscura,
-        // borde fino, esquinas redondeadas) y los mismos márgenes laterales,
-        // de modo que ambos comparten anchura exterior. Envuelve su
-        // contenido; la LCD central recibe el resto con `weight(1f)`.
+        // Cabecera del dispositivo: imagen del chasis con los contadores
+        // superpuestos. Ocupa su proporción nativa y no se estira aparte.
         DexHeader(
             seenCount = state.seenCount,
-            caughtCount = state.caughtCount,
-            onBack = onBack,
-            modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp)
+            caughtCount = state.caughtCount
         )
 
         if (state.loadFailed) {
-            DexError(modifier = Modifier.fillMaxSize().padding(16.dp))
+            DexError(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp))
         } else {
-            // Única pantalla LCD: esquinas suavizadas, borde fino y sin sombra
-            // dura; separación vertical pequeña con la franja superior (6.dp).
-            RetroLcdPanel(
+            // Marco extensible con la pantalla LCD y la lista dentro: recibe
+            // toda la altura que no se llevan la cabecera ni el menú.
+            DexList(
+                entries = state.entries,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp)
-                    .fillMaxWidth(),
-                fill = true,
-                shape = RoundedCornerShape(8.dp),
-                borderWidth = 1.dp,
-                shadowOffset = 0.dp,
-                contentPadding = PaddingValues(6.dp)
-            ) {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    itemsIndexed(
-                        state.entries,
-                        key = { _, entry -> entry.dexNumber }
-                    ) { index, entry ->
-                        DexRow(entry, showTopDivider = index > 0)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Módulo de encabezado del dispositivo: fondo **burdeos muy oscuro**
- * ([RetroColors.HeaderBurgundy]) que se distingue del rojo vivo de la carcasa
- * y del LCD del listado, borde fino y esquinas redondeadas del mismo
- * lenguaje visual que el listado, y grosor compacto. Textos y flecha en
- * blanco, legibles. **Sin scanlines** en este módulo.
- *
- * **Alineación (estructura común de filas, sin compensaciones
- * independientes):** la línea visual del encabezado es el centro de la caja
- * de la flecha, que mide `max(48.dp, lineHeight)`: crece con la línea de
- * cifra/título, así que el centro se conserva a cualquier escala de fuente y
- * el aire superior nunca queda negativo. Cada celda de texto reserva ese
- * mismo aire con el mismo desplazamiento (`lineTop`, calculado una vez con
- * las métricas compartidas) — el título y las cifras comparten tipografía y
- * `lineHeight` ([DexHeaderValueLine]), así que sus cajas de línea quedan
- * centradas en esa misma línea y las etiquetas
- * «Avistados»/«Capturados» cuelgan debajo de sus cifras dentro de la propia
- * celda, sin desplazar la línea. No se centra el título contra la altura
- * completa del bloque cifra+etiqueta (el desajuste que había antes): el
- * centro lo fijan la flecha y las métricas compartidas.
- */
-@Composable
-private fun DexHeader(
-    seenCount: Int,
-    caughtCount: Int,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // Ancla de la línea visual: el área de la flecha nunca es menor que la
-    // línea de cifra/título, así que el centro se mantiene a cualquier
-    // fontScale y el aire superior nunca queda negativo.
-    val lineHeight = with(LocalDensity.current) { DexHeaderValueLine.toDp() }
-    val anchorHeight = maxOf(DexHeaderArrowTouch, lineHeight)
-    val headerLineTop = ((anchorHeight - lineHeight) / 2).coerceAtLeast(0.dp)
-
-    RetroPanel(
-        modifier = modifier,
-        backgroundColor = RetroColors.HeaderBurgundy,
-        outerBorder = RetroColors.DialogBorderOuter,
-        innerBorder = DexLcdLine,
-        shape = RoundedCornerShape(8.dp),
-        borderWidth = 1.dp,
-        innerGap = 1.dp,
-        shadowOffset = 0.dp,
-        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 5.dp)
-    ) {
-        // La Row es top-aligned: la caja de la flecha mide el ancla y las
-        // celdas de texto descienden hasta la línea compartida.
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Flecha sin texto; IconButton = área táctil de 48.dp (suficiente)
-            // y descripción accesible «Volver». La caja crece con la línea de
-            // texto para conservar el centro a cualquier escala de fuente.
-            Box(
-                modifier = Modifier.height(anchorHeight),
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.dex_close),
-                        tint = Color.White
-                    )
-                }
-            }
-
-            Text(
-                text = stringResource(R.string.dex_title).uppercase(Locale.ROOT),
-                color = Color.White,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Black,
-                fontSize = DexHeaderValueSize,
-                lineHeight = DexHeaderValueLine,
-                letterSpacing = 1.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(top = headerLineTop, start = 4.dp),
-                style = TextStyle(
-                    shadow = Shadow(
-                        color = RetroColors.HardShadow,
-                        offset = Offset(0f, 1.4f),
-                        blurRadius = 0f
-                    )
-                )
+                    .fillMaxWidth()
             )
+        }
 
-            Spacer(modifier = Modifier.width(12.dp))
-            DexStatBlock(count = seenCount, labelRes = R.plurals.dex_stat_seen, lineTop = headerLineTop)
-            Spacer(modifier = Modifier.width(10.dp))
-            DexStatBlock(count = caughtCount, labelRes = R.plurals.dex_stat_caught, lineTop = headerLineTop)
+        // Zona del menú: la base roja se dibuja detrás del espacio reservado
+        // (menú + franja de navegación del sistema). El menú en sí lo compone
+        // el llamante encima de esta área, como componente interactivo real.
+        if (bottomReserved > 0.dp) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(bottomReserved)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.pokedex_base),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }
 
 /**
- * Bloque de estadística del encabezado: cifra Monospace arriba y etiqueta
- * pluralizada debajo, en la misma celda. El aire superior compartido
- * ([lineTop], el mismo del título) centra la línea de cifra sobre la línea
- * visual del encabezado; la etiqueta cuelga debajo sin desplazarla. Tres
- * cifras (151 máx.) caben sin recortar las etiquetas en pantallas estrechas:
- * los bloques envuelven su contenido y el título coordina con `weight(1f)`.
+ * Cabecera de la carcasa: la imagen del chasis escalada al ancho disponible
+ * con su proporción nativa (941×280), nunca con la altura independiente. El
+ * asset no lleva controles: los contadores «Avistados/Capturados» se
+ * componen encima, en la mitad derecha de la cabecera a medio camino entre
+ * el centro y el borde inferior (sesgo vertical 0.5), envueltos en una
+ * vitrina LCD estilo
+ * HUD: el mismo `RetroLcdPanel` del menú, con su fondo profundo, doble borde
+ * y scanlines. Sin `fill`: la vitrina envuelve su contenido, no la cabecera.
  */
 @Composable
-private fun DexStatBlock(count: Int, labelRes: Int, lineTop: Dp) {
+private fun DexHeader(seenCount: Int, caughtCount: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(DEX_HEADER_ASPECT)
+    ) {
+        Image(
+            painter = painterResource(R.drawable.pokedex_cabecera),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        RetroLcdPanel(
+            modifier = Modifier
+                .align(BiasAlignment(horizontalBias = 1f, verticalBias = 0.5f))
+                .padding(end = 10.dp),
+            shadowOffset = 0.dp,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DexStatBlock(count = seenCount, labelRes = R.plurals.dex_stat_seen)
+                Spacer(modifier = Modifier.width(14.dp))
+                DexStatBlock(count = caughtCount, labelRes = R.plurals.dex_stat_caught)
+            }
+        }
+    }
+}
+
+/**
+ * Bloque de estadística de la vitrina HUD: cifra Monospace arriba y etiqueta
+ * pluralizada debajo, en la misma celda. Paleta de pantalla LCD: cifra en
+ * verde pálido de alto contraste y etiqueta atenuada, como el resto del HUD.
+ */
+@Composable
+private fun DexStatBlock(count: Int, labelRes: Int) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(0.dp),
-        modifier = Modifier
-            .padding(top = lineTop)
-            .widthIn(min = 56.dp)
+        modifier = Modifier.widthIn(min = 56.dp)
     ) {
         Text(
             text = count.toString(),
-            color = Color.White,
+            color = DexLcdText,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
             fontSize = DexHeaderValueSize,
@@ -353,7 +326,7 @@ private fun DexStatBlock(count: Int, labelRes: Int, lineTop: Dp) {
             // Etiqueta singular/plural con el plural correcto para la cifra
             // (p. ej. «Capturado» con 1, «Capturados» a partir de 0/2+).
             text = pluralStringResource(labelRes, count),
-            color = Color.White.copy(alpha = 0.85f),
+            color = DexLcdTextDim,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = DexHeaderLabelSize,
@@ -364,10 +337,77 @@ private fun DexStatBlock(count: Int, labelRes: Int, lineTop: Dp) {
 }
 
 /**
+ * Listado dentro del marco de la carcasa. El marco se carga como
+ * `NinePatchDrawable` por los recursos de Android —`painterResource` no
+ * soporta NinePatch— y se dibuja estirando solo los parches declarados, con
+ * las esquinas y luces del bezel intactas. El interior lo declara el propio
+ * NinePatch (`getPadding`, marcadores inferior y derecho): la pantalla LCD
+ * oscura y la lista viven exactamente ahí, así que **no hay lista residual
+ * sobre la cabecera ni bajo la base**, y ninguna fila toca el borde.
+ */
+@Composable
+private fun DexList(entries: List<PokedexRow>, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    // Marco NinePatch. `nodpi`: los caps fijos se dibujan 1:1 en px nativos y
+    // solo el centro se estira hasta las medidas del layout.
+    val frame = remember(context) {
+        ContextCompat.getDrawable(context, R.drawable.pokedex_marco) as? NinePatchDrawable
+    }
+    // Interior declarado por el asset: (56, 24, 56, 25) px nativos, leídos del
+    // drawable y convertidos a dp con la densidad real del dispositivo.
+    // `getPadding(Rect)` es método Java: rellena el rectángulo que se le pasa.
+    val interiorPadding = remember(frame, density) {
+        if (frame == null) {
+            PaddingValues(0.dp)
+        } else {
+            val p = android.graphics.Rect()
+            frame.getPadding(p)
+            with(density) {
+                PaddingValues(
+                    start = p.left.toDp(),
+                    top = p.top.toDp(),
+                    end = p.right.toDp(),
+                    bottom = p.bottom.toDp()
+                )
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier.drawBehind {
+            if (frame != null && size.width >= 1f && size.height >= 1f) {
+                frame.setBounds(0, 0, size.width.toInt(), size.height.toInt())
+                frame.draw(drawContext.canvas.nativeCanvas)
+            }
+        }
+    ) {
+        // Pantalla LCD: superficie oscura ajustada al interior real del marco
+        // (el centro del asset es transparente; el rojo de la carcasa queda
+        // fuera, tras el bezel). La lista no puede salirse de aquí.
+        Box(
+            modifier = Modifier
+                .padding(interiorPadding)
+                .background(RetroColors.LcdDark)
+                .fillMaxSize()
+        ) {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                itemsIndexed(
+                    entries,
+                    key = { _, entry -> entry.dexNumber }
+                ) { index, entry ->
+                    DexRow(entry, showTopDivider = index > 0)
+                }
+            }
+        }
+    }
+}
+
+/**
  * Fila de error de catálogo: mensaje sobre el panel crema clásico (superficie
  * distinta del chasis, para que el fallo se distinga a simple vista) sin
  * bloquear el juego: el resto sigue funcionando y la vuelta está disponible
- * en la franja de estado. La anchura queda limitada para no estirar en
+ * con el botón físico y el menú. La anchura queda limitada para no estirar en
  * pantallas grandes.
  */
 @Composable
@@ -613,6 +653,13 @@ private fun typeColorFor(typeName: String?): Color =
 private const val DEX_PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 
 /**
+ * Espacio de menú de los previews: el contenedor del menú real más una franja
+ * de navegación de gesto orientativa. En la app el valor lo calcula el
+ * llamante con `WindowInsets`; aquí solo da proporción al preview.
+ */
+private val DEX_PREVIEW_BOTTOM_RESERVED = BottomMenuDefaults.CONTAINER_HEIGHT + 24.dp
+
+/**
  * Estado de ejemplo: starter + capturas y avistamientos concretos. No sirve un
  * estado vacío: el preview debe enseñar los cuatro estados de fila.
  */
@@ -629,15 +676,19 @@ private fun dexPreviewState(): DexUiState = DexUiState(
     )
 )
 
-/** Dex con catálogo cargado: muestra los cuatro estados de fila. */
+/** Dex con carcasa completa: cabecera, marco, base y los cuatro estados. */
 @androidx.compose.ui.tooling.preview.Preview(
-    name = "Pokédex · listado",
+    name = "Pokédex · carcasa",
     device = DEX_PREVIEW_DEVICE,
     showSystemUi = true
 )
 @Composable
 private fun DexScreenPreview() = MaterialTheme {
-    DexScreen(state = dexPreviewState(), onBack = {})
+    DexScreen(
+        state = dexPreviewState(),
+        bottomReserved = DEX_PREVIEW_BOTTOM_RESERVED,
+        onBack = {}
+    )
 }
 
 /** Dex con la carga del catálogo fallida: mensaje y vuelta al juego. */
@@ -650,6 +701,7 @@ private fun DexScreenPreview() = MaterialTheme {
 private fun DexErrorPreview() = MaterialTheme {
     DexScreen(
         state = dexPreviewState().copy(loadFailed = true, entries = emptyList()),
+        bottomReserved = DEX_PREVIEW_BOTTOM_RESERVED,
         onBack = {}
     )
 }
