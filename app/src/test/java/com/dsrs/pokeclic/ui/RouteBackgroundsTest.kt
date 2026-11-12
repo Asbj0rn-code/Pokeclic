@@ -31,25 +31,32 @@ class RouteBackgroundsTest {
     }
 
     @Test
-    fun everyZone_advancesVertically() {
+    fun everyZone_advancesAlongItsAxis() {
         ZoneCatalog.zones.forEach { zone ->
             val motion = RouteBackgrounds.forZone(zone.id).motion
-            val vertical = motion.verticalDistanceAt(motion.cycleDistance.toDouble())
-            assertTrue("${zone.id} sin avance vertical", vertical > 0.0)
+            // Los tramos rectos son el avance: en vertical suben y en horizontal
+            // se corren de lado, pero en los dos casos el ciclo recorre algo.
+            val advance = motion.verticalDistanceAt(motion.cycleDistance.toDouble())
+            assertTrue("${zone.id} sin avance", advance > 0.0)
         }
     }
 
     @Test
-    fun everyZone_changesDirection() {
+    fun everyZone_hasTheLegsItsAxisNeeds() {
         ZoneCatalog.zones.forEach { zone ->
             val motion = RouteBackgrounds.forZone(zone.id).motion
             assertTrue("${zone.id} sin tramo recto", motion.legs.any { !it.isLateral })
-            assertTrue("${zone.id} sin tramo lateral", motion.legs.any { it.isLateral })
+            // Las verticales actuales alternan recto y lateral (el entrenador
+            // cambia de orientación). Un fondo horizontal puede ser recto; si
+            // lleva laterales, los tests del modelo comprueban el giro.
+            if (motion.axis == RouteScrollAxis.VERTICAL) {
+                assertTrue("${zone.id} sin tramo lateral", motion.legs.any { it.isLateral })
+            }
         }
     }
 
     @Test
-    fun everyZone_movesTheSamePerClickInBothAxes() {
+    fun everyZone_movesTheSamePerClick() {
         // La ley del modelo: la distancia de un tramo ya no es un dato aparte,
         // sale de sus clics. Un clic de lado recorre lo mismo que uno recto.
         ZoneCatalog.zones.forEach { zone ->
@@ -118,8 +125,90 @@ class RouteBackgroundsTest {
         assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
+    }
+
+    @Test
+    fun rutaTres_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ruta3,
+            RouteBackgrounds.forZone("ruta3").imageRes
+        )
+    }
+
+    @Test
+    fun rutaTres_scrollsSideways() {
+        // La ruta 3 es la primera zona que avanza en horizontal.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ruta3").motion.axis
+        )
+    }
+
+    @Test
+    fun rutaTres_startsAtTheLeftFrameOnTheCentreLine() {
+        // -0,5 de ancho de pantalla lleva al entrenador al **borde izquierdo** del
+        // arte; el ancla deja el **eje central horizontal** del arte a su altura.
+        val background = RouteBackgrounds.forZone("ruta3")
+        assertEquals(-0.5f, background.startOffset, 1e-6f)
+        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun rutaTres_closesItsLoop() {
+        // El bucle puede durar varias vueltas: lo que cierra es el superciclo
+        // completo. Sus rectos suman vueltas enteras al arte (15 clics cada una:
+        // 1152 px / 76,8) y los laterales se compensan entre sí.
+        val motion = RouteBackgrounds.forZone("ruta3").motion
+        val cycle = motion.cycleDistance.toDouble()
+        val straightClicks = motion.legs
+            .filterNot { it.isLateral }
+            .sumOf { it.clicks.toDouble() }
+        val clicksPerArtWidth = 15.0
+
+        assertTrue(
+            "Los rectos deben avanzar al menos un ancho de arte",
+            straightClicks >= clicksPerArtWidth
+        )
+        assertEquals(
+            "Los clics rectos deben sumar vueltas enteras al arte",
+            0.0,
+            straightClicks % clicksPerArtWidth,
+            1e-9
+        )
+        assertEquals(
+            "Los laterales deben volver a la misma altura",
+            0f,
+            motion.lateralDistanceAt(cycle),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun rutaTres_readsItsDirectionsInTheHorizontalFrame() {
+        // La dirección sale de cada tramo, leída en el marco girado: recto →
+        // derecha, LEFT → arriba, RIGHT → abajo. Se comprueba la ruta que tenga la
+        // zona en cada momento, sin fijar un diseño concreto.
+        val motion = RouteBackgrounds.forZone("ruta3").motion
+        val expected = mapOf(
+            Direction.BACK to Direction.RIGHT,
+            Direction.LEFT to Direction.BACK,
+            Direction.RIGHT to Direction.FRONT
+        )
+
+        var step = 1L
+        motion.legs.forEach { leg ->
+            repeat(leg.clicks.toInt()) {
+                assertEquals(
+                    "clic $step del tramo ${leg.direction}",
+                    expected.getValue(leg.direction),
+                    motion.directionForStep(step)
+                )
+                step++
+            }
+        }
     }
 
     @Test

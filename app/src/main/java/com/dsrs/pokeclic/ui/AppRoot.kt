@@ -60,15 +60,17 @@ import com.dsrs.pokeclic.viewmodel.GameUiState
  * Capas, de abajo a arriba:
  * 1. En escena de gimnasio (combate **o** capa de entrada: [GymIntroLayer]), el
  *    fondo del gimnasio a pantalla completa (cueva o piscina); si no, en zonas con fauna el
- *    [RouteScrollingBackground] (bucle vertical movido por las pulsaciones de
- *    la Pokéball) y, si la pestaña de contenido es el mapa, el [MapOceanBackdrop]
+ *    [RouteScrollingBackground] (bucle vertical u horizontal, según la zona,
+ *    movido por las pulsaciones de la Pokéball) y, si la pestaña de contenido es
+ *    el mapa, el [MapOceanBackdrop]
  *    (color del océano del mapa). Encima, el contenido de la pestaña
  *    ([AppTab.Home] o [AppTab.Map]).
  *
  *    Ese mismo movimiento decide **hacia dónde camina el entrenador**: cada clic
- *    se anima en la dirección del eje que le toca (recto → de espaldas, lateral →
- *    derecha o izquierda). La Pokébola ya no elige dirección según el lado que se
- *    toca; tras un segundo sin pulsar, el sprite vuelve a `front` quieto.
+ *    se anima en la dirección del eje que le toca (en vertical, recto → de
+ *    espaldas y lateral → derecha o izquierda; en horizontal, recto → derecha).
+ *    La Pokébola ya no elige dirección según el lado que se toca; tras un segundo
+ *    sin pulsar, el sprite vuelve a `front` quieto.
  * 2. Sobre el contenido: el [GymOverlay] y el [CatchingOverlay] (partida de
  *    captura del encuentro actual).
  * 3. Sobre todo: la introducción (onboarding), el selector de **entrada al
@@ -259,8 +261,9 @@ fun AppRoot(
                 GymMechanic.VOLTORB_GRID -> GymBackground(R.drawable.electric_gym)
             }
         } else if (showRouteBackground) {
-            // Fondo de ruta: bucle vertical con deriva lateral por tramos, movido
-            // con las pulsaciones de la Pokéball. Va detrás del `Scaffold`, que
+            // Fondo de ruta: bucle con deriva lateral por tramos (o de lado, si la
+            // zona es horizontal), movido con las pulsaciones de la Pokéball. Va
+            // detrás del `Scaffold`, que
             // también se vuelve transparente para que se vea en el hueco de la
             // barra.
             RouteScrollingBackground(
@@ -308,9 +311,10 @@ fun AppRoot(
                                 pokePulses.longValue++
                             }
                             // El sprite sigue el eje por el que se acaba de mover el
-                            // fondo: recto → back, lateral derecho → right, izquierdo
-                            // → left. La Pokébola ya no elige dirección por el lado
-                            // que se toca.
+                            // fondo: en vertical, recto → back, lateral derecho →
+                            // right, izquierdo → left; en horizontal, recto → right.
+                            // La Pokébola ya no elige dirección por el lado que se
+                            // toca.
                             onPokeBallTouch(
                                 routeBackground.motion.directionForStep(pokePulses.longValue)
                             )

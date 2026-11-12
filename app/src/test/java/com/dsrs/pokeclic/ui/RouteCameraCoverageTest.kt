@@ -34,6 +34,7 @@ class RouteCameraCoverageTest {
     private val arts = listOf(
         Art(1080f, 1920f, "ruta"),
         Art(1152f, 1920f, "bosque verde"),
+        Art(1152f, 1920f, "ruta 3"),
         Art(2176f, 3072f, "paleta v2")
     )
 
