@@ -149,7 +149,7 @@ Pokeclic/
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
 │       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
-│       │       └── drawable-nodpi/              # background_ruta.png y background_bosque_verde.png: pixel art sin reescalado por densidad
+│       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde y Ciudad Verde): pixel art sin reescalado por densidad
 │       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
 ├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
@@ -439,12 +439,14 @@ Cada zona saca su **arte** y su **trayectoria** del catálogo `RouteBackgrounds`
 (`ui/RouteBackgrounds.kt`), indexado por `Zone.id`: la **misma** instancia de
 `ZoneBackground.motion` mueve el dibujo y decide la dirección del entrenador, así
 que no pueden desincronizarse. Las zonas sin entrada propia usan
-`RouteBackgrounds.DEFAULT`. Hoy tiene arte propio **Bosque Verde**
-(`background_bosque_verde.png`, 1152×1920), que además arranca por el final del
-dibujo (`startAnchor = 0,5`: el entrenador empieza pisando su borde inferior y
-camina hacia arriba) y con la imagen corrida a la derecha (`startOffset = -0,08`,
-8 % del ancho de pantalla); el resto sigue con el de ruta y arranca por el
-principio, centrado.
+`RouteBackgrounds.DEFAULT`. Tienen arte propio **Pueblo Paleta**
+(`background_pallet_town.png`, 2176×3072, `startAnchor = 0,6`), **Bosque Verde**
+(`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
+corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla) y
+**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`).
+Las tres arrancan por el final de su dibujo: el entrenador empieza pisando su
+borde inferior y camina hacia arriba. El resto sigue con el de ruta y arranca por
+el principio, centrado.
 
 Bosque Verde también tiene **trayectoria propia**, y se escribe solo con clics y
 dirección: 2 recto · 1 derecha · 2 recto · 3 derecha · 5 recto · 5 izquierda ·
@@ -453,9 +455,14 @@ laterales: un clic de lado recorre lo mismo que un clic recto. Como los dos
 sentidos suman 9 clics, el zigzag vuelve solo a la línea central en cada vuelta y
 no se aleja más de 0,16 alturas de baldosa.
 
+Ciudad Verde también tiene **trayectoria propia**: 4 recto · 1 derecha · 13
+recto · 7 izquierda · 13 recto · 6 derecha · 10 recto. Los rectos suman 40 clics,
+una vuelta exacta al arte de 3072 px, y los laterales están balanceados (7 a cada
+lado), así que el personaje vuelve a la línea central en cada vuelta.
+
 | Aspecto | Decisión |
 |---|---|
-| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia |
+| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia. La fase es **por zona** (`remember(state.zoneId)`): al cambiar de zona el contador vuelve a cero y su trayectoria arranca por el primer clic |
 | Frenado | No hay inercia: el paso se consume en `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) y el fondo se para en seco al soltar |
 | Dirección | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla |
 | Trayectoria | Tramos `RouteLeg` de **un solo eje**: los rectos avanzan en vertical y los laterales corren el fondo sin bajarlo. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
@@ -867,6 +874,8 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `rock_gym.jpg` | Fondo del gimnasio |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
+| `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
+| `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
@@ -876,8 +885,7 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
    solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `tallGrassButton.png` →
    `tall_grass_button.png`). Si es pixel art que no debe reescalarse por densidad,
-   va en `res/drawable-nodpi/` (así viven `background_ruta.png` y
-   `background_bosque_verde.png`).
+   va en `res/drawable-nodpi/` (así viven los fondos `background_*.png`).
 2. Añade su `contentDescription` en `strings.xml` si aporta información.
 3. Añade el composable en la pantalla correspondiente.
 4. Declara tamaño y posición en el `object` de configuración de esa pantalla.

@@ -159,6 +159,29 @@ internal object RouteBackgrounds {
             startAnchor = 0.5f,
             startOffset = -0.08f
         ),
+        // Ciudad Verde: arte propio y trayectoria propia, escrita tramo a tramo.
+        // Los rectos suman 40 clics (una vuelta exacta al arte de 3072 px) y los
+        // laterales están balanceados (7 a cada lado), así que el personaje vuelve
+        // a la línea central en cada vuelta.
+        //
+        // `startAnchor = 0.5f` deja el borde inferior del arte en el centro de la
+        // pantalla, que es donde está el entrenador: la zona arranca pisando el
+        // tramo bajo de la ciudad y camina hacia arriba por él.
+        "ciudad_verde" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_verde,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 4f),
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 13f),
+                    RouteLeg(clicks = 7f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 13f),
+                    RouteLeg(clicks = 6f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 10f),
+                )
+            ),
+            startAnchor = 0.5f
+        ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
         //     imageRes = R.drawable.background_ruta2,
@@ -173,8 +196,8 @@ internal object RouteBackgrounds {
      * `true` si [zoneId] tiene arte propio.
      *
      * Lo usa `AppRoot` para mostrar el fondo animado en zonas sin fauna: una
-     * ciudad con arte propio (Pueblo Paleta) también lo enseña, mientras que las
-     * que no tienen entrada siguen con el fondo liso de siempre.
+     * ciudad con arte propio (Pueblo Paleta, Ciudad Verde) también lo enseña,
+     * mientras que las que no tienen entrada siguen con el fondo liso de siempre.
      */
     fun hasOwnArtwork(zoneId: String): Boolean = zoneId in byZone
 

@@ -113,12 +113,36 @@ class RouteBackgroundsTest {
     @Test
     fun onlyZonesWithAnEntry_showTheAnimatedBackground() {
         // El fondo animado se muestra en zonas con fauna y, además, en las que
-        // tienen arte propio: Pueblo Paleta no tiene encuentros y aun así lo
-        // enseña. Las ciudades sin entrada siguen con el fondo liso.
+        // tienen arte propio: Pueblo Paleta y Ciudad Verde no tienen encuentros y
+        // aun así lo enseñan. Las ciudades sin entrada siguen con el fondo liso.
         assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
-        assertFalse(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
+    }
+
+    @Test
+    fun ciudadVerde_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_verde,
+            RouteBackgrounds.forZone("ciudad_verde").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadVerde_startsAtTheBottomOfItsArtwork() {
+        // Arranca por el tramo bajo del arte, no por el principio.
+        assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_verde").startAnchor!!, 0f)
+    }
+
+    @Test
+    fun ciudadVerde_returnsToTheCentreLineBecauseBothSidesBalance() {
+        // 7 clics a cada lado: el zigzag no acumula deriva lateral. Si la
+        // trayectoria deja de estar balanceada, el personaje quedará cada vuelta
+        // más corrido y este test lo delatará.
+        val motion = RouteBackgrounds.forZone("ciudad_verde").motion
+        assertEquals(0f, motion.lateralDistanceAt(motion.cycleDistance.toDouble()), 1e-4f)
     }
 
     @Test
