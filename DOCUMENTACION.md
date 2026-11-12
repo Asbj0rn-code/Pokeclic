@@ -134,7 +134,7 @@ Pokeclic/
 │       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y pesca
 │       │   │   └── ui/                          # ── VIEW (plano, 9 archivos) ──
 │       │   │       ├── AppRoot.kt               # Shell: Scaffold, pestañas, overlays y previews
-│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle vertical movido por la Pokéball
+│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle (vertical u horizontal) movido por la Pokéball
 │       │   │       ├── MainScreen.kt            # Pantalla principal + GameHud
 │       │   │       ├── PokemonBottomMenu.kt     # Barra, Pokéball, hendidura y controles
 │       │   │       ├── GymOverlay.kt            # Escena del gimnasio, HUD y sprites del combate
@@ -149,7 +149,7 @@ Pokeclic/
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
 │       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
-│       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde y Ciudad Verde): pixel art sin reescalado por densidad
+│       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde, Ciudad Verde y Ruta 3): pixel art sin reescalado por densidad
 │       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
 ├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
@@ -431,7 +431,7 @@ ajusta sobre esa caja, no sobre la pantalla completa.
 En la pantalla Home de las zonas con fauna (`GameUiState.hasWilds`) y sin escena
 de gimnasio/pesca ni intro abierta, `AppRoot` compone
 `RouteScrollingBackground` (`ui/RouteBackground.kt`) **detrás** del contenido:
-el arte de la zona se repite en vertical y se desplaza con las pulsaciones de la
+el arte de la zona se repite en bucle y se desplaza con las pulsaciones de la
 Pokéball. En ese estado el `Scaffold` usa `containerColor = Color.Transparent`,
 así el arte se ve también en el hueco de la barra.
 
@@ -442,11 +442,15 @@ que no pueden desincronizarse. Las zonas sin entrada propia usan
 `RouteBackgrounds.DEFAULT`. Tienen arte propio **Pueblo Paleta**
 (`background_pallet_town.png`, 2176×3072, `startAnchor = 0,6`), **Bosque Verde**
 (`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
-corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla) y
-**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`).
-Las tres arrancan por el final de su dibujo: el entrenador empieza pisando su
-borde inferior y camina hacia arriba. El resto sigue con el de ruta y arranca por
-el principio, centrado.
+corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla),
+**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`)
+y **Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal).
+Las tres verticales arrancan por el final de su dibujo: el entrenador empieza
+pisando su borde inferior y camina hacia arriba. La Ruta 3 arranca **pegada al
+marco izquierdo** de su arte (`startOffset = -0,5`) y **sobre su eje central
+horizontal** (`startAnchor = 0,057`, que deja el borde inferior del arte detrás del
+HUD); camina de izquierda a derecha. El resto sigue con el de ruta y arranca por el
+principio, centrado.
 
 Bosque Verde también tiene **trayectoria propia**, y se escribe solo con clics y
 dirección: 2 recto · 1 derecha · 2 recto · 3 derecha · 5 recto · 5 izquierda ·
@@ -460,12 +464,30 @@ recto · 7 izquierda · 13 recto · 6 derecha · 10 recto. Los rectos suman 40 c
 una vuelta exacta al arte de 3072 px, y los laterales están balanceados (7 a cada
 lado), así que el personaje vuelve a la línea central en cada vuelta.
 
+La Ruta 3 es la primera zona **horizontal** (`RouteScrollAxis.HORIZONTAL`): el
+marco está girado 90° a la derecha, así que la trayectoria se escribe igual que en
+las verticales. Su bucle dura **dos vueltas**: la primera sube (0 → +7 → 0) y la
+segunda baja (0 → -3 → 0). Cierra porque el superciclo suma 30 clics rectos (dos
+anchos del arte: 30 × 76,8 px = 2304 px) y los laterales están balanceados (10
+hacia arriba y 10 hacia abajo). Si una de las dos sumas deja de cuadrar, cada ciclo
+empieza en otro píxel o a otra altura.
+
+En un fondo horizontal, cada tramo se lee así (el arte siempre va al revés que el
+entrenador):
+
+| Tramo | Entrenador | Sprite | Arte |
+|---|---|---|---|
+| `BACK` (recto) | camina a la derecha | mira a la derecha | se corre a la izquierda |
+| `LEFT` (lateral) | sube por la pantalla | mira hacia arriba | baja |
+| `RIGHT` (lateral) | baja por la pantalla | mira hacia abajo | sube |
+
 | Aspecto | Decisión |
 |---|---|
 | Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia. La fase es **por zona** (`remember(state.zoneId)`): al cambiar de zona el contador vuelve a cero y su trayectoria arranca por el primer clic |
 | Frenado | No hay inercia: el paso se consume en `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) y el fondo se para en seco al soltar |
-| Dirección | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla |
-| Trayectoria | Tramos `RouteLeg` de **un solo eje**: los rectos avanzan en vertical y los laterales corren el fondo sin bajarlo. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
+| Eje de avance | `RouteBackgroundMotion.axis`: `VERTICAL` (por defecto) sube al entrenador por la pantalla y los laterales lo corren a izquierda o derecha. `HORIZONTAL` es el mismo marco girado 90° a la derecha: el recto camina a la derecha, `LEFT` sube y `RIGHT` baja |
+| Dirección vertical | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla. Solo afecta al avance recto de los fondos verticales; los laterales y el fondo horizontal sacan el signo de `lateralDistanceAt` |
+| Trayectoria | Tramos `RouteLeg` de **un solo eje**, escritos en el marco del eje: recto = avanzar, laterales = correrse. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
 | Ejes infinitos | El vertical repite el arte en bucle y el lateral lo repite **como loseta**: al borde derecho de una columna le sigue el borde izquierdo del arte, sin reflejarlo. Así **ningún eje tiene tope ni tiene que volver a cero**: un ciclo con más clics a un lado deja al personaje cada vez más corrido, igual que uno recto lo deja cada vez más arriba |
 | Punto de partida vertical | `ZoneBackground.startAnchor`: fracción de la pantalla donde cae el **borde inferior del arte** al entrar en la zona (`0,5` = el centro, que es donde está el entrenador). `null` arranca por el principio del arte. Solo mueve el punto de vista, no la trayectoria |
 | Punto de partida lateral | `ZoneBackground.startOffset`: posición lateral del personaje al entrar, en anchos de pantalla y con el signo de `lateralDistanceAt` (positivo = personaje a la derecha, imagen a la izquierda) |
@@ -486,7 +508,9 @@ de UI: no toca el ViewModel ni el save.
    suave en horizontal; el arte viejo de ruta necesitó `seamCutRow` en vertical).
 2. Añade la entrada a `RouteBackgrounds.byZone` con el `Zone.id` del catálogo:
    arte + una lista de `RouteLeg(clicks, direction)`. Alternar recto con laterales
-   es lo que hace que el entrenador cambie de orientación.
+   es lo que hace que el entrenador cambie de orientación. Para un fondo
+   **horizontal**, pasa `axis = RouteScrollAxis.HORIZONTAL`: se escribe igual, pero
+   el marco está girado 90° (recto = derecha, `LEFT` = arriba, `RIGHT` = abajo).
 3. Opcional: `startAnchor` (por dónde arranca el arte en vertical) y `startOffset`
    (corrimiento lateral inicial, en anchos de pantalla).
 
@@ -495,9 +519,11 @@ fondo con `forZone(state.zoneId)` y le pasa el resultado a
 `RouteScrollingBackground`. Una zona sin entrada usa `DEFAULT`.
 
 `RouteBackgroundsTest` lo comprueba en **cada** zona: que el arte exista, que el
-fondo avance en vertical, que alterne recto y lateral, que cada tramo recorra
-`clics × 1/25` baldosa y que el id de la entrada sea una zona real (un id mal
-escrito caería en `DEFAULT` sin avisar).
+fondo avance por su eje, que haya al menos un tramo recto y que las verticales
+alternen además laterales, que cada tramo recorra `clics × 1/25` baldosa y que el
+id de la entrada sea una zona real (un id mal escrito caería en `DEFAULT` sin
+avisar). `RouteScrollShiftTest` comprueba la traducción del recorrido al dibujo:
+qué eje se mueve y con qué fase.
 
 ### Capas de hierba alta sobre el trainer
 
@@ -876,6 +902,7 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
 | `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
+| `background_ruta3.png` | Fondo animado de Ruta 3, en bucle horizontal (`drawable-nodpi`, 1152×1920 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).

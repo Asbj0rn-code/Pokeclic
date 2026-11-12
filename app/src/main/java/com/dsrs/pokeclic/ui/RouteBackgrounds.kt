@@ -1,8 +1,8 @@
 /**
  * Catálogo de fondos infinitos por zona.
  *
- * Cada zona puede tener su **arte**, sus **clics** y sus **direcciones**. Todo lo
- * que hace falta para añadir una zona nueva está en [RouteBackgrounds.byZone]:
+ * Cada zona puede tener su **arte**, su **eje** y sus **clics**. Todo lo que hace
+ * falta para añadir una zona nueva está en [RouteBackgrounds.byZone]:
  * mientras no tenga entrada propia usa [RouteBackgrounds.DEFAULT], así que ninguna
  * zona puede quedarse sin fondo ni romper la animación.
  *
@@ -35,6 +35,9 @@ import com.dsrs.pokeclic.model.Direction
  * @param startOffset posición lateral del personaje al entrar, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
  *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
+ *   Con el arte a un ancho de pantalla, la fracción de arte donde queda el
+ *   entrenador es `0,5 + startOffset`: `-0,5` = borde izquierdo, `0` = centro,
+ *   `0,5` = borde derecho.
  */
 internal data class ZoneBackground(
     @DrawableRes val imageRes: Int,
@@ -57,7 +60,9 @@ internal data class ZoneBackground(
  *    de ruta necesitó `seamCutRow` en vertical).
  * 2. **Trayectoria**: una lista de [RouteLeg] con **clics y dirección**. Alternar
  *    recto con laterales es lo que hace que el entrenador cambie de orientación;
- *    la dirección del sprite sale del tramo, no se configura aparte.
+ *    la dirección del sprite sale del tramo, no se configura aparte. Los tramos se
+ *    escriben en el marco del eje: con `axis = HORIZONTAL`, `BACK` camina a la
+ *    derecha, `LEFT` sube por la pantalla y `RIGHT` baja.
  * 3. **Arranque** (opcional): `startAnchor` para empezar por una parte concreta
  *    del arte y `startOffset` para correr la imagen de lado.
  * 4. Añadir la entrada a [byZone] con el `Zone.id` del catálogo de zonas. Con solo
@@ -87,9 +92,9 @@ internal data class ZoneBackground(
  * ## Lo que [RouteBackgroundsTest] comprueba en **cada** zona
  *
  * - el arte existe y la trayectoria tiene tramos,
- * - el fondo avanza en vertical (si no, nunca se mueve),
- * - hay al menos un tramo recto y uno lateral (si no, el entrenador no cambia de
- *   orientación),
+ * - el fondo avanza por su eje (si no, nunca se mueve),
+ * - hay al menos un tramo recto, y un fondo vertical alterna además laterales (si
+ *   no, el entrenador no cambia de orientación),
  * - cada tramo recorre exactamente `clics × TILES_PER_CLICK` en su eje.
  */
 internal object RouteBackgrounds {
@@ -181,6 +186,56 @@ internal object RouteBackgrounds {
                 )
             ),
             startAnchor = 0.5f
+        ),
+        // Ruta 3: la primera zona **horizontal**. El marco está girado 90° a la
+        // derecha, así que la trayectoria se escribe igual que en las verticales:
+        //   `BACK` (recto) camina a la derecha,
+        //   `LEFT` sube por la pantalla,
+        //   `RIGHT` baja por la pantalla.
+        // El arte se mueve siempre al revés que el entrenador, y cada tramo sigue
+        // moviendo un solo eje. Como en las demás zonas, alternar recto con
+        // laterales es lo que hace que cambie de orientación.
+        //
+        // El bucle dura **dos vueltas**: la primera sube (0 → +7 → 0) y la segunda
+        // baja (0 → -3 → 0). Lo que cierra es el superciclo completo, con dos sumas:
+        //   - los rectos suman 30 clics (dos anchos de arte: 30 × 76,8 = 2304 px),
+        //   - los `LEFT` y los `RIGHT` suman lo mismo (10 y 10 aquí), para volver a
+        //     la misma altura.
+        // Si una de las dos no cuadra, cada ciclo empieza en otro píxel o a otra
+        // altura. Lo comprueba `rutaTres_closesItsLoop`.
+        //
+        // `startOffset = -0,5f` deja al entrenador **pegado al marco izquierdo** del
+        // arte (0 % de su ancho): el signo es el de `lateralDistanceAt` (negativo =
+        // personaje a la izquierda, imagen corrida a la derecha). Con `-0,25f`
+        // arrancaría en el cuarto izquierdo y con `0f` en el centro.
+        "ruta3" to ZoneBackground(
+            imageRes = R.drawable.background_ruta3,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 3f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 7f, direction = Direction.RIGHT), // Hacia abajo
+                    RouteLeg(clicks = 3f),
+                    // Segunda vuelta
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 3f, direction = Direction.RIGHT), // Hacia abajo
+                    RouteLeg(clicks = 6f),
+                    RouteLeg(clicks = 2f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 5f),
+                    RouteLeg(clicks = 1f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 2f)
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            startOffset = -0.5f,
+            // Deja el **eje central horizontal del arte** a la altura del
+            // entrenador: el borde inferior del arte cae al 5,7 % de la pantalla,
+            // detrás del HUD. Calibrado en 1080×2400; en una pantalla más baja el
+            // eje del arte cae por debajo del entrenador.
+            startAnchor = 0.057f
         ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
