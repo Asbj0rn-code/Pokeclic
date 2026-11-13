@@ -107,6 +107,11 @@ data class GameUiState(
     val canAdvanceZone: Boolean = false,
     /** La zona tiene hierba alta con fauna; en ciudades la hierba no se ofrece. */
     val hasWilds: Boolean = true,
+    /**
+     * La zona es una cueva: tiene salvajes al avanzar **sin** modo hierba alta.
+     * El botón de hierba se oculta y no hay sprite bajo el entrenador.
+     */
+    val alwaysWilds: Boolean = false,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
     val starterOptions: List<StarterOption> = emptyList(),

@@ -24,4 +24,24 @@ class AppRootTest {
     fun tap_duringAnEncounter_freezesTheRouteWorld() {
         assertFalse(advancesRouteWorld(isTallGrass = false, encounterActive = true))
     }
+
+    @Test
+    fun tap_inACave_advancesTheRouteWorldEvenWithoutTallGrass() {
+        // Cueva (Mt.Moon): hay salvajes sin modo hierba, pero el clic sigue
+        // moviendo el fondo. Con un encuentro abierto sí se congela.
+        assertTrue(
+            advancesRouteWorld(
+                isTallGrass = false,
+                encounterActive = false,
+                alwaysWilds = true
+            )
+        )
+        assertFalse(
+            advancesRouteWorld(
+                isTallGrass = false,
+                encounterActive = true,
+                alwaysWilds = true
+            )
+        )
+    }
 }

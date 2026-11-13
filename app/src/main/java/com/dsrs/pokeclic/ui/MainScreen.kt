@@ -410,9 +410,10 @@ fun MainScreen(
                 modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
             )
 
-            // Solo las zonas con hierba alta (rutas, bosque, cueva) pueden
-            // entrar: las ciudades no tienen fauna y la hierba se oculta.
-            if (state.hasWilds) {
+            // Solo las zonas con hierba alta (rutas, bosque) pueden entrar: las
+            // ciudades no tienen fauna y las cuevas generan salvajes al avanzar,
+            // así que en ambas la hierba no se ofrece.
+            if (state.hasWilds && !state.alwaysWilds) {
                 TallGrassButton(
                     onClick = onTallGrassToggle,
                     modifier = Modifier
