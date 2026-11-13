@@ -91,8 +91,11 @@ private const val OAK_WIDTH_FRACTION = 0.80f
 /** Tope de ancho del retrato, para que no crezca sin límite en pantallas grandes. */
 private val OAK_MAX_WIDTH = 360.dp
 
-/** Margen superior del retrato; el diálogo arranca justo debajo de él. */
-private val OAK_TOP_PADDING = 16.dp
+/**
+ * Margen superior del bloque de la intro. Gobierna el retrato y, como el
+ * diálogo se coloca justo debajo de él, también baja la caja y los sprites.
+ */
+private val OAK_TOP_PADDING = 40.dp
 
 /** Tamaño del starter elegido cuando Oak lo describe en el centro de la pantalla. */
 private val STARTER_FOCUS_SIZE = 160.dp
