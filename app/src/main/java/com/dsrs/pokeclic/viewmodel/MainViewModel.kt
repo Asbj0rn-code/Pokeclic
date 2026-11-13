@@ -171,6 +171,12 @@ class MainViewModel(
                     lastWalkTapMs = now
                     animated
                 }
+                // Cueva: el clic mueve el fondo y suma a la barra, pero además
+                // deja actividad para que el encuentro pueda aparecer caminando.
+                state.alwaysWilds -> {
+                    lastWalkTapMs = now
+                    addZoneClicks(animated)
+                }
                 else -> addZoneClicks(animated)
             }
             derive(progressed)
@@ -188,7 +194,10 @@ class MainViewModel(
 
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
     fun onTallGrassToggle() = mutate { state ->
-        if (state.isTallGrass) {
+        // Las cuevas no tienen modo que alternar: los salvajes ya están activos.
+        if (state.alwaysWilds) {
+            state
+        } else if (state.isTallGrass) {
             cancelCatching()
             state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, catching = null)
         } else {
@@ -1012,7 +1021,9 @@ class MainViewModel(
             while (isActive) {
                 delay(WALK_TICK_MS)
                 val state = _uiState.value
-                if (!state.isTallGrass || state.isPokedexOpen || state.encounter != null || state.gym != null) continue
+                if ((!state.isTallGrass && !state.alwaysWilds) ||
+                    state.isPokedexOpen || state.encounter != null || state.gym != null
+                ) continue
                 if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
 
                 val next = state.walkProgress + WALK_TICK_MS / 1000f / ENCOUNTER_SECONDS
@@ -1176,6 +1187,7 @@ class MainViewModel(
             leadType = lead?.type,
             isGymReady = isGymReady,
             hasWilds = zone.wildSpeciesIds.isNotEmpty(),
+            alwaysWilds = zone.alwaysWilds,
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
             gymMechanic = gymMechanic,
             canAdvanceZone = canAdvanceZone,

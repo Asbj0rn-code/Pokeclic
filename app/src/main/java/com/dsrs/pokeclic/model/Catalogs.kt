@@ -114,7 +114,9 @@ object ZoneCatalog {
             id = "mt_moon",
             name = "Mt.Moon",
             clickRequirement = 160L,
-            wildSpeciesIds = listOf("zubat", "geodude")
+            wildSpeciesIds = listOf("zubat", "geodude"),
+            // Cueva: los salvajes aparecen caminando, sin modo hierba alta.
+            alwaysWilds = true
         ),
         Zone(
             id = "ruta4",

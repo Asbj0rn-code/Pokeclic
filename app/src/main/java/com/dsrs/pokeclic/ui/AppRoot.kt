@@ -307,7 +307,13 @@ fun AppRoot(
                             // Modo captura (hierba alta o encuentro en curso): el
                             // mundo se congela; el clic no mueve el fondo ni
                             // cuenta para el avance de la zona.
-                            if (advancesRouteWorld(state.isTallGrass, state.encounter != null)) {
+                            if (
+                                advancesRouteWorld(
+                                    state.isTallGrass,
+                                    state.encounter != null,
+                                    state.alwaysWilds
+                                )
+                            ) {
                                 pokePulses.longValue++
                             }
                             // El sprite sigue el eje por el que se acaba de mover el
@@ -450,8 +456,11 @@ fun AppRoot(
  * (eso ya lo evita `MainViewModel.onPokeBallTouch`, que no suma `zoneClicks`
  * en esos dos estados). Fuera de él, cada pulsación avanza el recorrido.
  */
-internal fun advancesRouteWorld(isTallGrass: Boolean, encounterActive: Boolean): Boolean =
-    !isTallGrass && !encounterActive
+internal fun advancesRouteWorld(
+    isTallGrass: Boolean,
+    encounterActive: Boolean,
+    alwaysWilds: Boolean = false
+): Boolean = (!isTallGrass || alwaysWilds) && !encounterActive
 
 /** Radio del desenfoque del fondo de ruta mientras dura la captura. */
 private val RouteCaptureBlurRadius = 8.dp

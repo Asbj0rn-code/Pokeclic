@@ -35,9 +35,12 @@ import com.dsrs.pokeclic.model.Direction
  * @param startOffset posición lateral del personaje al entrar, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
  *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
- *   Con el arte a un ancho de pantalla, la fracción de arte donde queda el
- *   entrenador es `0,5 + startOffset`: `-0,5` = borde izquierdo, `0` = centro,
- *   `0,5` = borde derecho.
+ *   No es una fracción del **arte**: un ancho de pantalla mueve la imagen un
+ *   ancho de pantalla, así que la fracción del arte que queda bajo el entrenador
+ *   depende de lo ancho que sea el dibujo. Con un arte de una pantalla, `-0,5`
+ *   lo deja en el 0 %; con uno de dos pantallas, `-0,5` lo deja en el 25 % y hace
+ *   falta `-1` para el 0 %. El valor se enrolla módulo el ancho del arte, de modo
+ *   que `-1` y `+1` son el mismo sitio.
  */
 internal data class ZoneBackground(
     @DrawableRes val imageRes: Int,
@@ -235,6 +238,56 @@ internal object RouteBackgrounds {
             // entrenador: el borde inferior del arte cae al 5,7 % de la pantalla,
             // detrás del HUD. Calibrado en 1080×2400; en una pantalla más baja el
             // eje del arte cae por debajo del entrenador.
+            startAnchor = 0.057f
+        ),
+        // Monte Moon: segundo fondo **horizontal**, con arte más ancho que el de
+        // Ruta 3 (2304×1920 frente a 1152×1920). La cámara sigue enseñando 1152 px
+        // de ancho, así que por pantalla se ve la mitad del dibujo y el patrón se
+        // repite cada dos pantallas.
+        //
+        // El bucle cierra con la misma cuenta de siempre, pero cambia el número:
+        //   clics rectos por ancho de arte = ancho del arte / 76,8
+        //   Ruta 3 → 1152 / 76,8 = 15   ·   Mt.Moon → 2304 / 76,8 = 30
+        // Por eso los tramos rectos de esta zona tienen que sumar 30, 60, 90… clics
+        // (aquí suman 30) y los laterales compensarse (2 + 1 arriba, 3 abajo) para
+        // volver a la misma altura. Lo comprueba `mtMoon_closesItsLoop`.
+        //
+        // Para reajustar los pasos solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja.
+        "mt_moon" to ZoneBackground(
+            imageRes = R.drawable.background_mt_moon,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 3f),                              // recto
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),   // sube
+                    RouteLeg(clicks = 9f),                              // recto
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),  // baja
+                    RouteLeg(clicks = 1f),                              // recto
+                    RouteLeg(clicks = 3f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 8f),                              // recto
+                    RouteLeg(clicks = 2f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 9f),
+                    // Segunda vuelta
+                    RouteLeg(clicks = 3f),
+                    RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 9f),
+                    RouteLeg(clicks = 5f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 1f),
+                    RouteLeg(clicks = 1f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 7f),
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 10f)
+                    ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // -1 de ancho de pantalla pone el **marco izquierdo del arte** justo bajo
+            // el entrenador, con el principio del dibujo a su derecha y el final
+            // enlazando por detrás (el arte mide dos pantallas de ancho). El valor
+            // se enrolla módulo el ancho del arte, así que -1 y +1 dan lo mismo;
+            // -0,5 dejaría al entrenador en el 25% del dibujo y 0 en su centro.
+            startOffset = -1f,
+            // Misma calibración que Ruta 3: pone el eje central horizontal del arte a
+            // la altura del entrenador. El alto del arte es el mismo (1920 px).
             startAnchor = 0.057f
         ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
