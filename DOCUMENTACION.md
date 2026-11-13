@@ -443,9 +443,10 @@ que no pueden desincronizarse. Las zonas sin entrada propia usan
 (`background_pallet_town.png`, 2176×3072, `startAnchor = 0,6`), **Bosque Verde**
 (`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
 corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla),
-**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`)
+**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`),
+**Ciudad Plateada** (`background_ciudad_plateada.png`, 4608×3840, `startAnchor = 0,5`)
 y **Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal).
-Las tres verticales arrancan por el final de su dibujo: el entrenador empieza
+Las cuatro verticales arrancan por el final de su dibujo: el entrenador empieza
 pisando su borde inferior y camina hacia arriba. La Ruta 3 arranca **pegada al
 marco izquierdo** de su arte (`startOffset = -0,5`) y **sobre su eje central
 horizontal** (`startAnchor = 0,057`, que deja el borde inferior del arte detrás del
@@ -463,6 +464,18 @@ Ciudad Verde también tiene **trayectoria propia**: 4 recto · 1 derecha · 13
 recto · 7 izquierda · 13 recto · 6 derecha · 10 recto. Los rectos suman 40 clics,
 una vuelta exacta al arte de 3072 px, y los laterales están balanceados (7 a cada
 lado), así que el personaje vuelve a la línea central en cada vuelta.
+
+Ciudad Plateada tiene **trayectoria propia**: 8 recto · 23 izquierda · 12 recto ·
+40 derecha · 12 recto · 15 izquierda · 8 recto · 2 izquierda · 10 recto. Su arte
+mide 3840 px de alto (dos altos de cámara), así que una vuelta completa al dibujo
+pide **50 clics rectos** (3840 × 25 / 1920); los rectos suman exactamente 50 y los
+laterales están balanceados (40 a cada lado). El ciclo completo dura 130 clics: el
+fondo recorre la ciudad de lado (del lado del Mart al del gimnasio) y vuelve a la
+línea central. Mientras los rectos sumen múltiplos de 50 y los dos sentidos
+laterales sumen lo mismo, la trayectoria se puede reescribir tramo a tramo.
+Además el arte es **cuatro veces más ancho** que la cámara (4608 px), así que la
+pantalla enseña solo su franja central: qué parte de la ciudad se ve depende del
+corrimiento lateral acumulado.
 
 La Ruta 3 es la primera zona **horizontal** (`RouteScrollAxis.HORIZONTAL`): el
 marco está girado 90° a la derecha, así que la trayectoria se escribe igual que en
@@ -902,6 +915,7 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
 | `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
+| `background_ciudad_plateada.png` | Fondo animado de Ciudad Plateada (`drawable-nodpi`, 4608×3840 pixel art) |
 | `background_ruta3.png` | Fondo animado de Ruta 3, en bucle horizontal (`drawable-nodpi`, 1152×1920 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 

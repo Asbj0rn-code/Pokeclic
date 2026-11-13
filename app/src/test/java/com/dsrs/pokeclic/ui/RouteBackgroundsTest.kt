@@ -124,6 +124,7 @@ class RouteBackgroundsTest {
         // aun así lo enseñan. Las ciudades sin entrada siguen con el fondo liso.
         assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_plateada"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
@@ -209,6 +210,51 @@ class RouteBackgroundsTest {
                 step++
             }
         }
+    }
+
+    @Test
+    fun ciudadPlateada_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_plateada,
+            RouteBackgrounds.forZone("ciudad_plateada").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadPlateada_startsAtTheBottomOfItsArtwork() {
+        // El borde inferior del arte cae en el centro de la pantalla, donde está el
+        // entrenador: la ciudad se recorre desde su parte baja hacia arriba.
+        assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_plateada").startAnchor!!, 0f)
+    }
+
+    @Test
+    fun ciudadPlateada_closesItsLoop() {
+        // El arte mide 3840 px de alto (dos altos de cámara), así que una vuelta
+        // completa al dibujo pide 3840 × 25 / 1920 = 50 clics rectos. Los rectos
+        // tienen que sumar múltiplos de 50 y los dos sentidos laterales lo mismo,
+        // o cada vuelta empieza en otro píxel y a otra altura.
+        val motion = RouteBackgrounds.forZone("ciudad_plateada").motion
+        val straightClicks = motion.legs
+            .filterNot { it.isLateral }
+            .sumOf { it.clicks.toDouble() }
+        val clicksPerArtHeight = 50.0
+
+        assertTrue(
+            "Los rectos deben avanzar al menos una vuelta al arte",
+            straightClicks >= clicksPerArtHeight
+        )
+        assertEquals(
+            "Los clics rectos deben sumar vueltas enteras al arte",
+            0.0,
+            straightClicks % clicksPerArtHeight,
+            1e-9
+        )
+        assertEquals(
+            "Los laterales deben volver a la línea central",
+            0f,
+            motion.lateralDistanceAt(motion.cycleDistance.toDouble()),
+            1e-6f
+        )
     }
 
     @Test
