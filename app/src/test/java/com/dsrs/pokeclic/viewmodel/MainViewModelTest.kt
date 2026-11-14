@@ -84,6 +84,14 @@ class MainViewModelTest {
         Zone("z_prado", "Prado", 100L, listOf("pidgey"))
     )
 
+    /**
+     * Cueva (Mt.Moon): salvajes sin modo hierba alta. Los clics avanzan la barra
+     * y, a la vez, alimentan el temporizador de encuentros.
+     */
+    private val caveZones = listOf(
+        Zone("z_cueva", "Cueva", 100L, listOf("zubat"), alwaysWilds = true)
+    )
+
     /** Mismo recorrido corto, pero con el gimnasio de Misty en la zona central. */
     private val mistyZones = listOf(
         Zone("z1", "Z1", 2L, listOf("pidgey")),
@@ -835,6 +843,84 @@ class MainViewModelTest {
         val afterMeadow = vm.uiState.value
         assertNotNull(afterMeadow.encounter)
         assertNotNull(afterMeadow.catching)
+    }
+
+    /**
+     * Cueva (Mt.Moon): los clics suman a la barra **y** alimentan el temporizador
+     * de encuentros, así que aparecen salvajes sin activar la hierba alta.
+     */
+    @Test
+    fun caveZone_countsClicksAndSpawnsEncountersWhileAdvancing() {
+        val vm = viewModel(nowMs = { 0L }, zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+
+        tapZone(vm, 2)
+        with(vm.uiState.value) {
+            assertFalse(isTallGrass)
+            assertTrue("la cueva debe sumar clics a la barra", zoneClicks > 0L)
+            assertNull(encounter)
+        }
+
+        vm.onPokeBallTouch(Direction.BACK) // deja actividad reciente para el bucle
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        with(vm.uiState.value) {
+            assertNotNull("la cueva genera salvajes al avanzar", encounter)
+            assertNotNull(catching)
+            assertFalse("sin hierba alta no hay sprite ni modo", isTallGrass)
+        }
+    }
+
+    /** En una cueva el botón de hierba no existe: pulsarlo no cambia nada. */
+    @Test
+    fun caveZone_ignoresTheTallGrassToggle() {
+        val vm = viewModel(zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+
+        vm.onTallGrassToggle()
+
+        assertFalse(vm.uiState.value.isTallGrass)
+    }
+
+    /** Al cruzar de una ruta con hierba a la cueva, el modo hierba se cierra. */
+    @Test
+    fun caveZone_enteredFromTallGrass_clearsTheGrassMode() {
+        val route = Zone("z_ruta", "Ruta", 2L, listOf("pidgey"))
+        val vm = viewModel(zones = listOf(route, caveZones.single()))
+        vm.onFinishIntro("Ash", "charmander")
+
+        tapZone(vm, 2)
+        vm.onTallGrassToggle()
+        assertTrue(vm.uiState.value.isTallGrass)
+
+        vm.onAdvanceZone()
+
+        with(vm.uiState.value) {
+            assertEquals(1, zoneIndex)
+            assertFalse(isTallGrass)
+            assertTrue(alwaysWilds)
+        }
+    }
+
+    /** Con el minijuego abierto no se acumulan clics ni aparece otro salvaje. */
+    @Test
+    fun caveZone_pausesWhileAnEncounterIsOpen() {
+        val vm = viewModel(nowMs = { 0L }, zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+        vm.onPokeBallTouch(Direction.BACK)
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        val encounter = vm.uiState.value.encounter ?: error("la cueva no abrió encuentro")
+        val clicks = vm.uiState.value.zoneClicks
+
+        repeat(5) { vm.onPokeBallTouch(Direction.BACK) }
+        testScope.advanceTimeBy(30_000L)
+        testScope.runCurrent()
+
+        assertEquals(clicks, vm.uiState.value.zoneClicks)
+        assertEquals(encounter, vm.uiState.value.encounter)
     }
 
     /**
