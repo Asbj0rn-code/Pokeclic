@@ -233,6 +233,11 @@ fun AppRoot(
                     state.tutorialPhase,
                     state.tutorialMessageClosed
                 ),
+                // Tutorial: durante los pasos los destinos del menú quedan
+                // inertes — el regreso de la Pokédex es exclusivo de la
+                // Pokéball, que es a su vez el botón Home —; fuera del
+                // tutorial, navegación normal.
+                destinationsEnabled = tutorialDexDestinationsEnabled(state.tutorialPhase),
                 onMapClick = {
                     onCloseDex()
                     onSelectTab(AppTab.Map)
@@ -599,6 +604,16 @@ internal fun tutorialDialogVisible(
     phase: TutorialPhase,
     messageClosed: Boolean
 ): Boolean = phase.isMessageVisible(messageClosed)
+
+/**
+ * ¿Están operativos los destinos del menú (Mapa/Pokédex) en la pantalla de la
+ * Pokédex? Solo en juego libre: durante el tutorial el regreso de la Pokédex
+ * es **exclusivo de la Pokéball** — que es a su vez el botón Home —, así que el
+ * botón Mapa debe quedar inerte para no cerrar la pantalla por una vía
+ * alternativa.
+ */
+internal fun tutorialDexDestinationsEnabled(phase: TutorialPhase): Boolean =
+    phase.isFreePlay
 
 /**
  * ¿Está la Pokéball del menú **habilitada** en el momento actual del tutorial?

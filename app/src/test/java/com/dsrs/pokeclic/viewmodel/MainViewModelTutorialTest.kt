@@ -889,5 +889,23 @@ class MainViewModelTutorialTest {
         assertEquals(TutorialPhase.FAREWELL, vm.uiState.value.tutorialPhase)
     }
 
+    @Test
+    fun returnPokedex_theMapButtonCannotLeaveTheStepThroughTheBackDoor() {
+        // Documenta la acción compuesta del botón Mapa de la pantalla de la
+        // Pokédex (bloqueado en la UI por el shell): cerrar la dex es la
+        // interacción del paso, pero la mitad de navegación a Mapa está
+        // bloqueada — el regreso previsto es el toque de la Pokéball.
+        val vm = vmEnAperturaPokedex(mensajeCerrado = true).apply {
+            onOpenDex()              // RETURN_POKEDEX, mensaje reabierto
+            onTutorialMessageTap()   // cierra el mensaje del regreso
+        }
+
+        vm.onCloseDex()              // mitad de cierre: interacción del paso
+        assertEquals(TutorialPhase.FAREWELL, vm.uiState.value.tutorialPhase)
+
+        vm.onSelectTab(AppTab.Map)   // mitad de navegación: bloqueada
+        assertEquals(AppTab.Home, vm.uiState.value.contentTab)
+    }
+
     // ───────────────── Auxiliares ─────────────────
 }

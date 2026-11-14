@@ -1,5 +1,7 @@
 package com.dsrs.pokeclic.ui
 
+import com.dsrs.pokeclic.model.TutorialPhase
+import com.dsrs.pokeclic.model.isFreePlay
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -185,6 +187,35 @@ class AppRootTest {
             assertTrue(
                 "$phase es juego libre",
                 tutorialPokeBallClickEnabled(phase)
+            )
+        }
+    }
+
+    // ───────────────── Tutorial: destinos de la Pokédex (regresión) ─────────────────
+
+    @Test
+    fun dexDestinations_inertDuringTutorialSteps_freeInGamePlay() {
+        // En el regreso de la Pokédex (y en cualquier fase del tutorial) los
+        // destinos del menú quedan inertes: el regreso es exclusivo de la
+        // Pokéball, que es a su vez el botón Home.
+        TutorialPhase.entries
+            .filter { !it.isFreePlay }
+            .forEach { phase ->
+                assertFalse(
+                    "$phase deja el botón Mapa inerte en la Pokédex",
+                    tutorialDexDestinationsEnabled(phase)
+                )
+            }
+        listOf(
+            TutorialPhase.PENDING,
+            TutorialPhase.EXP_WAIT,
+            TutorialPhase.ADVANCE_WAIT,
+            TutorialPhase.SKIPPED,
+            TutorialPhase.COMPLETED
+        ).forEach { phase ->
+            assertTrue(
+                "$phase navega con normalidad en la Pokédex",
+                tutorialDexDestinationsEnabled(phase)
             )
         }
     }

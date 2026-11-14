@@ -294,6 +294,10 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
  *   asentamiento). Lo usa el tutorial mientras haya un mensaje
  *   visible o en pasos donde la bola no es la interacción del paso; fuera de
  *   él, el comportamiento es el de siempre (`true`).
+ * @param destinationsEnabled `false` deja los destinos del menú (Mapa y
+ *   Pokédex) **inertes**: sus clics no hacen nada (ni pliegan la bola). Lo usa
+ *   el tutorial para reservar el regreso de una pantalla a la Pokéball, que es
+ *   a su vez el botón Home; fuera de él, navegación normal (`true`).
  * @param initialProgress progreso inicial del gesto, de `0f` (reposo) a `1f`
  *   (completamente expandida). La app siempre usa `0f`; los `@Preview` lo
  *   cambió para poder ver el menú a medio caminho o expandido sin arrastrar.
@@ -306,6 +310,7 @@ fun PokemonBottomMenu(
     isHomeSelected: Boolean = false,
     expansionEnabled: Boolean = true,
     pokeBallEnabled: Boolean = true,
+    destinationsEnabled: Boolean = true,
     onMapClick: () -> Unit = {},
     onPokedexClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
@@ -413,14 +418,20 @@ fun PokemonBottomMenu(
                 progress = progress,
                 isMapSelected = isMapSelected,
                 isPokedexSelected = isPokedexSelected,
-                // Pulsar un destino del menú pliega la Pokéball si estaba expandida.
+                // Pulsar un destino del menú pliega la Pokéball si estaba
+                // expandida. Con los destinos inertes (tutorial), el clic no
+                // hace nada: ni pliega la bola ni navega.
                 onMapClick = {
-                    if (isExpanded.value) settleTo(false)
-                    onMapClick()
+                    if (destinationsEnabled) {
+                        if (isExpanded.value) settleTo(false)
+                        onMapClick()
+                    }
                 },
                 onPokedexClick = {
-                    if (isExpanded.value) settleTo(false)
-                    onPokedexClick()
+                    if (destinationsEnabled) {
+                        if (isExpanded.value) settleTo(false)
+                        onPokedexClick()
+                    }
                 }
             )
 
