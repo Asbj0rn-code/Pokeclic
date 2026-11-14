@@ -134,6 +134,71 @@ class ModelTest {
     }
 
     @Test
+    fun salvo_keepsTheColumnsAndJittersEachRock() {
+        val random = Random(3)
+        repeat(50) {
+            val salvo = GymCombat.spawnSalvo(
+                firstId = 100L,
+                columns = 5,
+                maxPerSpawn = 3,
+                travelMs = 1_800L,
+                nowMs = 10_000L,
+                random = random
+            )
+            assertTrue("ráfaga vacía", salvo.size in 1..3)
+            assertEquals(
+                "ids consecutivos",
+                (100L until 100L + salvo.size).toList(),
+                salvo.map { it.id }
+            )
+            assertEquals("dos rocas en la misma columna", salvo.size, salvo.map { it.column }.distinct().size)
+            assertTrue(salvo.all { it.column in 0 until 5 })
+            // ±20 % de la duración del gimnasio.
+            assertTrue("caída fuera de jitter", salvo.all { it.travelMs in 1_440L..2_160L })
+            // Arranca por debajo del borde: como mucho, un 10 % de su recorrido.
+            assertTrue(
+                "arranque fuera de rango",
+                salvo.all { it.spawnedAtMs in 9_784L..10_000L }
+            )
+        }
+    }
+
+    @Test
+    fun salvo_doesNotFallInRows() {
+        val random = Random(7)
+        val salvos = (0 until 40).map {
+            GymCombat.spawnSalvo(0L, 5, 5, 1_800L, 10_000L, random)
+        }
+        val pairs = salvos.filter { it.size >= 2 }
+        assertTrue("hace falta alguna ráfaga de dos o más", pairs.isNotEmpty())
+        assertTrue(
+            "todas las rocas de una ráfaga caen igual",
+            pairs.any { salvo -> salvo.map { rock -> rock.travelMs to rock.spawnedAtMs }.distinct().size > 1 }
+        )
+    }
+
+    @Test
+    fun salvo_isDeterministicForTheSameSeed() {
+        fun salvo() = GymCombat.spawnSalvo(0L, 5, 4, 1_800L, 10_000L, Random(11))
+        assertEquals(salvo(), salvo())
+    }
+
+    @Test
+    fun failedClickDrainsPostureWithoutGoingBelowZero() {
+        assertEquals(1, GymCombat.failPosture(combatState(posture = 2)).posture)
+        assertEquals(0, GymCombat.failPosture(combatState(posture = 1)).posture)
+        // La barra nunca se pone negativa.
+        assertEquals(0, GymCombat.failPosture(combatState(posture = 0)).posture)
+    }
+
+    @Test
+    fun failedClickDoesNothingWhileExposed() {
+        // En la ventana expuesta la barra ya corre por tiempo: un fallo no la toca.
+        val state = combatState(posture = 3).copy(phase = GymPhase.EXPOSED)
+        assertEquals(state, GymCombat.failPosture(state))
+    }
+
+    @Test
     fun impactDamagesPlayer() {
         val state = combatState(playerHp = 5)
         val next = GymCombat.registerImpact(state, damage = 2)
@@ -227,6 +292,7 @@ class ModelTest {
         assertNotNull(gated)
         assertEquals(14, gated!!.leaderHp)
         assertTrue(gated.rage)
+        assertTrue("la furia debe abrir su discurso", gated.rageSpeech)
         assertFalse(gated.rageRoundPlayed)
         assertEquals(GymPhase.ATTACKING, gated.phase)
         assertEquals(0, gated.posture)

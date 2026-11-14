@@ -22,7 +22,6 @@ import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexProjector
-import com.dsrs.pokeclic.model.Projectile
 import com.dsrs.pokeclic.model.RingFeedback
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpeciesCatalog
@@ -467,7 +466,6 @@ class MainViewModel(
         val multiplier = typeDamageMultiplier(state.leadType, config.type)
         val damage = (state.clickPower * multiplier).roundToLong().coerceAtLeast(1L).toInt()
 
-        var won = false
         // Un solo `updateGym`: golpe, puerta de furia y victoria se deciden sobre
         // el estado más reciente.
         updateGym { current ->
@@ -478,17 +476,42 @@ class MainViewModel(
             val gated = GymCombat.gateFirstRage(current, newLeaderHp)
             when {
                 gated != null -> gated
-                newLeaderHp <= 0 -> {
-                    won = true
-                    current.copy(leaderHp = 0)
-                }
+                // El combate se queda en WON: la capa de victoria hunde al Pokémon
+                // del líder y muestra su despedida antes de cobrar la medalla
+                // (`onGymVictoryDone`).
+                newLeaderHp <= 0 -> current.copy(leaderHp = 0, outcome = GymOutcome.WON)
                 else -> current.copy(
                     leaderHp = newLeaderHp,
                     rage = GymCombat.isRaging(newLeaderHp, current.leaderMaxHp)
                 )
             }
         }
-        if (won) winGym(config)
+    }
+
+    /**
+     * Cierra la capa de victoria y cobra la medalla.
+     *
+     * La llama la UI cuando el líder termina su despedida (o directamente si el
+     * gimnasio aún no tiene guion propio), que es lo que separa la victoria del
+     * cierre real del combate.
+     */
+    fun onGymVictoryDone() {
+        val gym = _uiState.value.gym ?: return
+        if (gym.outcome != GymOutcome.WON) return
+        winGym(GymCatalog.require(gym.gymId))
+    }
+
+    /**
+     * Cierra el discurso de furia del líder y devuelve el combate a la acción.
+     *
+     * El bucle sigue corriendo durante el discurso, pero no avanza el combate
+     * mientras [GymState.rageSpeech] esté activo; al apagarlo, la siguiente
+     * vuelta retoma la mecánica con la furia ya en marcha.
+     */
+    fun onGymRageSpeechDone() {
+        updateGym { current ->
+            if (current.rageSpeech) current.copy(rageSpeech = false) else current
+        }
     }
 
     /**
@@ -521,8 +544,21 @@ class MainViewModel(
                 )
             )
             if (onBeat) GymCombat.addPosture(resolved)
-            else applyRingMiss(resolved, config.ringMissDamage)
+            else applyRingMiss(GymCombat.failPosture(resolved), config.ringMissDamage)
         }
+    }
+
+    /**
+     * Clic fallado: el toque no acertó a ninguna roca.
+     *
+     * Resta postura, igual que un fallo de anillo o un Voltorb apagado, para que
+     * machacar la pantalla no llene la barra. En fase expuesta no hace nada.
+     */
+    fun onGymMiss() {
+        val gym = _uiState.value.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        updateGym { current -> GymCombat.failPosture(current) }
     }
 
     /**
@@ -556,7 +592,11 @@ class MainViewModel(
             if (GymCombat.voltorbAt(current, cell) != null) {
                 GymCombat.defuseVoltorb(current, cell)
             } else {
-                val shocked = GymCombat.registerShock(current, cell, config.voltorbShockDamage)
+                val shocked = GymCombat.registerShock(
+                    GymCombat.failPosture(current),
+                    cell,
+                    config.voltorbShockDamage
+                )
                 if (shocked.playerHp <= 0) shocked.copy(outcome = GymOutcome.LOST) else shocked
             }
         }
@@ -620,6 +660,14 @@ class MainViewModel(
                 delay(GYM_TICK_MS)
                 val gym = _uiState.value.gym ?: break
                 if (gym.outcome != GymOutcome.ACTIVE) break
+
+                // Discurso de furia: el combate queda **congelado** hasta que el
+                // jugador lo cierra. La cadencia se reanuda desde ahora para no
+                // cobrar el tiempo pausado en una ráfaga imposible de parar.
+                if (gym.rageSpeech) {
+                    nextSpawnMs = nowMs() + spawnIntervalMs(config, gym)
+                    continue
+                }
 
                 if (wasExposed && gym.phase == GymPhase.ATTACKING) {
                     nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
@@ -712,20 +760,18 @@ class MainViewModel(
             val raging = GymCombat.isRaging(state)
             val perSpawn = if (raging) config.rageProjectilesPerSpawn else config.projectilesPerSpawn
             val travel = if (raging) config.rageProjectileTravelMs else config.projectileTravelMs
-            // La ráfaga no siempre es completa: entre 1 y `perSpawn` rocas, así no
-            // todas las filas son iguales.
-            val salvoSize = random.nextInt(1, perSpawn + 1)
-            val columns = (0 until config.columns)
-                .shuffled(random)
-                .take(salvoSize)
-            alive + columns.map { column ->
-                Projectile(
-                    id = nextCombatId++,
-                    column = column,
-                    spawnedAtMs = now,
-                    travelMs = travel
-                )
-            }
+            // La ráfaga no siempre es completa y cada roca cae a su aire: ni
+            // todas las columnas ni todas las filas son iguales.
+            val salvo = GymCombat.spawnSalvo(
+                firstId = nextCombatId,
+                columns = config.columns,
+                maxPerSpawn = perSpawn,
+                travelMs = travel,
+                nowMs = now,
+                random = random
+            )
+            nextCombatId += salvo.size
+            alive + salvo
         } else {
             alive
         }
@@ -1189,6 +1235,7 @@ class MainViewModel(
             hasWilds = zone.wildSpeciesIds.isNotEmpty(),
             alwaysWilds = zone.alwaysWilds,
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
+            gymId = if (isGymReady) zone.gymId else null,
             gymMechanic = gymMechanic,
             canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,

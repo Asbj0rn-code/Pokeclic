@@ -166,7 +166,7 @@ object GymCatalog {
         leaderName = "Brock",
         type = PokemonType.ROCK,
         coinReward = 40L,
-        leaderHp = 60,
+        leaderHp = 80,
         mechanic = GymMechanic.PROJECTILES,
         columns = 5,
         spawnIntervalMs = 650L,
@@ -273,7 +273,10 @@ object GymCatalog {
         projectileDamage = 0
     )
 
-    private val byId: Map<String, Gym> = listOf(brock, misty, surge).associateBy { it.id }
+    /** Todos los gimnasios del catálogo. */
+    val all: List<Gym> = listOf(brock, misty, surge)
+
+    private val byId: Map<String, Gym> = all.associateBy { it.id }
 
     fun byId(id: String): Gym? = byId[id]
 
