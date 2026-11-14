@@ -7,7 +7,9 @@ package com.dsrs.pokeclic.data
 
 import android.content.SharedPreferences
 import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.TutorialPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,6 +41,114 @@ class GameStateStoreTest {
         // La clave persistida es parte del contrato con los guardados previos.
         assertTrue(prefs.contains("caught"))
         assertEquals(snapshot, store.load())
+    }
+
+    // ───────────────── Persistencia del tutorial (issue #60) ─────────────────
+
+    @Test
+    fun tutorialPhase_roundTripsThroughSharedPreferences() {
+        val prefs = FakePrefs()
+        val store = SharedPreferencesGameStateStore(prefs)
+        val snapshot = GameSnapshot(
+            coins = 5L,
+            starterSpeciesId = "charmander",
+            tutorialPhase = TutorialPhase.RETURN_POKEDEX
+        )
+
+        store.save(snapshot)
+
+        // La clave nueva es parte del contrato de guardado.
+        assertTrue(prefs.contains("tutorial_phase"))
+        assertEquals(TutorialPhase.RETURN_POKEDEX, store.load()!!.tutorialPhase)
+    }
+
+    @Test
+    fun tutorialPhase_everyPhaseRoundTripsExactly() {
+        val store = SharedPreferencesGameStateStore(FakePrefs())
+        TutorialPhase.entries.forEach { phase ->
+            store.save(GameSnapshot(coins = 1L, tutorialPhase = phase))
+            assertEquals(
+                "La reapertura debe conservar exactamente $phase",
+                phase,
+                store.load()!!.tutorialPhase
+            )
+        }
+    }
+
+    @Test
+    fun oldSaveWithoutTutorialKey_withStarter_loadsCompleted() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+        prefs.values["starter"] = "charmander"
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(TutorialPhase.COMPLETED, loaded.tutorialPhase)
+        // El resto de la partida no se altera por la clave nueva.
+        assertEquals("charmander", loaded.starterSpeciesId)
+    }
+
+    @Test
+    fun oldSaveWithoutTutorialKey_withoutStarter_loadsPending() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(TutorialPhase.PENDING, loaded.tutorialPhase)
+    }
+
+    @Test
+    fun corruptTutorialValue_loadsCompleted() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+        prefs.values["starter"] = "bulbasaur"
+        prefs.values["tutorial_phase"] = "valor_de_una_version_futura"
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(TutorialPhase.COMPLETED, loaded.tutorialPhase)
+    }
+
+    @Test
+    fun tutorialMessageClosed_roundTripsThroughSharedPreferences() {
+        val prefs = FakePrefs()
+        val store = SharedPreferencesGameStateStore(prefs)
+        val snapshot = GameSnapshot(
+            coins = 5L,
+            starterSpeciesId = "charmander",
+            tutorialPhase = TutorialPhase.DEPLOY_POKEBALL,
+            tutorialMessageClosed = true
+        )
+
+        store.save(snapshot)
+
+        assertTrue(prefs.contains("tutorial_message_closed"))
+        assertEquals(true, store.load()!!.tutorialMessageClosed)
+    }
+
+    @Test
+    fun oldSaveWithoutMessageClosedKey_defaultsToVisibleMessage() {
+        // Guardado antiguo (o nuevo paso): sin la clave, el mensaje está visible.
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+        prefs.values["starter"] = "charmander"
+        prefs.values["tutorial_phase"] = "DEPLOY_POKEBALL"
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(false, loaded.tutorialMessageClosed)
+    }
+
+    @Test
+    fun clear_alsoRemovesTheTutorialKeys() {
+        val prefs = FakePrefs()
+        val store = SharedPreferencesGameStateStore(prefs)
+        store.save(GameSnapshot(coins = 1L, tutorialPhase = TutorialPhase.EXP_NOTICE))
+
+        assertTrue(store.clear())
+        assertNull(store.load())
+        assertFalse(prefs.contains("tutorial_phase"))
     }
 
     @Test

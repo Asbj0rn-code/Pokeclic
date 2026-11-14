@@ -289,6 +289,11 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
  *   se estira ni crece y cualquier arrastre completado cuenta como un toque
  *   (`onHomeClick`). Es el modo de pantallas donde la bola no tiene juego, como
  *   la Pokédex.
+ * @param pokeBallEnabled `false` deja la Pokéball **completamente inerte**: el
+ *   gesto de la bola no se detecta (sin pulsaciones, sin arrastre, sin punch ni
+ *   asentamiento). Lo usa el tutorial (issue #60) mientras haya un mensaje
+ *   visible o en pasos donde la bola no es la interacción del paso; fuera de
+ *   él, el comportamiento es el de siempre (`true`).
  * @param initialProgress progreso inicial del gesto, de `0f` (reposo) a `1f`
  *   (completamente expandida). La app siempre usa `0f`; los `@Preview` lo
  *   cambió para poder ver el menú a medio caminho o expandido sin arrastrar.
@@ -300,6 +305,7 @@ fun PokemonBottomMenu(
     isPokedexSelected: Boolean = false,
     isHomeSelected: Boolean = false,
     expansionEnabled: Boolean = true,
+    pokeBallEnabled: Boolean = true,
     onMapClick: () -> Unit = {},
     onPokedexClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
@@ -424,6 +430,7 @@ fun PokemonBottomMenu(
                 sensitivityPx = sensitivityPx,
                 isExpanded = isExpanded,
                 expansionEnabled = expansionEnabled,
+                enabled = pokeBallEnabled,
                 onTap = { position ->
                     if (isExpanded.value) currentGameClick(position) else currentHomeClick()
                 },
@@ -599,6 +606,7 @@ private fun MenuPokeBall(
     sensitivityPx: Float,
     isExpanded: MutableState<Boolean>,
     expansionEnabled: Boolean,
+    enabled: Boolean,
     onTap: (Offset) -> Unit,
     onDragFinished: (Boolean) -> Unit
 ) {
@@ -630,11 +638,14 @@ private fun MenuPokeBall(
                 shape = CircleShape
                 clip = false
             }
-            // La clave incluye `expansionEnabled`: al alternarse en caliente
-            // (p. ej., al entrar en la pestaña Mapa), el bloque del gesto se
-            // cancela y relanza con la captura fresca. Con `Unit` el bloque
-            // seguiría corriendo con el valor que tenía al arrancar.
-            .pointerInput(expansionEnabled) {
+            // La clave incluye `expansionEnabled` y `enabled`: al alternarse en
+            // caliente, el bloque del gesto se cancela y relanza con la captura
+            // fresca. Con `Unit` el bloque seguiría corriendo con el valor que
+            // tenía al arrancar.
+            .pointerInput(expansionEnabled, enabled) {
+                // Bola inerte (tutorial, issue #60): ni pulsaciones ni
+                // arrastres; el gesto no se detecta en absoluto.
+                if (!enabled) return@pointerInput
                 val touchSlop = viewConfiguration.touchSlop
 
                 awaitEachGesture {

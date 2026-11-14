@@ -7,6 +7,7 @@ import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpriteRepository
+import com.dsrs.pokeclic.model.TutorialAction
 import com.dsrs.pokeclic.model.Zone
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -811,6 +812,7 @@ class MainViewModelTest {
         var now = 0L
         val vm = viewModel(nowMs = { now }, zones = cityThenMeadowZones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         // 1 · Ciudad: no aparece nada aunque el temporizador de caminar cruce
         //     el umbral del encuentro.
@@ -853,6 +855,7 @@ class MainViewModelTest {
     fun caveZone_countsClicksAndSpawnsEncountersWhileAdvancing() {
         val vm = viewModel(nowMs = { 0L }, zones = caveZones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         tapZone(vm, 2)
         with(vm.uiState.value) {
@@ -877,6 +880,7 @@ class MainViewModelTest {
     fun caveZone_ignoresTheTallGrassToggle() {
         val vm = viewModel(zones = caveZones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         vm.onTallGrassToggle()
 
@@ -889,6 +893,7 @@ class MainViewModelTest {
         val route = Zone("z_ruta", "Ruta", 2L, listOf("pidgey"))
         val vm = viewModel(zones = listOf(route, caveZones.single()))
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         tapZone(vm, 2)
         vm.onTallGrassToggle()
@@ -908,6 +913,7 @@ class MainViewModelTest {
     fun caveZone_pausesWhileAnEncounterIsOpen() {
         val vm = viewModel(nowMs = { 0L }, zones = caveZones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onPokeBallTouch(Direction.BACK)
         testScope.advanceTimeBy(4_000L)
         testScope.runCurrent()

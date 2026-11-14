@@ -8,6 +8,8 @@
 package com.dsrs.pokeclic.ui
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -37,6 +39,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import com.dsrs.pokeclic.R
@@ -52,6 +55,11 @@ import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TutorialAction
+import com.dsrs.pokeclic.model.TutorialPhase
+import com.dsrs.pokeclic.model.isFreePlay
+import com.dsrs.pokeclic.model.isMessageVisible
+import com.dsrs.pokeclic.model.isModal
 import com.dsrs.pokeclic.viewmodel.GameUiState
 
 /**
@@ -167,7 +175,9 @@ fun AppRoot(
     onCloseLead: () -> Unit,
     onOpenDex: () -> Unit,
     onCloseDex: () -> Unit,
-    onPokeBallExpanded: (Boolean) -> Unit
+    onPokeBallExpanded: (Boolean) -> Unit,
+    onTutorialAction: (TutorialAction) -> Unit,
+    onTutorialMessageTap: () -> Unit
 ) {
     // Contador de pulsaciones sobre la Pokébola: es lo único que mueve el fondo
     // de ruta y, con él, la dirección en la que camina el entrenador. Estado
@@ -178,6 +188,16 @@ fun AppRoot(
     // clic, en vez de heredar el punto en el que se quedó la zona anterior (que
     // hacía, por ejemplo, empezar con los últimos clics de una pierna lateral).
     val pokePulses = remember(state.zoneId) { mutableLongStateOf(0L) }
+
+    // Atrás y tutorial (issue #60, QA): mientras **cualquier** mensaje del
+    // tutorial esté visible (preguntas, pasos, despedida o aviso), el botón
+    // Atrás del sistema no navega ni sale de la capa — la respuesta es
+    // explícita en sus botones o en los toques del propio diálogo. Cerrado el
+    // mensaje, el Atrás vuelve a comportarse como siempre (en la Pokédex, su
+    // cierre queda limitado por los guards del ViewModel).
+    BackHandler(
+        enabled = tutorialDialogVisible(state.tutorialPhase, state.tutorialMessageClosed)
+    ) { }
 
     // Espacio que el menú ocupa abajo: su contenedor derivado
     // (`BottomMenuDefaults.CONTAINER_HEIGHT`) más la franja de navegación del
@@ -207,6 +227,12 @@ fun AppRoot(
                 // Sin juego bajo la bola: el arrastre no la estira y cuenta
                 // como toque, que devuelve a la aventura.
                 expansionEnabled = false,
+                // Tutorial (issue #60): la bola queda inerte con el mensaje del
+                // regreso visible; cerrado, vuelve a servir para volver.
+                pokeBallEnabled = tutorialPokeBallEnabled(
+                    state.tutorialPhase,
+                    state.tutorialMessageClosed
+                ),
                 onMapClick = {
                     onCloseDex()
                     onSelectTab(AppTab.Map)
@@ -218,6 +244,16 @@ fun AppRoot(
                 },
                 onPokeBallGameClick = {},
                 onExpandedChange = onPokeBallExpanded
+            )
+
+            // El mensaje del tutorial (regreso de la Pokédex) se compone aquí
+            // también: su rama temprana devuelve antes de llegar al bloque de
+            // capas del final, y el paso exige ver la Dex detrás del diálogo.
+            TutorialLayer(
+                state = state,
+                bottomReserved = menuReserved,
+                onTutorialAction = onTutorialAction,
+                onTutorialMessageTap = onTutorialMessageTap
             )
         }
         return
@@ -253,14 +289,14 @@ fun AppRoot(
     // de la Pokéball sin franja blanca. Solo con la pestaña Mapa visible.
     val showMapOceanBackdrop = state.contentTab == AppTab.Map &&
         !sceneActive && !state.needsStarter
-    // Aislamiento de capas modales (issue #21): con la entrada al gimnasio (ya
-    // cubierta por `sceneActive`), la intro, el selector de principal o la
-    // cortinilla de arranque activos, el menú no se compone: su Pokéball ignora
-    // el consumo de toques y solo su ausencia la aísla. El contenido del juego
-    // solo desaparece bajo capas opacas (escena e intro). La Pokédex compone
-    // su propio menú en su rama, así que aquí no hace falta ocultarlo.
+    // Aislamiento de capas modales (issue #21): con una capa modal activa
+    // (escena de gimnasio/captura, intro, selector de principal, cortinilla o
+    // fases modales del tutorial) el menú no se compone: su Pokéball ignora el
+    // consumo de toques y solo su ausencia la aísla. En los pasos guiados del
+    // tutorial el menú sigue compuesto — la capa del diálogo lo cubre — porque
+    // la Pokéball y los botones del menú son la interacción del propio paso.
     val menuHidden = sceneActive || state.needsStarter ||
-        state.isLeadOpen || isSplashShowing
+        state.isLeadOpen || isSplashShowing || tutorialHidesMenu(state.tutorialPhase)
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
@@ -327,30 +363,45 @@ fun AppRoot(
                         // como toque y devuelve a la aventura (como en la Pokédex).
                         // En la pantalla principal conserva su juego: se expande.
                         expansionEnabled = state.contentTab != AppTab.Map,
+                        // Tutorial (issue #60): mientras haya mensaje visible o
+                        // la bola no sea la interacción del paso, queda
+                        // completamente inerte.
+                        pokeBallEnabled = tutorialPokeBallEnabled(
+                            state.tutorialPhase,
+                            state.tutorialMessageClosed
+                        ),
                         onMapClick = { onSelectTab(AppTab.Map) },
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
                         onPokeBallGameClick = {
-                            // Modo captura (hierba alta o encuentro en curso): el
-                            // mundo se congela; el clic no mueve el fondo ni
-                            // cuenta para el avance de la zona.
-                            if (
-                                advancesRouteWorld(
-                                    state.isTallGrass,
-                                    state.encounter != null,
-                                    state.alwaysWilds
+                            // Tutorial (issue #60, regla principal de QA): el
+                            // clic de juego solo genera experiencia y
+                            // movimiento en juego libre; con cualquier mensaje
+                            // visible, en pasos guiados o en el aviso de
+                            // avance, la bola no mueve el fondo (el ViewModel
+                            // además ignora el toque).
+                            if (tutorialPokeBallClickEnabled(state.tutorialPhase)) {
+                                // Modo captura (hierba alta o encuentro en
+                                // curso): el mundo se congela; el clic no mueve
+                                // el fondo ni cuenta para el avance de la zona.
+                                if (
+                                    advancesRouteWorld(
+                                        state.isTallGrass,
+                                        state.encounter != null,
+                                        state.alwaysWilds
+                                    )
+                                ) {
+                                    pokePulses.longValue++
+                                }
+                                // El sprite sigue el eje por el que se acaba de
+                                // mover el fondo: en vertical, recto → back,
+                                // lateral derecho → right, izquierdo → left; en
+                                // horizontal, recto → right. La Pokébola ya no
+                                // elige dirección por el lado que se toca.
+                                onPokeBallTouch(
+                                    routeBackground.motion.directionForStep(pokePulses.longValue)
                                 )
-                            ) {
-                                pokePulses.longValue++
                             }
-                            // El sprite sigue el eje por el que se acaba de mover el
-                            // fondo: en vertical, recto → back, lateral derecho →
-                            // right, izquierdo → left; en horizontal, recto → right.
-                            // La Pokébola ya no elige dirección por el lado que se
-                            // toca.
-                            onPokeBallTouch(
-                                routeBackground.motion.directionForStep(pokePulses.longValue)
-                            )
                         },
                         onExpandedChange = onPokeBallExpanded
                     )
@@ -492,7 +543,91 @@ fun AppRoot(
             }
         )
     }
+
+    // Diálogos del tutorial: el último en la ruta principal para que su caja
+    // quede por encima del resto de capas del juego (la hoja de opciones vive
+    // en su propia ventana y ya es transitoria en el paso de la Pokédex).
+    TutorialLayer(
+        state = state,
+        bottomReserved = menuReserved,
+        onTutorialAction = onTutorialAction,
+        onTutorialMessageTap = onTutorialMessageTap
+    )
 }
+
+/**
+ * Los diálogos del tutorial (issue #60), ya resueltos por la máquina de
+ * estados. Se compone en las dos rutas del shell (aventura/mapa y la rama
+ * temprana de la Pokédex); si la fase no muestra mensaje, no compone nada.
+ */
+@Composable
+private fun TutorialLayer(
+    state: GameUiState,
+    bottomReserved: Dp,
+    onTutorialAction: (TutorialAction) -> Unit,
+    onTutorialMessageTap: () -> Unit
+) {
+    TutorialOverlay(
+        phase = state.tutorialPhase,
+        playerName = state.playerName,
+        messageClosed = state.tutorialMessageClosed,
+        bottomReserved = bottomReserved,
+        onMessageTap = onTutorialMessageTap,
+        onAcceptOffer = { onTutorialAction(TutorialAction.ACCEPT_OFFER) },
+        onDeclineOffer = { onTutorialAction(TutorialAction.DECLINE_OFFER) },
+        onBeginTutorial = { onTutorialAction(TutorialAction.BEGIN_TUTORIAL) },
+        onSkipTutorial = { onTutorialAction(TutorialAction.SKIP_TUTORIAL) }
+    )
+}
+
+/**
+ * ¿Oculta el shell el menú por una capa del tutorial? Solo las fases
+ * **modales** (preguntas y despedida): en los pasos guiados la Pokéball y los
+ * botones del menú son la interacción del propio paso y deben seguir
+ * compuestos. Con un mensaje de paso visible, la capa del diálogo los cubre
+ * sin ocultarlos (ver `tutorialDialogVisible`).
+ */
+internal fun tutorialHidesMenu(phase: TutorialPhase): Boolean = phase.isModal
+
+/**
+ * ¿Hay un mensaje del tutorial visible en pantalla? Es el criterio de la capa
+ * modal unificada (scrim + `modalBlocking`) y del bloqueo del Atrás: mientras
+ * duela, solo el diálogo responde; al cerrarse, la capa se retira y las
+ * interacciones autorizadas por la fase vuelven a operar.
+ */
+internal fun tutorialDialogVisible(
+    phase: TutorialPhase,
+    messageClosed: Boolean
+): Boolean = phase.isMessageVisible(messageClosed)
+
+/**
+ * ¿Está la Pokéball del menú **habilitada** en el momento actual del tutorial?
+ *
+ * Regla principal de QA (issue #60): mientras cualquier mensaje esté visible,
+ * la bola queda completamente inerte (sin pulsaciones, arrastre, expansión ni
+ * contracción). Con el mensaje cerrado, solo los pasos donde la Pokéball es la
+ * interacción la habilitan: el despliegue (`DEPLOY_POKEBALL`, solo el gesto
+ * real de arrastre) y los regresos de Mapa y Pokédex (solo el toque de
+ * vuelta). Fuera del tutorial, juego libre: como siempre.
+ */
+internal fun tutorialPokeBallEnabled(
+    phase: TutorialPhase,
+    messageClosed: Boolean
+): Boolean = when (phase) {
+    TutorialPhase.DEPLOY_POKEBALL -> messageClosed
+    TutorialPhase.RETURN_MAP -> messageClosed
+    TutorialPhase.RETURN_POKEDEX -> messageClosed
+    else -> phase.isFreePlay
+}
+
+/**
+ * ¿Genera la Pokéball experiencia y movimiento con su clic de juego? Solo en
+ * juego libre: en `RETURN_MAP` y `RETURN_POKEDEX` la bola sirve exclusivamente
+ * para volver a la aventura, nunca para sumar experiencia; y con cualquier
+ * mensaje visible, nada responde.
+ */
+internal fun tutorialPokeBallClickEnabled(phase: TutorialPhase): Boolean =
+    phase.isFreePlay
 
 /**
  * ¿Debe este clic de la Pokébola mover el fondo de ruta?
@@ -558,7 +693,9 @@ private fun previewGameState(
     needsStarter: Boolean = false,
     encounter: Encounter? = null,
     catching: CatchingState? = null,
-    isPokedexOpen: Boolean = false
+    isPokedexOpen: Boolean = false,
+    tutorialPhase: TutorialPhase = TutorialPhase.COMPLETED,
+    tutorialMessageClosed: Boolean = false
 ) = GameUiState(
     playerName = if (needsStarter) null else "Sergio",
     coins = if (needsStarter) 0L else 40L,
@@ -594,7 +731,9 @@ private fun previewGameState(
         StarterOption("bulbasaur", "Bulbasaur", PokemonType.GRASS),
         StarterOption("charmander", "Charmander", PokemonType.FIRE),
         StarterOption("squirtle", "Squirtle", PokemonType.WATER)
-    )
+    ),
+    tutorialPhase = tutorialPhase,
+    tutorialMessageClosed = tutorialMessageClosed
 )
 
 /**
@@ -646,7 +785,9 @@ private fun AppRootStage(state: GameUiState) {
         onCloseLead = {},
         onOpenDex = {},
         onCloseDex = {},
-        onPokeBallExpanded = {}
+        onPokeBallExpanded = {},
+        onTutorialAction = {},
+        onTutorialMessageTap = {}
     )
 }
 
@@ -767,4 +908,32 @@ private fun AppRootCatchingPreview() = MaterialTheme {
 @Composable
 private fun AppRootDexPreview() = MaterialTheme {
     AppRootStage(state = previewGameState(isPokedexOpen = true))
+}
+
+/** Tutorial: oferta inicial (pregunta modal con Oak). */
+@Preview(
+    name = "7 · Tutorial (oferta)",
+    device = PREVIEW_DEVICE,
+    showSystemUi = true,
+    showBackground = true
+)
+@Composable
+private fun AppRootTutorialOfferPreview() = MaterialTheme {
+    AppRootStage(
+        state = previewGameState(tutorialPhase = TutorialPhase.OFFER)
+    )
+}
+
+/** Tutorial: paso guiado de la Pokéball (caja sobre el menú, juego debajo). */
+@Preview(
+    name = "8 · Tutorial (paso Pokéball)",
+    device = PREVIEW_DEVICE,
+    showSystemUi = true,
+    showBackground = true
+)
+@Composable
+private fun AppRootTutorialDeployPreview() = MaterialTheme {
+    AppRootStage(
+        state = previewGameState(tutorialPhase = TutorialPhase.DEPLOY_POKEBALL)
+    )
 }

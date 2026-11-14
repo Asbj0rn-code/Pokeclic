@@ -29,11 +29,19 @@ import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.model.TimingRing
+import com.dsrs.pokeclic.model.TutorialAction
+import com.dsrs.pokeclic.model.TutorialInteraction
+import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.Voltorb
 import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
+import com.dsrs.pokeclic.model.advance
 import com.dsrs.pokeclic.model.advanceZone
+import com.dsrs.pokeclic.model.allowedInteractions
+import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isGymPending
+import com.dsrs.pokeclic.model.isGuidedStep
+import com.dsrs.pokeclic.model.tutorialInteractionAllowed
 import com.dsrs.pokeclic.model.isLateral
 import com.dsrs.pokeclic.model.startFrame
 import com.dsrs.pokeclic.model.typeDamageMultiplier
@@ -141,6 +149,11 @@ class MainViewModel(
      * pantalla), así que un toque que la alcanzara no cambia nada sustantivo.
      */
     fun onPokeBallTouch(direction: Direction) {
+        // Guard del tutorial (issue #60, regla principal de QA): el clic de
+        // juego solo existe en juego libre. Con cualquier mensaje visible, en
+        // pasos guiados o en el aviso de avance, la Pokéball no genera
+        // experiencia ni movimiento.
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         val now = nowMs()
         // Un clic nuevo manda: si quedaba pendiente el segundo fotograma de un
         // lateral anterior, ya no aplica.
@@ -194,6 +207,10 @@ class MainViewModel(
 
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
     fun onTallGrassToggle() = mutate { state ->
+        // Guard del tutorial (issue #60, regla principal de QA): la hierba alta
+        // solo opera en juego libre; con un mensaje visible o un paso en curso,
+        // nada de la partida responde.
+        if (!state.tutorialPhase.isFreePlay) return@mutate state
         // Las cuevas no tienen modo que alternar: los salvajes ya están activos.
         if (state.alwaysWilds) {
             state
@@ -210,8 +227,17 @@ class MainViewModel(
      * starter y su vínculo) y vacía lo de la run (en posesión, principal,
      * gimnasios ganados en la run, zona y progreso). El principal vuelve al
      * starter.
+     *
+     * El tutorial (issue #60) vuelve a `PENDING`: como el reset conserva el
+     * starter, `derive` normaliza en el mismo gesto `PENDING` → `OFFER`, de
+     * modo que la pregunta se vuelve a ofrecer **sin repetir la introducción
+     * de Oak** (esa solo reaparece con el borrado total, `onWipeGame`).
      */
     fun onReset() {
+        // Guard del tutorial (issue #60, regla principal de QA): el reset es
+        // una fila de la hoja de opciones y solo opera en juego libre — con un
+        // mensaje visible o un paso en curso queda bloqueado.
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
         cancelCatching()
@@ -227,7 +253,9 @@ class MainViewModel(
                 encounter = null,
                 catching = null,
                 gym = null,
-                gymIntro = null
+                gymIntro = null,
+                tutorialPhase = TutorialPhase.PENDING,
+                tutorialMessageClosed = false
             )
         }
     }
@@ -243,6 +271,9 @@ class MainViewModel(
      * "arrastre" el instante posterior al borrado.
      */
     fun onWipeGame() {
+        // Guard del tutorial (issue #60): fila de test, solo en juego libre
+        // (ver `onReset`).
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
         cancelCatching()
@@ -263,6 +294,9 @@ class MainViewModel(
      * su gimnasio dejaría de estar pendiente y `isGymReady` sería `false`.
      */
     fun onDebugJumpToZone(zoneId: String) {
+        // Guard del tutorial (issue #60): fila de test, solo en juego libre
+        // (ver `onReset`).
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         val index = zones.indexOfFirst { it.id == zoneId }
         if (index < 0) return
         gymIntroJob?.cancel()
@@ -294,6 +328,11 @@ class MainViewModel(
      * y avistado**. Es la captura inicial del jugador (decisión: se marca como
      * capturado para que la dex arranque con su primer «atrapado»; los otros
      * iniciales NO se marcan).
+     *
+     * Es también el disparador del tutorial (issue #60): al terminar Oak la
+     * fase `PENDING` avanza a `OFFER` con la acción [TutorialAction.OAK_FINISHED],
+     * así que la pregunta «¿Quieres un tutorial?» aparece justo tras el
+     * «adiós» del Profesor Oak en toda partida nueva.
      */
     fun onFinishIntro(playerName: String, starterSpeciesId: String) {
         if (SpeciesCatalog.starters.none { it.id == starterSpeciesId }) return
@@ -307,23 +346,58 @@ class MainViewModel(
                 leadSpeciesId = starterSpeciesId,
                 seenSpecies = it.seenSpecies + starterSpeciesId,
                 caughtSpecies = it.caughtSpecies + starterSpeciesId
-            )
+            ).withTutorial(TutorialAction.OAK_FINISHED)
         }
     }
 
     /** Equipa como principal una especie en posesión de esta run (o el starter). */
     fun onSelectLead(speciesId: String) = mutate { state ->
-        if (state.isLeadCandidate(speciesId)) state.copy(leadSpeciesId = speciesId) else state
+        // Guard del tutorial (issue #60): equipar principal solo en juego libre.
+        if (!state.tutorialPhase.isFreePlay) {
+            state
+        } else if (state.isLeadCandidate(speciesId)) {
+            state.copy(leadSpeciesId = speciesId)
+        } else {
+            state
+        }
     }
 
     // --- Navegación --------------------------------------------------------
 
-    /** Cambia de pantalla y cierra la hoja de opciones si estaba abierta. */
-    fun onSelectTab(tab: AppTab) = _uiState.update {
-        it.copy(contentTab = tab, isOptionsOpen = false)
+    /**
+     * Cambia de pantalla y cierra la hoja de opciones si estaba abierta.
+     *
+     * Los cambios de pestaña alimentan el tutorial (issue #60): abrir el mapa
+     * y volver a la aventura son dos de sus pasos. La máquina ignora toda
+     * acción fuera de fase y el guard solo admite el cambio que el paso
+     * espera; fuera de los pasos, navegación normal.
+     */
+    fun onSelectTab(tab: AppTab) = mutate { state ->
+        val allowed = when (tab) {
+            AppTab.Map -> state.tutorialAllows(TutorialInteraction.MENU_MAP)
+            AppTab.Home -> state.tutorialAllows(TutorialInteraction.POKEBALL_TAP)
+        }
+        if (allowed) {
+            state.copy(contentTab = tab, isOptionsOpen = false).withTutorial(
+                if (tab == AppTab.Map) TutorialAction.MAP_OPENED else TutorialAction.MAP_CLOSED
+            )
+        } else {
+            state
+        }
     }
 
-    fun onOpenOptions() = _uiState.update { it.copy(isOptionsOpen = true) }
+    /**
+     * Abre la hoja de opciones (botón Pokédex del menú). Durante los pasos
+     * guiados solo se admite en el paso de la Pokédex, que es el que recorre
+     * «hoja → fila Pokédex»; el resto del tiempo se abre como siempre.
+     */
+    fun onOpenOptions() = mutate {
+        if (it.tutorialAllows(TutorialInteraction.MENU_POKEDEX)) {
+            it.copy(isOptionsOpen = true)
+        } else {
+            it
+        }
+    }
 
     fun onCloseOptions() = _uiState.update { it.copy(isOptionsOpen = false) }
 
@@ -342,9 +416,16 @@ class MainViewModel(
      * pantalla a pantalla completa: se pausa el avance de caminar
      * (`lastWalkTapMs = 0L`) y, al cerrarla, la Pokébola exige una pulsación
      * nueva para reactivar el temporizador de caminar.
+     *
+     * Abrirla y cerrarla alimenta el tutorial (issue #60): son su paso 3. La
+     * máquina ignora las acciones fuera de fase, así que no cambia nada para
+     * quien ya tiene el tutorial omitido o completado.
      */
     fun onOpenDex() {
         val state = _uiState.value
+        // Guard del tutorial (issue #60): la apertura solo se admite desde la
+        // fila de la hoja en su propio paso, o fuera de los pasos guiados.
+        if (!state.tutorialAllows(TutorialInteraction.POKEDEX_OPEN)) return
         val blocked = state.needsStarter ||
             state.isLeadOpen ||
             state.encounter != null ||
@@ -352,33 +433,138 @@ class MainViewModel(
             state.gymIntro != null
         if (blocked) return
         lastWalkTapMs = 0L
-        _uiState.update { it.copy(isOptionsOpen = false, isPokedexOpen = true) }
+        mutate {
+            it.copy(isOptionsOpen = false, isPokedexOpen = true)
+                .withTutorial(TutorialAction.POKEDEX_OPENED)
+        }
     }
 
-    /** Cierra la Pokédex y vuelve al juego sin contenido en curso. */
+    /**
+     * Cierra la Pokédex y vuelve al juego sin contenido en curso.
+     *
+     * El guard del tutorial (issue #60) cubre también el **botón Atrás** de la
+     * pantalla de Pokédex (`BackHandler` interno): el cierre solo puede cerrar
+     * el paso de regreso a la Dex, nunca saltarse un paso ni abrir uno.
+     */
     fun onCloseDex() {
+        if (!_uiState.value.tutorialAllows(TutorialInteraction.POKEDEX_CLOSE)) return
         lastWalkTapMs = 0L
-        _uiState.update { it.copy(isPokedexOpen = false) }
+        mutate {
+            it.copy(isPokedexOpen = false).withTutorial(TutorialAction.POKEDEX_CLOSED)
+        }
     }
 
     /** Abre el selector de Pokémon principal. */
-    fun onOpenLead() = _uiState.update { it.copy(isLeadOpen = true) }
+    fun onOpenLead() = mutate {
+        // Guard del tutorial (issue #60): el selector solo opera en juego libre.
+        if (it.tutorialPhase.isFreePlay) it.copy(isLeadOpen = true) else it
+    }
 
     fun onCloseLead() = _uiState.update { it.copy(isLeadOpen = false) }
 
     /**
      * Al expandir la Pokéball se muestra la pantalla principal, que es donde
      * tiene sentido usar la pokéball de juego. Al contraerla no cambia nada.
+     *
+     * El **despliegue** es el paso 1 del tutorial (issue #60): la notificación
+     * `expanded = true` llega ya existente desde el gesto del menú (arrastre
+     * hacia arriba superado el umbral), así que el paso no necesita ningún
+     * detector nuevo. El guard exige el mensaje del paso ya cerrado: cerrar el
+     * mensaje no completa el paso, pero es lo que habilita el despliegue como
+     * acción. La máquina ignora la acción fuera de fase.
      */
-    fun onPokeBallExpanded(expanded: Boolean) = _uiState.update {
-        if (expanded) it.copy(contentTab = AppTab.Home, isOptionsOpen = false) else it
+    fun onPokeBallExpanded(expanded: Boolean) = mutate {
+        if (expanded) {
+            val next = it.copy(contentTab = AppTab.Home, isOptionsOpen = false)
+            if (next.tutorialAllows(TutorialInteraction.POKEBALL_DRAG)) {
+                next.withTutorial(TutorialAction.POKEBALL_EXPANDED)
+            } else {
+                next
+            }
+        } else {
+            it
+        }
     }
+
+    // --- Tutorial general (issue #60) ----------------------------------------
+
+    /**
+     * Evento del tutorial: aplica una [TutorialAction] a la máquina de estados.
+     *
+     * Es la puerta de entrada para las respuestas iniciales (`ACCEPT_OFFER`,
+     * `DECLINE_OFFER`, `BEGIN_TUTORIAL`, `SKIP_TUTORIAL`) y para los cierres de
+     * mensaje (`FAREWELL_DISMISSED`, `EXP_NOTICE_DISMISSED`). Las acciones de
+     * juego ya se detectan en sus propios métodos. La máquina descarta
+     * cualquier acción que no aplique (no-op) y los finales absorben todo: una
+     * respuesta tardía no reabre un tutorial omitido o completado.
+     */
+    fun onTutorialAction(action: TutorialAction) = mutate { it.withTutorial(action) }
+
+    /**
+     * Pulsación sobre el mensaje del tutorial (la caja de diálogo, como en la
+     * introducción de Oak).
+     *
+     * Comportamiento por fase:
+     * - **Paso guiado con mensaje visible**: cierra el mensaje **sin completar
+     *   el paso**. La fase se mantiene y solo entonces se habilita la
+     *   interacción del paso; la acción real sigue siendo la que lo termina.
+     * - **FAREWELL / EXP_NOTICE**: dispara su transición específica
+     *   (`FAREWELL_DISMISSED` / `EXP_NOTICE_DISMISSED`), que conservan su
+     *   semántica de las fases anteriores.
+     * - **OFFER / CONFIRM**: no-op. Exigen una respuesta explícita en sus
+     *   botones; un toque en la caja no responde por el jugador.
+     * - Resto de fases (sin mensaje): no-op.
+     */
+    fun onTutorialMessageTap() = mutate { state ->
+        when {
+            state.tutorialPhase.isGuidedStep && !state.tutorialMessageClosed ->
+                state.copy(tutorialMessageClosed = true)
+            state.tutorialPhase == TutorialPhase.FAREWELL ->
+                state.withTutorial(TutorialAction.FAREWELL_DISMISSED)
+            state.tutorialPhase == TutorialPhase.EXP_NOTICE ->
+                state.withTutorial(TutorialAction.EXP_NOTICE_DISMISSED)
+            else -> state
+        }
+    }
+
+    /**
+     * Aplica una acción del tutorial al estado, si la máquina la admite.
+     * No-op en caso contrario, sin lanzar: misma regla de los guards.
+     *
+     * Toda transición de fase **reabre el mensaje**: el flag de mensaje
+     * cerrado vuelve a `false` para que el paso siguiente empiece por su
+     * explicación.
+     */
+    private fun GameUiState.withTutorial(action: TutorialAction): GameUiState {
+        val next = tutorialPhase.advance(action)
+        return if (next == tutorialPhase) {
+            this
+        } else {
+            copy(tutorialPhase = next, tutorialMessageClosed = false)
+        }
+    }
+
+    /**
+     * ¿Admite el tutorial esta interacción de juego **ahora mismo**?
+     *
+     * Regla principal de QA (issue #60): mientras **cualquier** mensaje esté
+     * visible, nada del juego responde — la única interacción es el propio
+     * diálogo. Con el mensaje cerrado: en pasos guiados, solo la interacción
+     * del paso; en despedida cerrada, espera de experiencia, espera de avance
+     * y finales, juego libre total. La lógica vive en el modelo
+     * (`tutorialInteractionAllowed`) para que UI y ViewModel compartan la
+     * misma regla.
+     */
+    private fun GameUiState.tutorialAllows(interaction: TutorialInteraction): Boolean =
+        tutorialInteractionAllowed(tutorialPhase, tutorialMessageClosed, interaction)
 
     // --- Gimnasio (combate clicker) ----------------------------------------
 
     /** Empieza el intento de gimnasio de la zona actual, si está disponible. */
     fun onEnterGym() {
         val state = _uiState.value
+        // Guard del tutorial (issue #60): el gimnasio solo opera en juego libre.
+        if (!state.tutorialPhase.isFreePlay) return
         // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
         // reintento explícito es onGymRetry, y salir es onLeaveGym), una capa de
         // intro abierta o un gimnasio no disponible.
@@ -966,15 +1152,27 @@ class MainViewModel(
      * y **fuera del modo captura**: la hierba alta se cierra y no se arrastra
      * ningún encuentro en curso; en caso contrario es un no-op. En la última
      * zona nunca sufre cambios.
+     *
+     * Un avance real cierra el tutorial (issue #60): la acción
+     * [TutorialAction.ADVANCE_ZONE_EXECUTED] solo transforma el estado en la
+     * fase `ADVANCE_WAIT`, así que cualquier otro avance posterior (ya con el
+     * tutorial terminado u omitido) es invisible para la máquina.
      */
     fun onAdvanceZone() = mutate { state ->
-        if (state.canAdvanceZone) {
+        // Guard del tutorial (issue #60, regla principal de QA): con el aviso
+        // de avance en pantalla (mensaje visible) el botón no surte efecto;
+        // cerrar el mensaje es lo que habilita el primer avance. Fuera de eso,
+        // el avance funciona como siempre.
+        if (!state.tutorialAllows(TutorialInteraction.ADVANCE_ZONE)) {
+            state
+        } else if (state.canAdvanceZone) {
             cancelCatching()
             state.copy(
                 zoneIndex = state.zoneIndex + 1,
                 zoneClicks = 0L,
                 isTallGrass = false
             ).withoutEncounter()
+                .withTutorial(TutorialAction.ADVANCE_ZONE_EXECUTED)
         } else {
             state
         }
@@ -1022,7 +1220,10 @@ class MainViewModel(
                 delay(WALK_TICK_MS)
                 val state = _uiState.value
                 if ((!state.isTallGrass && !state.alwaysWilds) ||
-                    state.isPokedexOpen || state.encounter != null || state.gym != null
+                    state.isPokedexOpen || state.encounter != null || state.gym != null ||
+                    // Guard del tutorial (issue #60): fuera del juego libre no
+                    // hay encuentros (ni experiencia ni capturas).
+                    !state.tutorialPhase.isFreePlay
                 ) continue
                 if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
 
@@ -1110,6 +1311,12 @@ class MainViewModel(
             gymClearedRun = saved.gymClearedRun,
             zoneIndex = saved.zoneIndex,
             zoneClicks = saved.zoneClicks,
+            // El progreso del tutorial llega ya resuelto por el store (con su
+            // compatibilidad de guardados antiguos): la reapertura conserva
+            // exactamente la fase guardada y el momento del paso (mensaje
+            // visible o ya cerrado).
+            tutorialPhase = saved.tutorialPhase,
+            tutorialMessageClosed = saved.tutorialMessageClosed,
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
         )
     }
@@ -1166,6 +1373,23 @@ class MainViewModel(
             state.zoneClicks >= zone.clickRequirement &&
             !gymPending
 
+        // Normalización del tutorial (issue #60): dos transiciones que dependen
+        // del estado del juego y no de un control concreto, así que viven aquí
+        // y no en un evento de UI:
+        // - `PENDING` + starter: Oak ya terminó (partida recién cerrada tras la
+        //   intro o reset que conservó el starter) → se ofrece el tutorial sin
+        //   repetir la introducción.
+        // - `EXP_WAIT` + barra llena: el aviso de avance sustituye a la espera.
+        // El resto de fases se respeta tal cual: la reapcripción conserva
+        // exactamente lo guardado.
+        val tutorialPhase = when {
+            state.tutorialPhase == TutorialPhase.PENDING && starterId != null ->
+                TutorialPhase.OFFER
+            state.tutorialPhase == TutorialPhase.EXP_WAIT && canAdvanceZone ->
+                TutorialPhase.EXP_NOTICE
+            else -> state.tutorialPhase
+        }
+
         // Pokédex: el proyector memoiza por firma (posesión de la run +
         // historia permanente), así que el resto de ticks reutiliza las 151
         // filas y sus contadores.
@@ -1194,6 +1418,7 @@ class MainViewModel(
             needsStarter = starterId == null,
             leadOptions = leadOptions,
             starterOptions = starterOptions,
+            tutorialPhase = tutorialPhase,
             dexEntries = dex.entries,
             dexSeenCount = dex.seenCount,
             dexCaughtCount = dex.caughtCount,
@@ -1214,7 +1439,9 @@ class MainViewModel(
         leadSpeciesId = leadSpeciesId,
         gymClearedRun = gymClearedRun,
         zoneIndex = zoneIndex,
-        zoneClicks = zoneClicks
+        zoneClicks = zoneClicks,
+        tutorialPhase = tutorialPhase,
+        tutorialMessageClosed = tutorialMessageClosed
     )
 
     private fun zoneAt(index: Int): Zone = zones[index.coerceIn(0, zones.lastIndex)]

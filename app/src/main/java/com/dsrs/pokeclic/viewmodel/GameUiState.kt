@@ -10,6 +10,7 @@ import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.TrainerState
 
 /**
@@ -26,6 +27,7 @@ import com.dsrs.pokeclic.model.TrainerState
  *   [caughtSpecies], [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [gymClearedRun], [zoneIndex], [zoneClicks].
+ * - **tutorial** (persistido a su manera, véase [tutorialPhase]).
  * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [catching],
  *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
@@ -68,6 +70,26 @@ data class GameUiState(
     val gym: GymState? = null,
     /** Capa de entrada al gimnasio (bienvenida/tutorial/cartel); no se persiste. */
     val gymIntro: GymIntroPhase? = null,
+
+    // --- tutorial general (issue #60) ---
+    /**
+     * Fase de la máquina de estados del tutorial (`model/Tutorial.kt`).
+     *
+     * **Persistida** vía `GameSnapshot.tutorialPhase`: a diferencia del
+     * gimnasio, su progreso sobrevive al cierre de la app (y se recupera
+     * exacto). Es la única fuente de verdad del tutorial; el ViewModel la
+     * avanza con las acciones reales del jugador y la normaliza en `derive()`
+     * (oferta tras Oak, aviso al llenarse la barra).
+     */
+    val tutorialPhase: TutorialPhase = TutorialPhase.PENDING,
+
+    /**
+     * Momento del paso guiado: `true` cuando el mensaje explicativo del paso
+     * ya se cerró con una pulsación (ver `TutorialPhase.isMessageVisible`).
+     * Solo entonces se habilita la interacción del paso; la fase no cambia y
+     * cada transición la reinicia a `false`. Persistido junto a la fase.
+     */
+    val tutorialMessageClosed: Boolean = false,
 
     // --- entrenador (visual) ---
     val trainer: TrainerState = TrainerState(),

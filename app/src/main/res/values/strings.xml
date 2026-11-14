@@ -161,4 +161,18 @@
     <string name="intro_confirm_name">¿%1$s, dices? ¿Es ese tu nombre?</string>
     <string name="intro_confirm_yes">Sí</string>
     <string name="intro_confirm_no">No</string>
+
+    <!-- Tutorial explicativo (issue #60) -->
+    <string name="tutorial_player_fallback">entrenador</string>
+    <string name="tutorial_offer_body">¡Hola, %1$s!\n\nDime, ¿es tu primera vez aquí?</string>
+    <string name="tutorial_confirm_body">¿Estás seguro? Tu cara me resulta familiar…</string>
+    <string name="tutorial_confirm_begin">Empezar tutorial</string>
+    <string name="tutorial_confirm_skip">Omitir</string>
+    <string name="tutorial_deploy_body">En la parte inferior tienes un menú con distintas opciones: Mapa, Pokédex y un botón con forma de Pokéball que te acompañará durante toda tu aventura…\n\nAdelante, prueba a deslizar el botón hacia arriba.</string>
+    <string name="tutorial_open_map_body">¡Bien, has conseguido desplegar el botón!\n\nAl pulsarlo ganarás experiencia.\n\nEsta experiencia te servirá para poder avanzar por toda la región.\n\n¿Ves la barra situada en la parte superior de la pantalla? Cuando hayas recogido la suficiente experiencia podrás avanzar a la siguiente zona.\n\nVamos a probar la funcionalidad de los demás botones del menú…\n\nAdelante, pulsa en el botón del Mapa.</string>
+    <string name="tutorial_return_map_body">¡Estás en el mapa de la región de Kanto!\n\nKanto es una región extensa en la que encontrarás muchas aventuras y muchos compañeros que te acompañarán en tu camino.\n\nSiéntete libre de recorrer cada rincón y disfrutar de cada experiencia.\n\nPara volver a la pantalla principal, simplemente toca el botón de la Pokéball.</string>
+    <string name="tutorial_open_pokedex_body">Ya sabes cómo funciona el mapa, ahora vamos a abrir la Pokédex.\n\n¿Cómo? ¿No sabes lo que es una Pokédex? Haber empezado por ahí…</string>
+    <string name="tutorial_return_pokedex_body">¡Esta es tu Pokédex!\n\nEs una enciclopedia que registra a todas las especies que avistes o captures a lo largo de tu aventura.\n\nTu misión es completarla con todas las especies de la región.\n\nEsto te resultará útil para poder pararles los pies al Team Rocket… ¡Dependemos de ti, %1$s!\n\nPulsa en el botón de la Pokéball para volver a la pantalla principal.</string>
+    <string name="tutorial_farewell_body">Bien, ya sabes lo esencial para poder avanzar en tu aventura.\n\nAdelante, diviértete, ¡te estaré esperando en la siguiente ruta!</string>
+    <string name="tutorial_exp_notice_body">¡Bien! ¡Has llenado tu barra de experiencia!\n\nEso significa que puedes continuar tu aventura.\n\nPulsa en el botón de avanzar que ha salido en la parte superior.</string>
 </resources>

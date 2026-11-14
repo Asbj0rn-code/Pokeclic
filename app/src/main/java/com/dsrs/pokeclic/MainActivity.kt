@@ -97,7 +97,9 @@ class MainActivity : AppCompatActivity() {
                         onCloseLead = mainViewModel::onCloseLead,
                         onOpenDex = mainViewModel::onOpenDex,
                         onCloseDex = mainViewModel::onCloseDex,
-                        onPokeBallExpanded = mainViewModel::onPokeBallExpanded
+                        onPokeBallExpanded = mainViewModel::onPokeBallExpanded,
+                        onTutorialAction = mainViewModel::onTutorialAction,
+                        onTutorialMessageTap = mainViewModel::onTutorialMessageTap
                     )
 
                     if (showSplash) {

@@ -214,5 +214,26 @@ data class GameSnapshot(
     val leadSpeciesId: String? = null,
     val gymClearedRun: Set<String> = emptySet(),
     val zoneIndex: Int = 0,
-    val zoneClicks: Long = 0L
+    val zoneClicks: Long = 0L,
+    /**
+     * Progreso del tutorial explicativo (issue #60): fase actual de la máquina
+     * de estados (`model/Tutorial.kt`). Se persiste por su nombre estable y se
+     * rehidrata con `tutorialPhaseFromName`.
+     *
+     * El valor por defecto (`COMPLETED`) es el semántica segura de «tutorial no
+     * ofrecido» para cualquier constructor que no lo declare (guardados
+     * parciales, código que aún no lo cablea). Para un **guardado antiguo sin
+     * la clave**, `GameStateStore` resuelve el respaldo real: `COMPLETED` si ya
+     * hay starter y `PENDING` si no.
+     */
+    val tutorialPhase: TutorialPhase = TutorialPhase.COMPLETED,
+    /**
+     * Momento del paso guiado: `true` cuando el jugador **cerró con una
+     * pulsación** el mensaje explicativo del paso actual (visibilidad separada
+     * de la fase). Solo entonces se habilita la interacción del paso; cerrar
+     * el mensaje no completa el paso. Cada transición de fase lo reinicia a
+     * `false` para reabrir el mensaje siguiente. Persistido para que la
+     * reapcripción devuelva exactamente al mismo momento del paso.
+     */
+    val tutorialMessageClosed: Boolean = false
 )
