@@ -7,6 +7,7 @@ package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -196,3 +197,32 @@ internal fun PixelImage(
         filterQuality = FilterQuality.None
     )
 }
+
+/**
+ * Placa de **una sola** línea de borde negro con sombra dura desplazada: el marco
+ * del HUD de combate, de sus mensajes y de sus paneles.
+ *
+ * A diferencia de [RetroPanel], no lleva filete claro interior: el borde queda
+ * solo y grueso, como el de las cajas de estado de GBA. [shadowOffset] se reserva
+ * con padding para que la sombra no se coma el contenido vecino.
+ */
+internal fun Modifier.retroPlate(
+    fill: Color = RetroColors.DialogCream,
+    borderColor: Color = RetroColors.InkBlack,
+    borderWidth: Dp = 2.dp,
+    shadowOffset: Dp = 3.dp
+): Modifier = this
+    .padding(end = shadowOffset, bottom = shadowOffset)
+    .drawBehind {
+        val off = shadowOffset.toPx()
+        if (off > 0f) {
+            drawRect(
+                color = RetroColors.HardShadow,
+                topLeft = Offset(off, off),
+                size = size
+            )
+        }
+    }
+    .background(fill)
+    .border(borderWidth, borderColor)
+

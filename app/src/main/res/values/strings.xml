@@ -47,14 +47,9 @@
 
     <!-- Gimnasio -->
     <string name="gym_title">Gimnasio de %1$s</string>
-    <string name="gym_type">Líder de tipo %s</string>
-    <string name="gym_leader_hp">Líder: %1$d / %2$d</string>
-    <string name="gym_hp">Vida: %1$d / %2$d</string>
-    <string name="gym_projectile_hint">Rompe las rocas para llenar la postura del líder</string>
-    <string name="gym_enemy_hint">¡Postura rota! Tócalo para atacar</string>
-    <string name="gym_posture">Postura · %1$d / %2$d</string>
+    <string name="gym_hp_label">PS</string>
+    <string name="gym_hp_pair">%1$d/%2$d</string>
     <string name="gym_rage">¡Enfurecido!</string>
-    <string name="gym_exposed">¡Expuesto!</string>
     <string name="gym_lost">¡Te han debilitado!</string>
     <string name="gym_retry">Reintentar</string>
     <string name="gym_leave">Rendirse</string>
@@ -77,7 +72,6 @@
     <string name="gym_countdown">¡Que comience el combate!</string>
 
     <!-- Minijuego de anillos (Misty) -->
-    <string name="gym_ring_hint">Acierta el anillo justo a tiempo para llenar la postura</string>
     <string name="gym_ring_hit">¡Acierto!</string>
     <string name="gym_ring_miss">¡Fallo!</string>
     <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
@@ -89,7 +83,6 @@
     <string name="gym_ring_tutorial_step3_text">Cada acierto llena la barra de postura del líder. Al completarse quedará expuesto unos segundos y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece y los círculos van más rápido.</string>
 
     <!-- Minijuego de Voltorb (Lt. Surge) -->
-    <string name="gym_voltorb_hint">Apaga el Voltorb a tiempo para llenar la postura</string>
     <string name="gym_voltorb_tutorial_step1_title">Una cuadrícula de Voltorb</string>
     <string name="gym_voltorb_tutorial_step1_text">Cuatro filas y cuatro columnas de Voltorb esperan. Se encienden sin parar y sin tope: si no los apagas rápido se te van a juntar varios cargados a la vez.</string>
     <string name="gym_voltorb_tutorial_step2_title">Apágalo a tiempo</string>

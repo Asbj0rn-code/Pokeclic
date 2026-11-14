@@ -33,9 +33,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,18 +72,16 @@ private fun IntroPanel(
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    RetroPanel(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .heightIn(max = 480.dp),
-        contentPadding = contentPadding
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            content = content
-        )
-    }
+            .heightIn(max = 480.dp)
+            .retroPlate()
+            .padding(contentPadding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content
+    )
 }
 
 // ─────────────────────────── capa raíz ───────────────────────────
@@ -168,12 +164,18 @@ private fun WelcomePanel(
         )
         Spacer(modifier = Modifier.padding(top = 14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onWatchTutorial) {
-                Text(text = stringResource(R.string.gym_intro_watch))
-            }
-            OutlinedButton(onClick = onSkip) {
-                Text(text = stringResource(R.string.gym_intro_skip))
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_intro_watch),
+                onClick = onWatchTutorial,
+                modifier = Modifier.weight(1f)
+            )
+            RetroButton(
+                label = stringResource(R.string.gym_intro_skip),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = onSkip,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -279,12 +281,18 @@ private fun TutorialPanel(
         }
         Spacer(modifier = Modifier.padding(top = 14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = { replayNonce++ }) {
-                Text(text = stringResource(R.string.gym_tutorial_repeat))
-            }
-            Button(onClick = onAccepted) {
-                Text(text = stringResource(R.string.gym_tutorial_accept))
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_tutorial_repeat),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = { replayNonce++ },
+                modifier = Modifier.weight(1f)
+            )
+            RetroButton(
+                label = stringResource(R.string.gym_tutorial_accept),
+                onClick = onAccepted,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -298,9 +306,11 @@ private fun TutorialPanel(
  */
 @Composable
 private fun CountdownBanner(modifier: Modifier = Modifier) {
-    RetroPanel(
-        modifier = modifier.padding(horizontal = 24.dp),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp)
+    Column(
+        modifier = modifier
+            .padding(horizontal = 24.dp)
+            .retroPlate()
+            .padding(horizontal = 22.dp, vertical = 16.dp)
     ) {
         Text(
             text = stringResource(R.string.gym_countdown),
