@@ -189,7 +189,7 @@ fun AppRoot(
     // hacía, por ejemplo, empezar con los últimos clics de una pierna lateral).
     val pokePulses = remember(state.zoneId) { mutableLongStateOf(0L) }
 
-    // Atrás y tutorial (issue #60, QA): mientras **cualquier** mensaje del
+    // Atrás y tutorial (QA): mientras **cualquier** mensaje del
     // tutorial esté visible (preguntas, pasos, despedida o aviso), el botón
     // Atrás del sistema no navega ni sale de la capa — la respuesta es
     // explícita en sus botones o en los toques del propio diálogo. Cerrado el
@@ -227,7 +227,7 @@ fun AppRoot(
                 // Sin juego bajo la bola: el arrastre no la estira y cuenta
                 // como toque, que devuelve a la aventura.
                 expansionEnabled = false,
-                // Tutorial (issue #60): la bola queda inerte con el mensaje del
+                // Tutorial: la bola queda inerte con el mensaje del
                 // regreso visible; cerrado, vuelve a servir para volver.
                 pokeBallEnabled = tutorialPokeBallEnabled(
                     state.tutorialPhase,
@@ -363,7 +363,7 @@ fun AppRoot(
                         // como toque y devuelve a la aventura (como en la Pokédex).
                         // En la pantalla principal conserva su juego: se expande.
                         expansionEnabled = state.contentTab != AppTab.Map,
-                        // Tutorial (issue #60): mientras haya mensaje visible o
+                        // Tutorial: mientras haya mensaje visible o
                         // la bola no sea la interacción del paso, queda
                         // completamente inerte.
                         pokeBallEnabled = tutorialPokeBallEnabled(
@@ -374,7 +374,7 @@ fun AppRoot(
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
                         onPokeBallGameClick = {
-                            // Tutorial (issue #60, regla principal de QA): el
+                            // Tutorial (regla principal de QA): el
                             // clic de juego solo genera experiencia y
                             // movimiento en juego libre; con cualquier mensaje
                             // visible, en pasos guiados o en el aviso de
@@ -556,7 +556,7 @@ fun AppRoot(
 }
 
 /**
- * Los diálogos del tutorial (issue #60), ya resueltos por la máquina de
+ * Los diálogos del tutorial, ya resueltos por la máquina de
  * estados. Se compone en las dos rutas del shell (aventura/mapa y la rama
  * temprana de la Pokédex); si la fase no muestra mensaje, no compone nada.
  */
@@ -603,7 +603,7 @@ internal fun tutorialDialogVisible(
 /**
  * ¿Está la Pokéball del menú **habilitada** en el momento actual del tutorial?
  *
- * Regla principal de QA (issue #60): mientras cualquier mensaje esté visible,
+ * Regla principal de QA: mientras cualquier mensaje esté visible,
  * la bola queda completamente inerte (sin pulsaciones, arrastre, expansión ni
  * contracción). Con el mensaje cerrado, solo los pasos donde la Pokéball es la
  * interacción la habilitan: el despliegue (`DEPLOY_POKEBALL`, solo el gesto

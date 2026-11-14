@@ -71,7 +71,7 @@ data class GameUiState(
     /** Capa de entrada al gimnasio (bienvenida/tutorial/cartel); no se persiste. */
     val gymIntro: GymIntroPhase? = null,
 
-    // --- tutorial general (issue #60) ---
+    // --- tutorial general ---
     /**
      * Fase de la máquina de estados del tutorial (`model/Tutorial.kt`).
      *

@@ -291,7 +291,7 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
  *   la Pokédex.
  * @param pokeBallEnabled `false` deja la Pokéball **completamente inerte**: el
  *   gesto de la bola no se detecta (sin pulsaciones, sin arrastre, sin punch ni
- *   asentamiento). Lo usa el tutorial (issue #60) mientras haya un mensaje
+ *   asentamiento). Lo usa el tutorial mientras haya un mensaje
  *   visible o en pasos donde la bola no es la interacción del paso; fuera de
  *   él, el comportamiento es el de siempre (`true`).
  * @param initialProgress progreso inicial del gesto, de `0f` (reposo) a `1f`
@@ -643,7 +643,7 @@ private fun MenuPokeBall(
             // fresca. Con `Unit` el bloque seguiría corriendo con el valor que
             // tenía al arrancar.
             .pointerInput(expansionEnabled, enabled) {
-                // Bola inerte (tutorial, issue #60): ni pulsaciones ni
+                // Bola inerte (tutorial): ni pulsaciones ni
                 // arrastres; el gesto no se detecta en absoluto.
                 if (!enabled) return@pointerInput
                 val touchSlop = viewConfiguration.touchSlop

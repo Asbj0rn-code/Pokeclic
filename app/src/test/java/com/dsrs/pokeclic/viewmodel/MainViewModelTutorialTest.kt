@@ -1,5 +1,5 @@
 /**
- * Pruebas JVM de la integración del tutorial (issue #60) en [MainViewModel]:
+ * Pruebas JVM de la integración del tutorial en [MainViewModel]:
  * oferta tras Oak, omisión, confirmación, detección de acciones reales,
  * restauración exacta, reset y jugabilidad normal durante la espera.
  */
@@ -452,7 +452,7 @@ class MainViewModelTutorialTest {
         assertEquals(null, store.saved)
     }
 
-    // ───────────────── Bloqueos: pasos guiados (issue #60, Fase 4.2) ─────────────────
+    // ───────────────── Bloqueos: pasos guiados (Fase 4.2) ─────────────────
 
     @Test
     fun guidedSteps_blockThePokeballGameClick() {
@@ -831,7 +831,7 @@ class MainViewModelTutorialTest {
         }
     }
 
-    // ───────────────── QA: Pokéball inactiva y regresos (issue #60) ─────────────────
+    // ───────────────── QA: Pokéball inactiva y regresos ─────────────────
 
     @Test
     fun openMap_pokeBallIsFullyInactive_evenWithTheMessageClosed() {

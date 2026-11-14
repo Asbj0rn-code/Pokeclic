@@ -1,5 +1,5 @@
 /**
- * Capa de diálogos del tutorial explicativo (issue #60).
+ * Capa de diálogos del tutorial explicativo.
  *
  * Reproduce el estilo de la caja de diálogo de la introducción (`Intro.kt`)
  * **sin retrato**: caja blanca de borde negro, efecto máquina de escribir,

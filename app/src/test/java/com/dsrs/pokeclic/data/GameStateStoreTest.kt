@@ -43,7 +43,7 @@ class GameStateStoreTest {
         assertEquals(snapshot, store.load())
     }
 
-    // ───────────────── Persistencia del tutorial (issue #60) ─────────────────
+    // ───────────────── Persistencia del tutorial ─────────────────
 
     @Test
     fun tutorialPhase_roundTripsThroughSharedPreferences() {

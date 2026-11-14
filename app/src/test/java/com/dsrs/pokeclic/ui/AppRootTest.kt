@@ -45,7 +45,7 @@ class AppRootTest {
         )
     }
 
-    // ───────────────── Tutorial: menú y capas (issue #60, Fase 5.2) ─────────────────
+    // ───────────────── Tutorial: menú y capas (Fase 5.2) ─────────────────
 
     @Test
     fun tutorialQuestions_andFarewell_hideTheMenu() {
@@ -86,7 +86,7 @@ class AppRootTest {
         }
     }
 
-    // ───────────────── Tutorial: gesto de despliegue (issue #60, Fase 6.1) ─────────────────
+    // ───────────────── Tutorial: gesto de despliegue (Fase 6.1) ─────────────────
 
     @Test
     fun deployStep_withVisibleMessage_disablesThePokeBall() {

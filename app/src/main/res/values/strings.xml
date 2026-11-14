@@ -155,7 +155,7 @@
     <string name="intro_confirm_yes">Sí</string>
     <string name="intro_confirm_no">No</string>
 
-    <!-- Tutorial explicativo (issue #60) -->
+    <!-- Tutorial explicativo -->
     <string name="tutorial_player_fallback">entrenador</string>
     <string name="tutorial_offer_body">¡Hola, %1$s!\n\nDime, ¿es tu primera vez aquí?</string>
     <string name="tutorial_confirm_body">¿Estás seguro? Tu cara me resulta familiar…</string>

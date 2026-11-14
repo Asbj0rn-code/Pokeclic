@@ -92,7 +92,7 @@ class SharedPreferencesGameStateStore internal constructor(
 
     /**
      * Progreso del tutorial guardado, con la regla de compatibilidad de los
-     * **guardados anteriores a esta característica** (issue #60):
+     * **guardados anteriores a esta característica**:
      *
      * - Clave presente y valor conocido → la fase exacta que se guardó.
      * - Clave presente con valor desconocido (datos corruptos o de una versión

@@ -1,5 +1,5 @@
 /**
- * Modelo de estados del tutorial explicativo del juego (issue #60): máquina
+ * Modelo de estados del tutorial explicativo del juego: máquina
  * **pura e independiente** (sin Android ni ViewModel, testeable en JVM).
  *
  * Reglas del diseño:

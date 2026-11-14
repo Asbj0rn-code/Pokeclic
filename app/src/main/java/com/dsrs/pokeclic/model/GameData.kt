@@ -216,7 +216,7 @@ data class GameSnapshot(
     val zoneIndex: Int = 0,
     val zoneClicks: Long = 0L,
     /**
-     * Progreso del tutorial explicativo (issue #60): fase actual de la máquina
+     * Progreso del tutorial explicativo: fase actual de la máquina
      * de estados (`model/Tutorial.kt`). Se persiste por su nombre estable y se
      * rehidrata con `tutorialPhaseFromName`.
      *
