@@ -61,7 +61,7 @@
     <string name="gym_intro_skip">Omitir</string>
     <string name="gym_tutorial_title">Cómo funciona el combate</string>
     <string name="gym_tutorial_step1_title">Aguanta y acierta</string>
-    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance. Cada acierto llena su barra de postura; un impacto te daña y no suma.</string>
+    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance. Cada acierto llena su barra de postura; un clic fallado resta y un impacto te daña.</string>
     <string name="gym_tutorial_step2_title">Rompe su postura</string>
     <string name="gym_tutorial_step2_text">Cuando la barra de postura se llena, el líder queda expuesto unos segundos: tócalo para restarle vida con ventaja de tipo. Esa ventana funciona por tiempo.</string>
     <string name="gym_tutorial_step3_title">Ojo con la furia</string>
@@ -70,6 +70,28 @@
     <string name="gym_tutorial_accept">Entendido</string>
     <string name="gym_tutorial_repeat">Repetir tutorial</string>
     <string name="gym_countdown">¡Que comience el combate!</string>
+
+    <!-- Discurso del líder antes del combate (uno por gimnasio) -->
+    <string name="gym_leader_desc">%1$s, líder del gimnasio</string>
+    <string name="gym_leader_line_welcome">¡Hola! Soy Brock, el líder de este gimnasio. ¡Bienvenido!</string>
+    <string name="gym_leader_line_quiet">La verdad es que últimamente no viene nadie a retarme... No sé qué estará pasando.</string>
+    <string name="gym_leader_line_listen">...</string>
+    <string name="gym_leader_line_rocket_hint">Espera... ¿me estás diciendo que el Team Rocket está detrás de todo esto?</string>
+    <string name="gym_leader_line_rocket">¿¡Cómo!? ¿¡Que el Team Rocket ha hecho qué!?</string>
+    <string name="gym_leader_line_badge">Conque necesitas la medalla para salvarlos... Lo entiendo, pero no puedo dártela así como así.</string>
+    <string name="gym_leader_line_duel">Si de verdad la quieres, tendrás que vencerme en combate.</string>
+    <string name="gym_leader_line_tutorial">¿Quieres que te explique cómo funciona el desafío antes de empezar?</string>
+
+    <!-- Discurso de furia, a mitad del combate -->
+    <string name="gym_rage_speech_warning">¡Esto todavía no ha acabado! ¡Prepárate, que ahora va en serio!</string>
+    <string name="gym_rage_speech_shout">¡NO TE RINDAS, GOLEM! ¡HAZ TU ÚLTIMO ESFUERZO!</string>
+
+    <!-- Despedida del líder al ganar -->
+    <string name="gym_victory_line_almost">No lo he conseguido... ¡por muy poco!</string>
+    <string name="gym_victory_line_enjoyed">Aunque he perdido, hacía mucho que no disfrutaba tanto de un combate.</string>
+    <string name="gym_victory_line_badge">Toma, aquí tienes la Medalla Roca. Te la has ganado.</string>
+    <string name="gym_victory_line_farewell">Ha sido un placer. Espero de verdad que puedas detener al Team Rocket.</string>
+    <string name="gym_victory_badge_desc">Medalla Roca</string>
 
     <!-- Minijuego de anillos (Misty) -->
     <string name="gym_ring_hit">¡Acierto!</string>
