@@ -8,6 +8,10 @@
 package com.dsrs.pokeclic.ui
 
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +53,14 @@ import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.viewmodel.GameUiState
+
+/**
+ * Duración del fundido con el que aparece y desaparece el bottom menu cuando una
+ * capa modal lo oculta (cortinilla de arranque, selector de principal). No
+ * afecta al layout: el hueco del menú está reservado siempre en la pantalla de
+ * juego (ver el `padding` del contenido en [AppRoot]).
+ */
+private const val MENU_FADE_MS = 220
 
 /**
  * Shell de la aplicación: contenedor de pantallas + bottom menu siempre visible.
@@ -167,6 +179,15 @@ fun AppRoot(
     // hacía, por ejemplo, empezar con los últimos clics de una pierna lateral).
     val pokePulses = remember(state.zoneId) { mutableLongStateOf(0L) }
 
+    // Espacio que el menú ocupa abajo: su contenedor derivado
+    // (`BottomMenuDefaults.CONTAINER_HEIGHT`) más la franja de navegación del
+    // sistema que el propio menú rellena de acero. Lo usan la Pokédex (para
+    // dibujar su base roja exactamente detrás) y el contenido del `Scaffold`
+    // como hueco reservado **estable**, se dibuje o no el menú.
+    val density = LocalDensity.current
+    val navInset = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+    val menuReserved = BottomMenuDefaults.CONTAINER_HEIGHT + navInset
+
     // Pokédex: carcasa a pantalla (cabecera, marco NinePatch y base roja) con
     // el menú real compuesto encima de la base. Los destinos del menú cierran
     // la Dex y navegan; la Pokébola expandida no mueve al entrenador desde la
@@ -174,13 +195,6 @@ fun AppRoot(
     // contexto. La vuelta también está con el botón físico (BackHandler
     // interno de la pantalla).
     if (state.isPokedexOpen) {
-        val density = LocalDensity.current
-        // Espacio que el menú ocupa abajo: su contenedor derivado
-        // (`BottomMenuDefaults.CONTAINER_HEIGHT`) más la franja de navegación
-        // del sistema que el propio menú rellena de acero. La base roja de la
-        // Dex se dibuja exactamente detrás de esa zona.
-        val menuReserved = BottomMenuDefaults.CONTAINER_HEIGHT +
-            with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
         Box(modifier = Modifier.fillMaxSize()) {
             DexScreen(
                 state = state.toDexUiState(),
@@ -295,7 +309,15 @@ fun AppRoot(
                 // En combate o captura no se dibuja el menú: la escena ocupa toda
                 // la altura y ya trae sus propios controles. Tampoco bajo las
                 // capas modales (intro, principal, splash): issue #21.
-                if (!menuHidden) {
+                //
+                // Entra y sale con un fundido corto. El hueco que ocupa ya está
+                // reservado en el contenido (ver `contentBottom` más abajo), así
+                // que la animación solo toca el alfa y no mueve la escena.
+                AnimatedVisibility(
+                    visible = !menuHidden,
+                    enter = fadeIn(tween(MENU_FADE_MS)),
+                    exit = fadeOut(tween(MENU_FADE_MS))
+                ) {
                     PokemonBottomMenu(
                         isMapSelected = !state.isOptionsOpen && state.contentTab == AppTab.Map,
                         isPokedexSelected = state.isOptionsOpen,
@@ -324,12 +346,26 @@ fun AppRoot(
                 }
             }
         ) { innerPadding ->
-            // En la pestaña Mapa el contenido **no** se desplaza por la altura del
-            // bottom menu: `MapScreen` compone su fondo y su dibujo hasta el fondo
-            // de pantalla (así el mapa ampliado se ve tras las partes transparentes
-            // del menú) y recibe como `bottomReserved` la altura reservada, que
-            // descuenta solo de su área de gestos y de referencia. El resto de
-            // pestañas conservan el padding exacto de siempre.
+            // Hueco inferior del contenido. Mientras hay pantalla de juego se
+            // reserva **siempre** la altura del menú, se dibuje o no: cuando el
+            // `Scaffold` dependía de si el menú estaba compuesto, ocultarlo
+            // (cortinilla de arranque, selector de principal) devolvía el área
+            // completa al mundo y, al reaparecer, el entrenador saltaba ~90 dp
+            // hacia arriba. En las escenas a pantalla completa (gimnasio,
+            // captura, intro) no se reserva nada: el contenido no se dibuja y la
+            // escena sigue usando todo el alto, como hasta ahora.
+            //
+            // No se lee `innerPadding`: durante el fundido de salida el menú
+            // todavía ocupa su alto y el contenido saltaría al desaparecer del
+            // todo. Ambos huecos se derivan de los insets, que no animan.
+            val reserveMenu = !sceneActive && !state.needsStarter
+            val contentBottom = if (reserveMenu) menuReserved else navInset
+            // En la pestaña Mapa el contenido tampoco se desplaza por la altura
+            // del bottom menu: `MapScreen` compone su fondo y su dibujo hasta el
+            // fondo de pantalla (así el mapa ampliado se ve tras las partes
+            // transparentes del menú) y recibe como `bottomReserved` la altura
+            // reservada, que descuenta solo de su área de gestos y de referencia.
+            // El resto de pestañas usan el hueco estable de arriba.
             val layoutDirection = LocalLayoutDirection.current
             Box(
                 Modifier
@@ -341,7 +377,12 @@ fun AppRoot(
                                 start = innerPadding.calculateStartPadding(layoutDirection),
                                 end = innerPadding.calculateEndPadding(layoutDirection)
                             )
-                            else -> innerPadding
+                            else -> PaddingValues(
+                                top = innerPadding.calculateTopPadding(),
+                                start = innerPadding.calculateStartPadding(layoutDirection),
+                                end = innerPadding.calculateEndPadding(layoutDirection),
+                                bottom = contentBottom
+                            )
                         }
                     )
             ) {
@@ -358,7 +399,7 @@ fun AppRoot(
                             onAdvanceZone = onAdvanceZone
                         )
                         AppTab.Map -> MapScreen(
-                            bottomReserved = innerPadding.calculateBottomPadding()
+                            bottomReserved = menuReserved
                         )
                     }
                 }
