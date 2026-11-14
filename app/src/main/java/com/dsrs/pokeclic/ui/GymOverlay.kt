@@ -14,12 +14,14 @@ import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,25 +30,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,11 +73,15 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.dsrs.pokeclic.R
@@ -200,9 +203,8 @@ fun GymOverlay(
             state = state,
             exposed = exposed,
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .padding(12.dp)
+                .align(Alignment.TopStart)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
         )
 
         PlayerHpBar(
@@ -358,14 +360,6 @@ private fun GymScene(
 
         // Barra de postura justo debajo del enemigo: se llena con los aciertos
         // del jugador y, al completarse, abre la ventana. En furia se tiñe de rojo.
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
-        )
-
         // Capa de toque única: enemigo si está expuesto, o la roca más cercana.
         Box(
             modifier = Modifier
@@ -692,14 +686,6 @@ private fun RingGymScene(
                 .size(PLAYER_WIDTH, PLAYER_HEIGHT)
         )
 
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
-        )
-
         // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
         // cueva. Sube y se desvanece con el mismo reloj que el estallido.
         feedback?.let { result ->
@@ -983,14 +969,6 @@ private fun VoltorbGridScene(
                 .size(PLAYER_WIDTH, PLAYER_HEIGHT)
         )
 
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + 6.dp)
-        )
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1225,11 +1203,139 @@ private fun DrawScope.drawVoltorbCell(
     }
 }
 
+/** Color clásico del tubo según lo lleno que esté. */
+private fun hpColor(fraction: Float): Color = when {
+    fraction > 0.5f -> RetroColors.HpGreen
+    fraction > 0.2f -> RetroColors.HpYellow
+    else -> RetroColors.HpRed
+}
+
 /**
- * Barra de **postura** del líder bajo su sprite: se llena con cada acierto del
- * jugador y, al completarse, rompe la postura y abre su ventana. Durante la
- * ventana muestra el tiempo restante y, en furia, se tiñe de rojo. La comparten
- * las tres mecánicas de gimnasio para que la lectura no cambie entre líderes.
+ * Tubo de vida estilo GBA: pista oscura, relleno sólido con brillo superior y
+ * borde negro. Sustituye a `LinearProgressIndicator`, que pintaba el morado del
+ * tema por defecto y no se leía como un juego de Pokémon.
+ */
+@Composable
+private fun GymHpTube(
+    fraction: Float,
+    color: Color,
+    modifier: Modifier = Modifier,
+    tubeHeight: Dp = HP_TUBE_HEIGHT
+) {
+    val animated by animateFloatAsState(targetValue = fraction, label = "gymHpTube")
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        modifier = modifier
+            .height(tubeHeight)
+            .clip(shape)
+            .background(RetroColors.BarTrack)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(animated)
+                .background(color)
+        ) {
+            // Brillo del tubo de cristal: franja clara en el tercio superior.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.34f)
+                    .background(Color.White.copy(alpha = 0.35f))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .border(HP_TUBE_BORDER, RetroColors.InkBlack, shape)
+        )
+    }
+}
+
+/**
+ * Fila de vida: etiqueta PS, tubo y cifras. La comparten la placa del líder y la
+ * del principal para que ambas barras se lean igual.
+ *
+ * [below] dibuja contenido pegado debajo del tubo, dentro de la misma columna:
+ * así la barra de postura del líder queda exactamente del mismo ancho que su
+ * barra de vida.
+ */
+@Composable
+private fun GymHpRow(
+    fraction: Float,
+    hp: Int,
+    maxHp: Int,
+    modifier: Modifier = Modifier,
+    below: @Composable ColumnScope.() -> Unit = {}
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.gym_hp_label),
+            color = HP_LABEL_COLOR,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.sp
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            GymHpTube(
+                fraction = fraction,
+                color = hpColor(fraction),
+                modifier = Modifier.fillMaxWidth()
+            )
+            below()
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.gym_hp_pair, hp, maxHp),
+            color = HP_NUMBER_COLOR,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp
+        )
+    }
+}
+
+/**
+ * Placa de estado de un Pokémon: nombre arriba y, debajo, su fila de vida. Sin
+ * nivel —en este juego no existe— y con el color del tubo siguiendo el porcentaje.
+ */
+@Composable
+private fun GymStatPlate(
+    name: String?,
+    fraction: Float,
+    hp: Int,
+    maxHp: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .retroPlate()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        if (!name.isNullOrBlank()) {
+            Text(
+                text = name,
+                color = RetroColors.InkBlack,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        GymHpRow(fraction = fraction, hp = hp, maxHp = maxHp)
+    }
+}
+
+/**
+ * Tubo de **postura** del líder, pegado debajo de su barra de vida dentro de la
+ * misma placa. Se llena con cada acierto del jugador y, al completarse, rompe la
+ * postura y abre su ventana. Solo se pinta el tubo —sin cifras ni etiqueta— y el
+ * estado se lee por color: ámbar mientras se llena, amarillo en la ventana
+ * expuesta y rojo en furia.
  */
 @Composable
 private fun GymPostureBar(
@@ -1242,27 +1348,12 @@ private fun GymPostureBar(
         state.rage -> RAGE_COLOR
         else -> POSTURE_COLOR
     }
-    Column(
-        modifier = modifier.width(POSTURE_WIDTH),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        LinearProgressIndicator(
-            progress = { state.postureFraction },
-            modifier = Modifier.fillMaxWidth(),
-            color = postureColor
-        )
-        Spacer(modifier = Modifier.size(2.dp))
-        Text(
-            text = if (exposed) {
-                stringResource(R.string.gym_exposed)
-            } else {
-                stringResource(R.string.gym_posture, state.posture, state.postureMax)
-            },
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (exposed) FontWeight.Bold else FontWeight.Normal,
-            color = if (exposed) EXPOSED_COLOR else Color.White
-        )
-    }
+    GymHpTube(
+        fraction = state.postureFraction,
+        color = postureColor,
+        tubeHeight = POSTURE_TUBE_HEIGHT,
+        modifier = modifier
+    )
 }
 
 /**
@@ -1289,8 +1380,14 @@ private fun GymSpriteBox(
 }
 
 /**
- * HUD superior: vida del líder y una pista que cambia con la fase. Usa `Box` en
- * vez de `Surface` para **no consumir** los toques que pasan por detrás.
+ * HUD superior: placa de estado del Pokémon del líder —de lado a lado, con la
+ * postura pegada debajo de la vida—. Sin `Surface` ni fondo translúcido, para
+ * **no consumir** los toques que pasan por detrás.
+ *
+ * El nombre es el del Pokémon que pelea, no el del líder, y no hay nivel: en este
+ * juego la barra mide la vida del Pokémon, no del entrenador. Se retiraron el
+ * cartel "Gimnasio de…", la línea de tipo y la caja con la pista: cómo se juega lo
+ * explica el tutorial de entrada al gimnasio.
  */
 @Composable
 private fun GymHud(
@@ -1298,110 +1395,127 @@ private fun GymHud(
     exposed: Boolean,
     modifier: Modifier = Modifier
 ) {
-    CompositionLocalProvider(LocalContentColor provides Color.White) {
-        Box(
-            modifier = modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.5f))
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+    GymLeaderPlate(
+        state = state,
+        exposed = exposed,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+/**
+ * Placa del Pokémon del líder: nombre —con el chip de furia a la derecha—, su
+ * barra de vida y, justo debajo, la barra de postura. Ocupa todo el ancho para
+ * que la vida se lea de lado a lado de la pantalla.
+ */
+@Composable
+private fun GymLeaderPlate(
+    state: GymState,
+    exposed: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .retroPlate()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = enemyNameFor(state.gymId) ?: state.leaderName,
+                color = RetroColors.InkBlack,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (state.rage) {
                 Text(
-                    text = stringResource(R.string.gym_title, state.leaderName),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(text = stringResource(R.string.gym_type, state.gymType.name))
-
-                LinearProgressIndicator(
-                    progress = { state.leaderHpFraction },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(text = stringResource(R.string.gym_leader_hp, state.leaderHp, state.leaderMaxHp))
-
-                if (state.rage) {
-                    Text(
-                        text = stringResource(R.string.gym_rage),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = RAGE_COLOR
-                    )
-                }
-
-                Text(
-                    text = stringResource(
-                        when {
-                            exposed -> R.string.gym_enemy_hint
-                            state.mechanic == GymMechanic.TIMING_RINGS -> R.string.gym_ring_hint
-                            state.mechanic == GymMechanic.VOLTORB_GRID -> R.string.gym_voltorb_hint
-                            else -> R.string.gym_projectile_hint
-                        }
-                    ),
-                    style = MaterialTheme.typography.bodySmall
+                    text = stringResource(R.string.gym_rage),
+                    color = RetroColors.DialogCream,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(RAGE_COLOR)
+                        .border(PLATE_BORDER, RetroColors.InkBlack)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
         }
+
+        GymHpRow(
+            fraction = state.leaderHpFraction,
+            hp = state.leaderHp,
+            maxHp = state.leaderMaxHp,
+            below = {
+                GymPostureBar(
+                    state = state,
+                    exposed = exposed,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        )
     }
 }
 
 /**
- * Vida del jugador anclada al borde inferior, lejos del HUD del líder. Se dibuja
- * como la barra de postura (barra + etiqueta) para mantener el mismo lenguaje.
+ * Vida del principal del jugador, anclada al borde inferior. Usa la misma placa
+ * que el HUD del líder para que ambos se lean con el mismo lenguaje.
  */
 @Composable
 private fun PlayerHpBar(
     state: GymState,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.width(POSTURE_WIDTH),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        LinearProgressIndicator(
-            progress = { state.playerHpFraction },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.size(2.dp))
-        Text(
-            text = stringResource(R.string.gym_hp, state.playerHp, state.maxHp),
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White
-        )
-    }
+    GymStatPlate(
+        name = state.leadName,
+        fraction = state.playerHpFraction,
+        hp = state.playerHp,
+        maxHp = state.maxHp,
+        modifier = modifier.width(PLAYER_PLATE_WIDTH)
+    )
 }
 
-/** Panel de derrota centrado, con reintentar y salir. */
+/**
+ * Panel de derrota centrado: placa y botones con el mismo lenguaje que el HUD de
+ * vida, en lugar de `Surface` + `Button` de Material.
+ */
 @Composable
 private fun DefeatPanel(
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 8.dp,
-        modifier = modifier.padding(24.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp)
+            .retroPlate()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.gym_lost),
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center
+        Text(
+            text = stringResource(R.string.gym_lost),
+            color = RetroColors.InkBlack,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 20.sp,
+            textAlign = TextAlign.Center
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RetroButton(
+                label = stringResource(R.string.gym_retry),
+                onClick = onRetry,
+                modifier = Modifier.weight(1f)
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRetry) {
-                    Text(text = stringResource(R.string.gym_retry))
-                }
-                OutlinedButton(onClick = onLeave) {
-                    Text(text = stringResource(R.string.gym_leave))
-                }
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_leave),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = onLeave,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -1430,8 +1544,19 @@ private val PLAYER_HP_BOTTOM_PADDING = 10.dp
 /** Cuánto por debajo de la cabeza del jugador se considera impacto. */
 private val PLAYER_HIT_INSET = 16.dp
 
-/** Ancho de la barra de postura. */
-private val POSTURE_WIDTH = 200.dp
+/**
+ * Medidas del HUD de placas: ancho de la placa del principal, alto del tubo de
+ * cada barra y grosor del borde/sombra dura de la placa.
+ */
+private val PLAYER_PLATE_WIDTH = 196.dp
+private val HP_TUBE_HEIGHT = 12.dp
+private val POSTURE_TUBE_HEIGHT = 10.dp
+private val HP_TUBE_BORDER = 2.dp
+private val PLATE_BORDER = 2.dp
+
+/** Tinta de la etiqueta PS y de las cifras dentro de la placa clara. */
+private val HP_LABEL_COLOR = Color(0xFFE8A33D)
+private val HP_NUMBER_COLOR = Color(0xFF3C4652)
 
 /** Colores de la barra de postura, del estado expuesto y de la furia. */
 private val POSTURE_COLOR = Color(0xFFFFC107)
@@ -1617,6 +1742,20 @@ fun enemyGifFor(gymId: String): Int? = when (gymId) {
     "brock" -> R.drawable.golem
     "misty" -> R.drawable.starmie
     "surge" -> R.drawable.raichu
+    else -> null
+}
+
+/**
+ * Nombre del Pokémon del líder, o `null` si ese gimnasio aún no lo declara.
+ *
+ * Vive junto a [enemyGifFor] porque es el mismo punto donde un id de dominio se
+ * traduce a lo que se pinta: la placa de estado muestra el Pokémon que pelea, no
+ * al entrenador. Tiene que coincidir con el sprite de arriba.
+ */
+fun enemyNameFor(gymId: String): String? = when (gymId) {
+    "brock" -> "Golem"
+    "misty" -> "Starmie"
+    "surge" -> "Raichu"
     else -> null
 }
 
