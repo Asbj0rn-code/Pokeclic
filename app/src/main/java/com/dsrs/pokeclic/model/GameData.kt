@@ -135,7 +135,14 @@ data class Zone(
     val name: String,
     val clickRequirement: Long,
     val wildSpeciesIds: List<String>,
-    val gymId: String? = null
+    val gymId: String? = null,
+    /**
+     * La zona es una **cueva** (Mt.Moon): genera salvajes al avanzar sin modo
+     * hierba alta. El botón de hierba se oculta, el fondo se mueve y los clics
+     * cuentan para la barra igual que en una ruta, pero el encuentro aparece por
+     * el mero hecho de caminar. No hay sprite de hierba bajo el entrenador.
+     */
+    val alwaysWilds: Boolean = false
 )
 
 /**

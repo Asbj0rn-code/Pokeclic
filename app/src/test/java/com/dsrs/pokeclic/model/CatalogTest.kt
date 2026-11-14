@@ -121,6 +121,27 @@ class CatalogTest {
         }
     }
 
+    /**
+     * Mt.Moon es la cueva: tiene salvajes al avanzar sin modo hierba alta. Solo
+     * esa zona lleva la marca, así que un despiste en otra se nota aquí.
+     */
+    @Test
+    fun zoneCatalog_onlyMountMoonHasWildsWithoutTallGrass() {
+        assertTrue(
+            ZoneCatalog.zones.single { it.id == "mt_moon" }.alwaysWilds
+        )
+        assertEquals(
+            listOf("mt_moon"),
+            ZoneCatalog.zones.filter { it.alwaysWilds }.map { it.id }
+        )
+        // Una cueva sin especies dejaría el bucle de caminar girando en vacío.
+        ZoneCatalog.zones.filter { it.alwaysWilds }.forEach { zone ->
+            assertTrue(
+                "${zone.id}: una cueva necesita especies salvajes",
+                zone.wildSpeciesIds.isNotEmpty()
+            )
+        }
+    }
     /** Toda especie salvaje referenciada por una zona existe en el catálogo. */
     @Test
     fun zoneCatalog_wildSpeciesAllResolve() {
