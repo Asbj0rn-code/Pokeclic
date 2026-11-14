@@ -468,9 +468,18 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  *   baja detrás del menú). No la mide el propio mapa: la cede el `Scaffold` vía
  *   `AppRoot`, así que la medición es derivada y no hay dimensiones fijas de
  *   dispositivo.
+ * @param frameOverlay capa visual opcional (carcasa del mapa, issue #57) que se
+ *   compone **sobre el mapa y bajo sus controles flotantes** (indicador de
+ *   zonas y botones), de modo que el marco la tapa por los bordes sin ocultar
+ *   ningún control. No lleva manejo de toques: los gestos destinados al mapa
+ *   la atraviesan y el comportamiento del mapa queda intacto.
  */
 @Composable
-fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
+fun MapScreen(
+    modifier: Modifier = Modifier,
+    bottomReserved: Dp = 0.dp,
+    frameOverlay: (@Composable () -> Unit)? = null
+) {
     val mapPainter = painterResource(id = R.drawable.mapa_kanto)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -655,6 +664,12 @@ fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
                         translationY = offset.y
                     }
             )
+
+            // Carcasa visual (issue #57): se compone sobre el mapa y bajo el
+            // indicador y los botones de abajo, que quedan por encima y siguen
+            // visibles y operativos. Sin manejo de toques: el marco no
+            // intercepta los gestos destinados al mapa.
+            frameOverlay?.invoke()
 
             // Indicador de zona(s): fijo en la esquina superior derecha del
             // área visible, sin seguir al mapa, con márgenes de zona segura.

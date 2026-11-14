@@ -630,7 +630,11 @@ private fun MenuPokeBall(
                 shape = CircleShape
                 clip = false
             }
-            .pointerInput(Unit) {
+            // La clave incluye `expansionEnabled`: al alternarse en caliente
+            // (p. ej., al entrar en la pestaña Mapa), el bloque del gesto se
+            // cancela y relanza con la captura fresca. Con `Unit` el bloque
+            // seguiría corriendo con el valor que tenía al arrancar.
+            .pointerInput(expansionEnabled) {
                 val touchSlop = viewConfiguration.touchSlop
 
                 awaitEachGesture {
