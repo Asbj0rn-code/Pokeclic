@@ -103,7 +103,7 @@ fun GymIntroLayer(
     onWatchTutorial: () -> Unit,
     onSkip: () -> Unit,
     onAccepted: () -> Unit,
-    onCurtainClosed: () -> Unit = {}
+    onCurtainClosed: () -> Unit
 ) {
     // La cortinilla se ve una vez por entrada: al pasar al tutorial o al cartel
     // de arranque ya no vuelve a cerrarse.
@@ -128,7 +128,7 @@ fun GymIntroLayer(
                     // que aún no lo tienen conservan el panel genérico.
                     val script = leaderScriptFor(gymId)
                     if (script != null) {
-                        LeaderDialogue(
+                        GymEntryDialogue(
                             script = script,
                             leaderName = leaderName,
                             onWatchTutorial = onWatchTutorial,

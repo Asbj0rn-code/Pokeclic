@@ -7,9 +7,7 @@
  * con el retrato bamboleándose de lado a lado. Al cerrarse, el combate retoma ya
  * en fase de furia.
  *
- * Reutiliza el mismo lenguaje que la intro y la entrada al gimnasio: [DialogueBox],
- * máquina de escribir ([TYPE_CHAR_MS]) y toque para completar y avanzar
- * ([introTap]).
+ * El marco (retrato, máquina de escribir y toque) lo aporta [LeaderDialogue].
  */
 package com.dsrs.pokeclic.ui
 
@@ -20,32 +18,17 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dsrs.pokeclic.R
-import kotlinx.coroutines.delay
 
 /** Amplitud del bamboleo lateral del retrato durante el grito, a cada lado. */
 private val RAGE_SWAY_AMPLITUDE = 5.dp
@@ -75,19 +58,6 @@ internal fun GymRageSpeech(
 ) {
     var stepIndex by rememberSaveable { mutableIntStateOf(0) }
     val line = rageLines[stepIndex.coerceIn(rageLines.indices)]
-    val fullText = stringResource(line.textRes)
-
-    // Máquina de escribir: se reinicia en cada línea; un toque la completa.
-    var revealed by remember { mutableIntStateOf(0) }
-    LaunchedEffect(stepIndex, fullText) {
-        revealed = 0
-        while (revealed < fullText.length) {
-            delay(TYPE_CHAR_MS)
-            revealed++
-        }
-    }
-    val lineComplete = revealed >= fullText.length
-    val shown = fullText.take(revealed)
     val isLast = stepIndex == rageLines.lastIndex
 
     // Bamboleo de lado a lado, solo mientras le grita a su Pokémon: el retrato se
@@ -104,41 +74,15 @@ internal fun GymRageSpeech(
     )
     val swayPx = with(LocalDensity.current) { RAGE_SWAY_AMPLITUDE.toPx() }
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val painter = painterResource(R.drawable.brock_angry)
-        val intrinsic = painter.intrinsicSize
-        val aspect = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1f
-        val portraitWidth = leaderPortraitSize(maxWidth, maxHeight, aspect)
-        val portraitHeight = portraitWidth / aspect
-
-        Image(
-            painter = painter,
-            contentDescription = stringResource(R.string.gym_leader_desc, leaderName ?: "?"),
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = PORTRAIT_TOP_PADDING)
-                .size(portraitWidth, portraitHeight)
-                .graphicsLayer { translationX = if (line.shout) swayFactor * swayPx else 0f }
-        )
-
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(portraitHeight + PORTRAIT_TOP_PADDING))
-
-            DialogueBox(
-                text = shown,
-                complete = lineComplete,
-                onClick = {
-                    when (introTap(lineComplete)) {
-                        IntroTap.REVEAL_LINE -> revealed = fullText.length
-                        IntroTap.ADVANCE -> if (isLast) onFinished() else stepIndex++
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
+    LeaderDialogue(
+        portraitRes = R.drawable.brock_angry,
+        leaderName = leaderName,
+        step = stepIndex,
+        text = stringResource(line.textRes),
+        onAdvance = { if (isLast) onFinished() else stepIndex++ },
+        modifier = modifier,
+        portraitModifier = Modifier.graphicsLayer {
+            translationX = if (line.shout) swayFactor * swayPx else 0f
         }
-    }
+    )
 }

@@ -7,10 +7,10 @@
  * Detrás ya está dibujado el fondo del gimnasio sin sprites: durante la entrada
  * `gym == null`, así que `AppRoot` solo pinta el escenario.
  *
- * El discurso reutiliza el sistema de la intro del Profesor Oak: retrato arriba,
- * [DialogueBox] debajo, máquina de escribir y toque para completar la línea y
- * luego avanzar ([introTap]). Solo presentación: el estado del juego lo sigue
- * poseyendo el ViewModel y las decisiones salen como lambdas.
+ * El discurso usa el marco compartido [LeaderDialogue], el mismo de la intro del
+ * Profesor Oak: retrato arriba, caja de diálogo, máquina de escribir y toque para
+ * completar la línea y luego avanzar. Solo presentación: el estado del juego lo
+ * sigue poseyendo el ViewModel y las decisiones salen como lambdas.
  */
 package com.dsrs.pokeclic.ui
 
@@ -22,14 +22,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,13 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.dsrs.pokeclic.R
 import kotlinx.coroutines.delay
@@ -54,31 +48,6 @@ private const val CURTAIN_SLIDE_MS = 700
 
 /** Tiempo que la cortinilla se queda cerrada, como pidió el diseño. */
 private const val CURTAIN_HOLD_MS = 1000L
-
-/** Fracción del ancho de pantalla que ocupa el retrato del líder. */
-private const val PORTRAIT_WIDTH_FRACTION = 0.72f
-
-/** Tope de ancho del retrato, para que no crezca sin límite en pantallas grandes. */
-private val PORTRAIT_MAX_WIDTH = 320.dp
-
-/** Tope de alto, como fracción de la pantalla, para que siempre quede sitio al texto. */
-private const val PORTRAIT_HEIGHT_FRACTION = 0.55f
-
-/** Margen superior del retrato. */
-internal val PORTRAIT_TOP_PADDING = 24.dp
-
-/**
- * Ancho del retrato de un líder dentro de un área: acotado por ancho **y** por
- * alto, para que el diálogo y los botones siempre entren aunque la pantalla sea
- * baja.
- *
- * @param aspect relación ancho/alto de la imagen.
- */
-internal fun leaderPortraitSize(maxWidth: Dp, maxHeight: Dp, aspect: Float): Dp = minOf(
-    maxWidth * PORTRAIT_WIDTH_FRACTION,
-    PORTRAIT_MAX_WIDTH,
-    maxHeight * PORTRAIT_HEIGHT_FRACTION * aspect
-)
 
 /**
  * Una línea del discurso: qué dice y con qué retrato se dice.
@@ -191,14 +160,14 @@ internal fun GymEntryCurtain(
 }
 
 /**
- * Discurso del líder sobre el escenario, con el mismo lenguaje que la intro del
- * Profesor Oak.
+ * Discurso del líder sobre el escenario. La última línea no avanza con el toque:
+ * la cierran los dos botones del pie.
  *
  * @param onWatchTutorial "Ver tutorial" de la última línea.
  * @param onSkip "Omitir" de la última línea.
  */
 @Composable
-internal fun LeaderDialogue(
+internal fun GymEntryDialogue(
     script: GymLeaderScript,
     leaderName: String?,
     onWatchTutorial: () -> Unit,
@@ -207,63 +176,16 @@ internal fun LeaderDialogue(
 ) {
     var stepIndex by rememberSaveable { mutableIntStateOf(0) }
     val line = script.lines[stepIndex.coerceIn(script.lines.indices)]
-    val fullText = stringResource(line.textRes)
-
-    // Efecto máquina de escribir: se reinicia en cada línea. Un toque la
-    // completa de golpe (ver `introTap`).
-    var revealed by remember { mutableIntStateOf(0) }
-    LaunchedEffect(stepIndex, fullText) {
-        revealed = 0
-        while (revealed < fullText.length) {
-            delay(TYPE_CHAR_MS)
-            revealed++
-        }
-    }
-    val lineComplete = revealed >= fullText.length
-    val shown = fullText.take(revealed)
     val isLastLine = stepIndex == script.lines.lastIndex
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // El retrato se limita por ancho y por alto: en pantallas cortas manda el
-        // alto, para que el diálogo y los botones siempre entren.
-        val painter = painterResource(line.portraitRes)
-        val intrinsic = painter.intrinsicSize
-        val aspect = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1f
-        val portraitWidth = leaderPortraitSize(maxWidth, maxHeight, aspect)
-        val portraitHeight = portraitWidth / aspect
-
-        Image(
-            painter = painter,
-            contentDescription = stringResource(
-                R.string.gym_leader_desc,
-                leaderName ?: "?"
-            ),
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = PORTRAIT_TOP_PADDING)
-                .size(portraitWidth, portraitHeight)
-        )
-
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(portraitHeight + PORTRAIT_TOP_PADDING))
-
-            DialogueBox(
-                text = shown,
-                complete = lineComplete,
-                onClick = {
-                    when (introTap(lineComplete)) {
-                        IntroTap.REVEAL_LINE -> revealed = fullText.length
-                        // La última línea no avanza: la cierran los botones.
-                        IntroTap.ADVANCE -> if (!isLastLine) stepIndex++
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-
+    LeaderDialogue(
+        portraitRes = line.portraitRes,
+        leaderName = leaderName,
+        step = stepIndex,
+        text = stringResource(line.textRes),
+        onAdvance = { if (!isLastLine) stepIndex++ },
+        modifier = modifier,
+        footer = { lineComplete ->
             if (isLastLine && lineComplete) {
                 Row(
                     modifier = Modifier
@@ -286,5 +208,5 @@ internal fun LeaderDialogue(
                 }
             }
         }
-    }
+    )
 }

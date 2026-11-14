@@ -1668,9 +1668,10 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
 | `ui/RockShatterFx.kt` | estallido de roca al romper un proyectil (reproducción del sprite sheet) |
 | `ui/GymSceneLayouts.kt` | composición por gimnasio: tamaño y ancla de los sprites del líder y del jugador |
-| `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y discurso del líder (retrato + diálogo) |
+| `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
 | `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
 | `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
+| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato, máquina de escribir y avance |
 
 ### Estado nuevo (`GameUiState`)
 
