@@ -322,6 +322,11 @@ fun AppRoot(
                         isMapSelected = !state.isOptionsOpen && state.contentTab == AppTab.Map,
                         isPokedexSelected = state.isOptionsOpen,
                         isHomeSelected = !state.isOptionsOpen && state.contentTab == AppTab.Home,
+                        // Sobre el mapa la bola no tiene juego: el arrastre no la
+                        // desliza sobre la carcasa; un arrastre completado cuenta
+                        // como toque y devuelve a la aventura (como en la Pokédex).
+                        // En la pantalla principal conserva su juego: se expande.
+                        expansionEnabled = state.contentTab != AppTab.Map,
                         onMapClick = { onSelectTab(AppTab.Map) },
                         onPokedexClick = onOpenOptions,
                         onHomeClick = { onSelectTab(AppTab.Home) },
@@ -404,7 +409,7 @@ fun AppRoot(
                             onEnterGym = onEnterGym,
                             onAdvanceZone = onAdvanceZone
                         )
-                        AppTab.Map -> MapScreen(
+                        AppTab.Map -> MapCarcasaScreen(
                             bottomReserved = menuReserved
                         )
                     }
