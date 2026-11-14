@@ -100,14 +100,14 @@ object ZoneCatalog {
         Zone(
             id = "ciudad_plateada",
             name = "Ciudad Plateada",
-            clickRequirement = 90L,
+            clickRequirement = 140L,
             wildSpeciesIds = emptyList(),
             gymId = "brock"
         ),
         Zone(
             id = "ruta3",
             name = "Ruta 3",
-            clickRequirement = 120L,
+            clickRequirement = 150L,
             wildSpeciesIds = listOf("spearow", "jigglypuff")
         ),
         Zone(

@@ -240,6 +240,37 @@ internal object RouteBackgrounds {
             // eje del arte cae por debajo del entrenador.
             startAnchor = 0.057f
         ),
+        // Ciudad Plateada: arte propio de 4608×3840, cuatro anchos de cámara por
+        // dos altos. Al ser vertical, lo que cierra el bucle es **la altura**:
+        //   3840 × CLICKS_PER_TILE / CAMERA_HEIGHT = 3840 × 25 / 1920 = 50 clics
+        //   rectos por vuelta al dibujo.
+        // Los tramos rectos de esta trayectoria suman 50 (una vuelta exacta al alto
+        // del arte) y los laterales están balanceados (40 a cada lado), así que el
+        // personaje vuelve a la línea central en cada vuelta. El ciclo completo
+        // dura 130 clics. Es un borrador de arranque: mientras los rectos sigan
+        // sumando múltiplos de 50 y los dos sentidos laterales sumen lo mismo, se
+        // puede reescribir tramo a tramo.
+        //
+        // El arte es **cuatro veces más ancho** que la cámara, así que la pantalla
+        // enseña solo la franja central (un cuarto del dibujo). Lo que se ve de la
+        // ciudad lo decide el corrimiento lateral que van dejando los tramos.
+        "ciudad_plateada" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_plateada,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 23f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 12f),
+                    RouteLeg(clicks = 40f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 12f),
+                    RouteLeg(clicks = 15f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 2f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 10f)
+                )
+            ),
+            startAnchor = 0.5f
+        ),
         // Monte Moon: segundo fondo **horizontal**, con arte más ancho que el de
         // Ruta 3 (2304×1920 frente a 1152×1920). La cámara sigue enseñando 1152 px
         // de ancho, así que por pantalla se ve la mitad del dibujo y el patrón se
