@@ -199,6 +199,11 @@ object SpeciesCatalog {
  * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
  * avanzan con clics.
  *
+ * Las listas `wildSpeciesIds` de este catálogo solo cubren las zonas jugables
+ * implementadas. Las apariciones de ubicaciones futuras están planificadas en
+ * `docs/apariciones-planificadas.md`: no se adelantan aquí ni se reparten entre
+ * zonas existentes.
+ *
  * Los umbrales siguen siendo **provisionales y bajos** para poder probar el
  * bucle (y el gimnasio) durante el desarrollo; se subirán al equilibrar.
  */
@@ -233,7 +238,9 @@ object ZoneCatalog {
             id = "bosque_verde",
             name = "Bosque Verde",
             clickRequirement = 65L,
-            wildSpeciesIds = listOf("caterpie", "weedle")
+            wildSpeciesIds = listOf(
+                "caterpie", "weedle", "metapod", "kakuna", "pikachu"
+            )
         ),
         Zone(
             id = "ciudad_plateada",
@@ -246,13 +253,15 @@ object ZoneCatalog {
             id = "ruta3",
             name = "Ruta 3",
             clickRequirement = 150L,
-            wildSpeciesIds = listOf("spearow", "jigglypuff")
+            wildSpeciesIds = listOf(
+                "spearow", "jigglypuff", "pidgey", "nidoran_f", "nidoran_m", "mankey"
+            )
         ),
         Zone(
             id = "mt_moon",
             name = "Mt.Moon",
             clickRequirement = 160L,
-            wildSpeciesIds = listOf("zubat", "geodude"),
+            wildSpeciesIds = listOf("zubat", "geodude", "clefairy", "paras"),
             // Cueva: los salvajes aparecen caminando, sin modo hierba alta.
             alwaysWilds = true
         ),
@@ -260,7 +269,10 @@ object ZoneCatalog {
             id = "ruta4",
             name = "Ruta 4",
             clickRequirement = 210L,
-            wildSpeciesIds = listOf("spearow", "rattata")
+            wildSpeciesIds = listOf(
+                "spearow", "rattata", "ekans", "sandshrew", "mankey",
+                "tentacool", "krabby", "horsea", "magikarp"
+            )
         ),
         Zone(
             id = "ciudad_celeste",
@@ -273,13 +285,16 @@ object ZoneCatalog {
             id = "ruta5",
             name = "Ruta 5 - Vía Subterránea",
             clickRequirement = 320L,
-            wildSpeciesIds = listOf("pidgey", "meowth", "oddish")
+            wildSpeciesIds = listOf("pidgey", "meowth", "oddish", "bellsprout")
         ),
         Zone(
             id = "ruta6",
             name = "Ruta 6",
             clickRequirement = 380L,
-            wildSpeciesIds = listOf("pidgey", "rattata", "oddish")
+            wildSpeciesIds = listOf(
+                "pidgey", "oddish", "meowth", "psyduck",
+                "poliwag", "bellsprout", "slowpoke", "goldeen"
+            )
         ),
         Zone(
             id = "ciudad_carmin",

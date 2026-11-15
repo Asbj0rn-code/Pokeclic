@@ -152,6 +152,68 @@ class CatalogTest {
         }
     }
 
+    /** Un ID repetido dentro de una zona sesgaría el selector uniforme. */
+    @Test
+    fun zoneCatalog_hasNoRepeatedSpeciesWithinAZone() {
+        ZoneCatalog.zones.forEach { zone ->
+            assertEquals(
+                "${zone.id}: especies repetidas en la zona",
+                zone.wildSpeciesIds.size,
+                zone.wildSpeciesIds.toSet().size
+            )
+        }
+    }
+
+    /** Las ciudades no tienen hierba alta: caminar por ellas nunca abre encuentro. */
+    @Test
+    fun zoneCatalog_citiesHaveNoWildEncounters() {
+        val cities = listOf(
+            "pueblo_paleta",
+            "ciudad_verde",
+            "ciudad_plateada",
+            "ciudad_celeste",
+            "ciudad_carmin"
+        )
+        cities.forEach { id ->
+            val zone = ZoneCatalog.zones.single { it.id == id }
+            assertTrue(
+                "$id: una ciudad no debe tener especies salvajes",
+                zone.wildSpeciesIds.isEmpty()
+            )
+        }
+    }
+
+    /** Mew queda definido en el catálogo pero excluido de los encuentros. */
+    @Test
+    fun zoneCatalog_doesNotSpawnMew() {
+        assertTrue(
+            "Mew no debe aparecer en ninguna zona",
+            ZoneCatalog.zones.none { "mew" in it.wildSpeciesIds }
+        )
+    }
+
+    /** Las ocho zonas actuales con hierba mantienen al menos una especie salvaje. */
+    @Test
+    fun zoneCatalog_wildZonesAreNotEmpty() {
+        val wildZones = listOf(
+            "ruta1",
+            "ruta2",
+            "bosque_verde",
+            "ruta3",
+            "mt_moon",
+            "ruta4",
+            "ruta5",
+            "ruta6"
+        )
+        wildZones.forEach { id ->
+            val zone = ZoneCatalog.zones.single { it.id == id }
+            assertTrue(
+                "$id: una zona con hierba necesita especies salvajes",
+                zone.wildSpeciesIds.isNotEmpty()
+            )
+        }
+    }
+
     /** Todo gimnasio referenciado por una zona existe en el catálogo de gimnasios. */
     @Test
     fun zoneCatalog_gymReferencesResolve() {

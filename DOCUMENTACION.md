@@ -1489,6 +1489,10 @@ El archivo de preferencias mantiene el nombre histórico
 - **Especie nueva**: añade una entrada a `SpeciesCatalog` en `Catalogs.kt`.
 - **Zona nueva**: añade una entrada a `ZoneCatalog.zones` (el orden es la
   posición en el mapa).
+- **Apariciones futuras**: las especies de las ubicaciones que aún no son
+  jugables están planificadas en
+  [`docs/apariciones-planificadas.md`](docs/apariciones-planificadas.md); las
+  listas activas viven solo en `ZoneCatalog`.
 - **Gimnasio nuevo**: añade una entrada a `GymCatalog` y referencia su `id` en la
   zona (`gymId`).
 - **Ajustar números**: `ENCOUNTER_SECONDS`, `WALK_ACTIVITY_WINDOW_MS`,
