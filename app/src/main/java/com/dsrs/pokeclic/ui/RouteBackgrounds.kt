@@ -321,6 +321,47 @@ internal object RouteBackgrounds {
             // la altura del entrenador. El alto del arte es el mismo (1920 px).
             startAnchor = 0.057f
         ),
+        // Ciudad Celeste: tercer fondo **horizontal**, con el arte más grande del
+        // catálogo (4608×3840: cuatro anchos de cámara por dos altos). La cámara
+        // enseña 1152 px de ancho, así que por pantalla se ve un cuarto del dibujo
+        // y una vuelta completa tarda cuatro pantallas.
+        //
+        // La cuenta del bucle es la de siempre, con el ancho de este arte:
+        //   clics rectos por ancho de arte = 4608 / 76,8 = 60
+        // Los rectos de aquí suman 60 y los laterales se compensan (16 + 2 hacia
+        // abajo, 18 hacia arriba): el personaje vuelve a la misma altura en cada
+        // vuelta. Lo comprueba `horizontalZones_closeTheirLoopAgainstTheRealArtwork`.
+        //
+        // Para reajustar la trayectoria solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja. Si
+        // cambias los clics, deja los rectos en múltiplos de 60 y los dos sentidos
+        // laterales sumando lo mismo.
+        "ciudad_celeste" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_celeste,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 14f),                             // recto
+                    RouteLeg(clicks = 16f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 15f),                             // recto
+                    RouteLeg(clicks = 17f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 23f),                             // recto
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 8f),
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // El arte mide cuatro pantallas de ancho, así que poner al entrenador
+            // sobre su **marco izquierdo** pide dos pantallas enteras: -2f lo deja
+            // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro). La
+            // vuelta arranca en el borde izquierdo de la ciudad y la cruza entera.
+            startOffset = -2f,
+            // 1,15 deja el borde inferior del arte un 15 % de pantalla por debajo
+            // del borde inferior: sube el encuadre respecto a `1f` (que lo dejaba
+            // justo al pie) y se ve desde el borde del río hasta la calle de los
+            // edificios. El renderer enrolla el valor módulo el alto del arte, así
+            // que por encima de ~1,5 vuelve a empezar por arriba.
+            startAnchor = 1.15f
+        ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
         //     imageRes = R.drawable.background_ruta2,
