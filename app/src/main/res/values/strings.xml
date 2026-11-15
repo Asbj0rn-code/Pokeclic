@@ -93,8 +93,28 @@
     <string name="gym_victory_line_farewell">Ha sido un placer. Espero de verdad que puedas detener al Team Rocket.</string>
     <string name="gym_victory_badge_desc">Medalla Roca</string>
 
+    <!-- Misty: discurso de entrada -->
+    <string name="gym_leader_line_misty_welcome">¡Hola! Soy Misty, la líder del gimnasio de Ciudad Celeste.</string>
+    <string name="gym_leader_line_misty_bored">La verdad es que últimamente no viene nadie a retarme... y ya empiezo a aburrirme.</string>
+    <string name="gym_leader_line_misty_rocket">Espera... ¿el Team Rocket? ¿Eso es lo que ha estado pasando todo este tiempo?</string>
+    <string name="gym_leader_line_misty_badge">Conque necesitas la Medalla Cascada... No pienso regalártela.</string>
+    <string name="gym_leader_line_misty_duel">Si de verdad la quieres, tendrás que vencerme en combate.</string>
+    <string name="gym_leader_line_misty_tutorial">¿Quieres que te explique cómo funciona el desafío antes de empezar?</string>
+
+    <!-- Misty: furia -->
+    <string name="gym_rage_speech_misty_warning">¡Esto todavía no ha acabado! ¡No pienso dejarte ganar tan fácilmente!</string>
+    <string name="gym_rage_speech_misty_shout">¡AGUANTA, STARMIE! ¡DALE TODO LO QUE TIENES!</string>
+
+    <!-- Misty: despedida -->
+    <string name="gym_victory_line_misty_almost">He perdido... y justo cuando por fin alguien venía a retarme.</string>
+    <string name="gym_victory_line_misty_enjoyed">No me lo puedo creer. Pero hacía muchísimo que no disfrutaba tanto de un combate.</string>
+    <string name="gym_victory_line_misty_badge">¡Enhorabuena! Toma, aquí tienes la Medalla Cascada. Te la has ganado.</string>
+    <string name="gym_victory_line_misty_farewell">Ahora ve y acaba con el Team Rocket. Cuento contigo.</string>
+    <string name="gym_victory_badge_cascada_desc">Medalla Cascada</string>
+
     <!-- Minijuego de anillos (Misty) -->
     <string name="gym_ring_hit">¡Acierto!</string>
+    <string name="gym_ring_combo">¡Combo ×%d!</string>
     <string name="gym_ring_miss">¡Fallo!</string>
     <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
     <string name="gym_ring_tutorial_step1_title">Acierta el círculo</string>

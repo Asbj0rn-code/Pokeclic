@@ -326,11 +326,20 @@ enum class RingOutcome {
  * @param outcome acierto o fallo.
  * @param count anillos cobrados en el mismo evento; solo puede ser mayor que 1
  *   cuando varios caducan en el mismo tick.
+ * @param ringProgress avance del anillo al resolverse, `0` recién nacido y `1`
+ *   cuando ya tocó el círculo fijo. La UI lo necesita para arrancar el efecto
+ *   justo en el radio en el que estaba el anillo: un acierto dentro de la ventana
+ *   todavía no ha llegado del todo, y un fallo por pulsar antes lo coge más lejos.
+ * @param combo aciertos seguidos que lleva el jugador **después** de este evento:
+ *   sube con cada acierto y vuelve a `0` con cualquier fallo. Es lo que la UI
+ *   cuenta como combo.
  */
 data class RingFeedback(
     val ringId: Long,
     val outcome: RingOutcome,
-    val count: Int = 1
+    val count: Int = 1,
+    val ringProgress: Float = 1f,
+    val combo: Int = 0
 )
 
 /**
@@ -450,6 +459,8 @@ data class GymState(
     val rings: List<TimingRing> = emptyList(),
     val ringWindowMs: Long = 0L,
     val ringFeedback: RingFeedback? = null,
+    /** Aciertos seguidos del minijuego de anillos; cualquier fallo lo devuelve a 0. */
+    val ringCombo: Int = 0,
     val voltorbs: List<Voltorb> = emptyList(),
     val voltorbFeedback: VoltorbFeedback? = null,
     val posture: Int = 0,
@@ -696,6 +707,36 @@ object GymCombat {
     /** Anillos que ya pasaron su ventana de acierto sin resolverse. */
     fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
         state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
+
+    /**
+     * Resuelve [rings]: los saca de la lista, mueve el **combo** y publica el
+     * feedback que pinta la UI.
+     *
+     * Es el único sitio que toca [GymState.ringCombo] a propósito: acertar suma
+     * uno y fallar lo deja en cero, venga el fallo de una pulsación fuera de
+     * ventana o de anillos que caducaron solos. Tenerlo aquí evita que un camino
+     * nuevo se olvide de cortar la racha.
+     *
+     * @param hit `true` si la jugada acertó.
+     * @param rings anillos que se cobran en este evento; suele ser uno, pero
+     *   varios pueden caducar en el mismo tick.
+     */
+    fun resolveRings(state: GymState, rings: List<TimingRing>, hit: Boolean, nowMs: Long): GymState {
+        if (rings.isEmpty()) return state
+        val ids = rings.map { it.id }.toSet()
+        val combo = if (hit) state.ringCombo + 1 else 0
+        return state.copy(
+            rings = state.rings.filterNot { it.id in ids },
+            ringCombo = combo,
+            ringFeedback = RingFeedback(
+                ringId = rings.maxOf { it.id },
+                outcome = if (hit) RingOutcome.HIT else RingOutcome.MISS,
+                count = rings.size,
+                ringProgress = rings.maxOf { it.progressAt(nowMs) },
+                combo = combo
+            )
+        )
+    }
 
     // --- cuadrícula de Voltorb (Lt. Surge) ---------------------------------
 

@@ -37,21 +37,27 @@ import com.dsrs.pokeclic.R
 import kotlinx.coroutines.delay
 
 /** Fracción del ancho de pantalla que ocupa el retrato del líder. */
-private const val PORTRAIT_WIDTH_FRACTION = 0.72f
+private const val PORTRAIT_WIDTH_FRACTION = 0.86f
 
 /** Tope de ancho del retrato, para que no crezca sin límite en pantallas grandes. */
-private val PORTRAIT_MAX_WIDTH = 320.dp
+private val PORTRAIT_MAX_WIDTH = 360.dp
 
 /** Tope de alto, como fracción de la pantalla, para que siempre quede sitio al texto. */
-private const val PORTRAIT_HEIGHT_FRACTION = 0.55f
+private const val PORTRAIT_HEIGHT_FRACTION = 0.58f
 
 /** Margen superior del retrato. */
 private val PORTRAIT_TOP_PADDING = 24.dp
 
+/** Cada cuánto se turna el retrato con su segunda cara (la boca), en ms. */
+private const val PORTRAIT_FLAP_MS = 140L
+
 /**
- * Ancho del retrato de un líder dentro de un área: acotado por ancho **y** por
- * alto, para que el diálogo y los botones siempre entren aunque la pantalla sea
- * baja.
+ * Ancho del retrato de un líder dentro de un área.
+ *
+ * Los tres topes se muerden entre sí y cada arte lo frena uno distinto: el de
+ * **alto** manda en los dibujos verticales (Brock, 400×750) y el de **ancho** en
+ * los más cuadrados (Misty, 512×686). Por eso subir el ancho no agranda a Brock,
+ * que ya está limitado por la altura.
  *
  * @param aspect relación ancho/alto de la imagen.
  */
@@ -71,6 +77,8 @@ private fun aspectOf(painter: Painter): Float {
  * Marco de diálogo del líder: retrato, caja y máquina de escribir.
  *
  * @param portraitRes retrato que se muestra mientras se escribe la línea.
+ * @param altPortraitRes segunda cara que se turna con [portraitRes] mientras la
+ *   línea se escribe (la boca abierta y cerrada). `null` deja el retrato quieto.
  * @param step índice de la línea; reinicia la máquina de escribir aunque dos
  *   líneas seguidas tengan el mismo texto (los «...» de Brock).
  * @param text texto completo de la línea.
@@ -89,6 +97,7 @@ internal fun LeaderDialogue(
     text: String,
     onAdvance: () -> Unit,
     modifier: Modifier = Modifier,
+    altPortraitRes: Int? = null,
     portraitModifier: Modifier = Modifier,
     overlay: @Composable BoxScope.() -> Unit = {},
     footer: @Composable ColumnScope.(lineComplete: Boolean) -> Unit = {}
@@ -105,14 +114,31 @@ internal fun LeaderDialogue(
     val lineComplete = revealed >= text.length
     val shown = text.take(revealed)
 
+    // Boca: mientras la línea se está escribiendo, el retrato se turna con su
+    // segunda cara. Al completarse se queda la de siempre, quieta.
+    var flapTick by remember { mutableIntStateOf(0) }
+    val flapping = altPortraitRes != null && !lineComplete
+    LaunchedEffect(step, altPortraitRes, flapping) {
+        flapTick = 0
+        if (!flapping) return@LaunchedEffect
+        while (true) {
+            delay(PORTRAIT_FLAP_MS)
+            flapTick++
+        }
+    }
+    val shownPortraitRes =
+        if (flapping && flapTick % 2 == 1) altPortraitRes!! else portraitRes
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        // El tamaño sale del retrato base: las dos caras miden lo mismo y así el
+        // parpadeo no puede mover el encuadre.
         val painter = painterResource(portraitRes)
         val aspect = aspectOf(painter)
         val portraitWidth = leaderPortraitSize(maxWidth, maxHeight, aspect)
         val portraitHeight = portraitWidth / aspect
 
         Image(
-            painter = painter,
+            painter = painterResource(shownPortraitRes),
             contentDescription = stringResource(R.string.gym_leader_desc, leaderName ?: "?"),
             contentScale = ContentScale.Fit,
             modifier = portraitModifier
@@ -120,8 +146,6 @@ internal fun LeaderDialogue(
                 .padding(top = PORTRAIT_TOP_PADDING)
                 .size(portraitWidth, portraitHeight)
         )
-
-        overlay()
 
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -143,5 +167,10 @@ internal fun LeaderDialogue(
 
             footer(lineComplete)
         }
+
+        // La capa extra va la última: queda por delante del retrato **y** de la
+        // caja de diálogo. Es lo que necesita la medalla, que se entrega en el
+        // centro de la pantalla mientras el líder sigue hablando.
+        overlay()
     }
 }

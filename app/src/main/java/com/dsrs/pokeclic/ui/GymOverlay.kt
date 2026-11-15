@@ -69,7 +69,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -99,6 +98,7 @@ import com.dsrs.pokeclic.model.VoltorbFeedback
 import com.dsrs.pokeclic.model.VoltorbOutcome
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.annotation.DrawableRes
@@ -149,6 +149,7 @@ fun GymOverlay(
     // pintar del HUD ni de los sprites.
     if (state.rageSpeech) {
         GymRageSpeech(
+            gymId = state.gymId,
             leaderName = state.leaderName,
             onFinished = onRageSpeechDone,
             modifier = modifier
@@ -523,15 +524,41 @@ private fun RingGymScene(
     }
     val now = clock.longValue
     val currentState by rememberUpdatedState(state)
+    val context = LocalContext.current
 
     // Acierto/fallo del último anillo: el ViewModel publica el resultado y aquí
-    // se convierte en un estallido de agua o uno rojo, más la etiqueta flotante.
+    // se convierte en un estallido de agua (hoja de pixelfx), más el cartel.
+    // El instante de arranque es la única autoridad temporal: el sprite sheet se
+    // indexa por tiempo y el cartel se calcula desde los mismos segundos.
     val feedback = state.ringFeedback
-    val feedbackProgress = remember { Animatable(1f) }
+    var fxStartMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(feedback?.ringId) {
-        if (feedback == null) return@LaunchedEffect
-        feedbackProgress.snapTo(0f)
-        feedbackProgress.animateTo(1f, tween(durationMillis = RING_FEEDBACK_MS))
+        if (feedback != null) fxStartMs = nowMs()
+    }
+
+    // Una decodificación por escena para cada hoja.
+    val burstSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_burst).asImageBitmap()
+    }
+    val implodeSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_implode).asImageBitmap()
+    }
+
+    // El resultado tiñe el **círculo fijo** que rodea al Pokémon, no el aro que se
+    // cierra ni el estallido: esos siguen siendo agua. Así el color dice "acierto"
+    // o "fallo" sin disfrazar el ataque de otra cosa.
+    val resultTint = when (feedback?.outcome) {
+        RingOutcome.HIT -> HIT_GREEN
+        RingOutcome.MISS -> MISS_RED
+        null -> null
+    }
+    val tintAge = now - fxStartMs
+    val tintMix = if (resultTint != null && tintAge in 0 until RING_TINT_MS) {
+        val u = tintAge / RING_TINT_MS.toFloat()
+        // Aguanta encendido un tercio del tiempo y luego se apaga.
+        if (u < 0.35f) 1f else (1f - (u - 0.35f) / 0.65f).coerceIn(0f, 1f)
+    } else {
+        0f
     }
 
     // Latido del enemigo mientras está expuesto.
@@ -555,10 +582,29 @@ private fun RingGymScene(
             val outlineStroke = Stroke(width = (RING_STROKE + 3.dp).toPx())
             val foamStroke = Stroke(width = 1.dp.toPx())
 
+            // El color del resultado. El círculo fijo es el que lo lleva: el aro
+            // que se cierra y el estallido se quedan en agua.
+            fun tinted(base: Color): Color =
+                if (resultTint == null || tintMix <= 0f) base
+                else lerp(base, resultTint, tintMix)
+
+            // Halo del resultado: envuelve el círculo fijo mientras dura el aviso.
+            if (resultTint != null && tintMix > 0.01f) {
+                drawCircle(
+                    color = resultTint.copy(alpha = 0.34f * tintMix),
+                    radius = targetRadius,
+                    center = center,
+                    style = Stroke(width = RING_GLOW_STROKE.toPx() * 2f)
+                )
+            }
+
             // Charco de agua bajo el Pokémon: da profundidad al círculo fijo.
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(WATER_POOL.copy(alpha = 0.34f), Color.Transparent),
+                    colors = listOf(
+                        tinted(WATER_POOL).copy(alpha = 0.34f + 0.26f * tintMix),
+                        Color.Transparent
+                    ),
                     center = center,
                     radius = targetRadius
                 ),
@@ -576,13 +622,13 @@ private fun RingGymScene(
                 style = outlineStroke
             )
             drawCircle(
-                color = WATER_LIGHT.copy(alpha = 0.95f),
+                color = tinted(WATER_LIGHT).copy(alpha = 0.95f),
                 radius = targetRadius,
                 center = center,
                 style = mainStroke
             )
             drawCircle(
-                color = WATER_FOAM.copy(alpha = 0.95f),
+                color = tinted(WATER_FOAM).copy(alpha = 0.95f),
                 radius = targetRadius - 3.dp.toPx(),
                 center = center,
                 style = foamStroke
@@ -595,19 +641,26 @@ private fun RingGymScene(
                 val bubbleX = center.x + (index - 2f) * (targetRadius * 0.28f)
                 val bubbleY = center.y + targetRadius * 0.82f - phase * targetRadius * 1.6f
                 drawCircle(
-                    color = WATER_FOAM.copy(alpha = 0.42f * (1f - phase)),
+                    color = tinted(WATER_FOAM).copy(alpha = 0.42f * (1f - phase)),
                     radius = if (index % 2 == 0) 3.dp.toPx() else 2.dp.toPx(),
                     center = Offset(bubbleX, bubbleY)
                 )
             }
 
-            // Anillos que se cierran: agua profunda, espuma, ondulación y gotas.
+            // Anillos que se cierran. El aro es una banda de agua: contorno oscuro
+            // que lo separa del fondo, cuerpo con degradado, cresta de espuma,
+            // cáusticas que giran y gotas que se desprenden hacia fuera.
             currentState.rings.forEach { ring ->
-                val radius = startRadius + (targetRadius - startRadius) * ring.progressAt(now)
+                val progress = ring.progressAt(now)
+                val radius = startRadius + (targetRadius - startRadius) * progress
                 val onBeat = ring.isInWindow(now, currentState.ringWindowMs)
+                // Un aro grande ondula; al llegar al círculo fijo se alisa.
+                val energy = ((radius - targetRadius) / (startRadius - targetRadius))
+                    .coerceIn(0f, 1f)
 
+                // Halo: el volumen de agua que empuja el aro.
                 drawCircle(
-                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.30f),
+                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.26f),
                     radius = radius,
                     center = center,
                     style = Stroke(width = RING_GLOW_STROKE.toPx())
@@ -628,101 +681,82 @@ private fun RingGymScene(
                     center = center
                 )
 
-                if (onBeat) {
-                    // En su ventana el anillo queda liso: es la señal exacta.
-                    drawCircle(
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        radius = radius,
-                        center = center,
-                        style = outlineStroke
-                    )
-                    drawCircle(
-                        brush = ringBrush,
-                        radius = radius,
-                        center = center,
-                        style = mainStroke
-                    )
-                } else {
-                    // Fuera de la ventana, el borde ondula como una ola.
-                    val wave = Path()
-                    val segments = 72
-                    for (step in 0..segments) {
-                        val angle = step * (2.0 * PI / segments).toFloat()
-                        val ripple = sin(angle * RING_WAVE_CYCLES + now / 220f) *
-                            RING_WAVE_AMPLITUDE.toPx()
-                        val x = center.x + cos(angle) * (radius + ripple)
-                        val y = center.y + sin(angle) * (radius + ripple)
-                        if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                // La onda: dos armónicos con velocidades distintas, para que no se
+                // lea como un círculo perfecto que respira.
+                val wave = Path()
+                val crestWave = Path()
+                val segments = 72
+                for (step in 0..segments) {
+                    val angle = step * (2.0 * PI / segments).toFloat()
+                    val ripple = if (onBeat) {
+                        0f
+                    } else {
+                        (sin(angle * 5f - now / 260f) * 0.62f +
+                            sin(angle * 11f + now / 190f) * 0.38f) *
+                            RING_WAVE_AMPLITUDE.toPx() * (0.25f + 0.75f * energy)
                     }
-                    wave.close()
-                    drawPath(
-                        path = wave,
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        style = outlineStroke
-                    )
-                    drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                    val x = center.x + cos(angle) * (radius + ripple)
+                    val y = center.y + sin(angle) * (radius + ripple)
+                    if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                    val crestRadius = radius + ripple + RING_CREST_OFFSET.toPx()
+                    val cx = center.x + cos(angle) * crestRadius
+                    val cy = center.y + sin(angle) * crestRadius
+                    if (step == 0) crestWave.moveTo(cx, cy) else crestWave.lineTo(cx, cy)
                 }
+                wave.close()
+                crestWave.close()
 
-                drawCircle(
-                    color = WATER_FOAM.copy(alpha = if (onBeat) 0.95f else 0.65f),
-                    radius = radius - 3.dp.toPx(),
-                    center = center,
+                drawPath(
+                    path = wave,
+                    color = RING_OUTLINE.copy(alpha = 0.62f),
+                    style = outlineStroke
+                )
+                drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                // Cresta de espuma en el borde exterior.
+                drawPath(
+                    path = crestWave,
+                    color = WATER_FOAM.copy(alpha = if (onBeat) 1f else 0.78f),
                     style = foamStroke
                 )
 
-                // Gotas de espuma que orbitan el anillo y respiran con el tiempo.
-                val spin = (now % 7_000L) / 7_000f * 360f
-                repeat(4) { dropIndex ->
-                    val direction = if (dropIndex % 2 == 0) 1f else -1f
-                    val angle = (dropIndex * 90f + spin * direction) * PI.toFloat() / 180f
-                    val dropX = center.x + cos(angle) * radius
-                    val dropY = center.y + sin(angle) * radius
-                    val dropRadius = (dropIndex + 2).dp.toPx() *
-                        (0.75f + 0.25f * sin(now / 300f + dropIndex))
+                // Cáusticas: arcos cortos que corren por la cresta a distinta
+                // velocidad, como la luz sobre el agua en movimiento.
+                if (!onBeat) {
+                    repeat(4) { index ->
+                        val spinMs = 2_100L + index * 380L
+                        val base = (index * 90f) + (now % spinMs) / spinMs.toFloat() * 360f
+                        val sweep = 16f + index * 4f
+                        val arcRadius = radius + RING_CREST_OFFSET.toPx() + 1.dp.toPx()
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.30f + 0.12f * energy),
+                            startAngle = base,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
+                            size = Size(arcRadius * 2f, arcRadius * 2f),
+                            style = Stroke(width = RING_CREST_STROKE.toPx())
+                        )
+                    }
+                }
+
+                // Gotas que se desprenden del aro hacia fuera y se apagan.
+                repeat(6) { index ->
+                    val periodMs = 900L + index * 120L
+                    val phase = ((now + index * 217L) % periodMs) / periodMs.toFloat()
+                    val angle = index * (360f / 6f) + progress * 90f
+                    val rad = angle * PI.toFloat() / 180f
+                    val distance = radius + phase * 7.dp.toPx()
                     drawCircle(
-                        color = if (onBeat) Color.White.copy(alpha = 0.95f)
-                        else WATER_FOAM.copy(alpha = 0.9f),
-                        radius = dropRadius,
-                        center = Offset(dropX, dropY)
+                        color = if (onBeat) Color.White.copy(alpha = 0.9f * (1f - phase))
+                        else WATER_FOAM.copy(alpha = 0.85f * (1f - phase)),
+                        radius = (1.2f + (index % 3) * 0.5f).dp.toPx() * (1f - phase * 0.5f),
+                        center = Offset(center.x + cos(rad) * distance, center.y + sin(rad) * distance)
                     )
                 }
             }
 
-            // Estallido del resultado: salpicadura de espuma o onda roja.
-            val progress = feedbackProgress.value
-            if (feedback != null && progress < 1f) {
-                val fade = 1f - progress
-                when (feedback.outcome) {
-                    RingOutcome.HIT -> {
-                        drawCircle(
-                            color = WATER_FOAM.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 42.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (4f * fade + 1f).dp.toPx())
-                        )
-                        repeat(8) { dropIndex ->
-                            val angle = dropIndex * 45f * PI.toFloat() / 180f
-                            val distance = targetRadius + 60.dp.toPx() * progress
-                            drawCircle(
-                                color = WATER_LIGHT.copy(alpha = 0.9f * fade),
-                                radius = (3.5f * fade + 1f).dp.toPx(),
-                                center = Offset(
-                                    center.x + cos(angle) * distance,
-                                    center.y + sin(angle) * distance
-                                )
-                            )
-                        }
-                    }
-                    RingOutcome.MISS -> {
-                        drawCircle(
-                            color = MISS_RED.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 36.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (5f * fade + 1f).dp.toPx())
-                        )
-                    }
-                }
-            }
+            // El resultado lo pinta la capa de sprite sheets que va por encima de
+            // los sprites: el anillo fallado tiene que cerrarse *sobre* el Pokémon.
         }
 
         // Enemigo, con pulso mientras está expuesto.
@@ -757,42 +791,350 @@ private fun RingGymScene(
                 .size(layout.playerWidth, layout.playerHeight)
         )
 
-        // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
-        // cueva. Sube y se desvanece con el mismo reloj que el estallido.
+        // Efecto del resultado, por encima de los sprites: el acierto salpica y el
+        // fallo cierra el anillo sobre el Pokémon y estalla en el centro. Arranca
+        // en el radio que tenía el anillo al resolverse, no en el del jugador.
         feedback?.let { result ->
-            val progress = feedbackProgress.value
-            // Se queda legible un instante y después se desvanece.
-            val fade = if (progress < 0.45f) {
-                1f
-            } else {
-                ((1f - progress) / 0.55f).coerceIn(0f, 1f)
+            val spec = WaterRingSheet.forOutcome(result.outcome)
+            val elapsed = now - fxStartMs
+            if (elapsed >= 0L && elapsed < spec.durationMs) {
+                val sheet = if (result.outcome == RingOutcome.HIT) burstSheet else implodeSheet
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val targetRadius = RING_TARGET_RADIUS.toPx()
+                    val startRadius = RING_START_RADIUS.toPx()
+                    val radius = startRadius + (targetRadius - startRadius) * result.ringProgress
+                    drawWaterRingFx(
+                        sheet = sheet,
+                        spec = spec,
+                        frame = spec.frameAt(elapsed),
+                        center = Offset(
+                            x = size.width / 2f,
+                            y = size.height - layout.playerBottom.toPx() -
+                                layout.playerHeight.toPx() / 2f
+                        ),
+                        radiusPx = radius
+                    )
+                }
             }
+        }
+
+        // Cartel del resultado, portado de `ui/combo-counter` de pixelfx: entra
+        // coleteando, golpea y se va barrido. Verde para aciertos, rojo para fallos.
+        feedback?.let { result ->
             val hit = result.outcome == RingOutcome.HIT
             val label = when {
+                hit && result.combo >= 2 -> stringResource(R.string.gym_ring_combo, result.combo)
                 hit -> stringResource(R.string.gym_ring_hit)
                 result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
                 else -> stringResource(R.string.gym_ring_miss)
             }
-            Text(
-                text = label,
-                color = if (hit) WATER_FOAM else MISS_RED,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
-                ),
-                fontWeight = FontWeight.Black,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-36).dp)
-                    .graphicsLayer {
-                        alpha = fade
-                        val scale = 1f + 0.18f * progress
-                        scaleX = scale
-                        scaleY = scale
-                    }
-            )
+            val seconds = (now - fxStartMs) / 1000f
+            if (seconds >= 0f && seconds < BANNER_LIFE_S) {
+                RingResultBanner(
+                    text = label,
+                    color = if (hit) HIT_GREEN else MISS_RED,
+                    combo = if (hit) result.combo else 0,
+                    seconds = seconds,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
 
     }
+}
+
+/**
+ * Cartel del resultado del anillo.
+ *
+ * Portado de `ui/combo-counter` de pixelfx: las letras entran coleteando desde la
+ * izquierda con líneas de velocidad y dos estelas, frenan de golpe con un destello
+ * blanco, un anillo y chispas, laten en el pulso y se van barridas a la derecha.
+ * Todo se calcula desde [seconds], así que no necesita animaciones propias ni
+ * acumular estado. La barra de tiempo del original no se trae: el cartel no dura
+ * lo suficiente como para que informar del tiempo restante aporte algo.
+ *
+ * @param color verde del acierto o rojo del fallo.
+ * @param combo aciertos seguidos; solo engorda la lluvia de chispas.
+ */
+@Composable
+private fun RingResultBanner(
+    text: String,
+    color: Color,
+    combo: Int,
+    seconds: Float,
+    modifier: Modifier = Modifier
+) {
+    val cell = BANNER_CELL
+    val cells = PixelFont.widthOf(text)
+
+    // Latido del pulso: las letras crecen un 12 % y destellan blanco en el pico.
+    val fromBeat = (seconds - BANNER_BEAT_S) / 0.05f
+    val pulse = exp(-(fromBeat * fromBeat))
+    val flash = (seconds >= BANNER_HIT_S && seconds < BANNER_HIT_S + 0.07f) || pulse > 0.6f
+    // Salida: se va barrida a la derecha.
+    val gone = seg(seconds, BANNER_OUT_S + 0.08f, BANNER_OUT_S + 0.20f)
+    val moving = seconds < BANNER_HIT_S || seconds > BANNER_OUT_S + 0.06f
+    val stretch = when {
+        !moving -> 1f
+        seconds < BANNER_HIT_S -> BANNER_STRETCH_IN
+        else -> BANNER_STRETCH_OUT
+    }
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(BANNER_HEIGHT)
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val px = cell.toPx() * (1f + BANNER_PULSE_SCALE * pulse)
+        val wordW = cells * px * stretch
+        val wordH = PixelFont.HEIGHT * px
+        val dx = bannerX(seconds).dp.toPx()
+        val frame = (seconds * BANNER_FPS).toInt()
+
+        // 1. Líneas de velocidad: se relanzan cada fotograma, como una viñeta.
+        val lineK = when {
+            seconds < BANNER_HIT_S -> 1f
+            seconds < BANNER_OUT_S ->
+                (1f - (seconds - BANNER_HIT_S) / 0.35f).coerceAtLeast(0f) * 0.9f
+            else -> seg(seconds, BANNER_OUT_S + 0.04f, BANNER_OUT_S + 0.12f) *
+                (1f - seg(seconds, BANNER_OUT_S + 0.18f, BANNER_OUT_S + 0.30f))
+        }
+        if (lineK > 0.02f) {
+            val outgoing = seconds >= BANNER_OUT_S
+            repeat(BANNER_SPEED_LINES) { index ->
+                // Cada fotograma relanza las líneas: mismo índice, semilla distinta.
+                val seed = frame * BANNER_FRAME_STRIDE + index
+                if (hashNoise(seed, 3) > lineK) return@repeat
+                val y = (hashNoise(seed, 1) - 0.5f) * 60f
+                val half = 8f + hashNoise(seed, 2) * 25f
+                val x = (hashNoise(seed, 4) - 0.5f) * 190f
+                val left = center.x + (x - half).dp.toPx()
+                val right = center.x + (x + half).dp.toPx()
+                val lineY = center.y + y.dp.toPx()
+                drawLine(
+                    color = color.copy(alpha = 0.45f),
+                    start = Offset(left, lineY),
+                    end = Offset(right, lineY),
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
+                )
+                // La punta que marca el sentido de la marcha va en blanco.
+                drawLine(
+                    color = Color.White.copy(alpha = 0.6f),
+                    start = Offset(if (outgoing) left else right - half * 0.35f, lineY),
+                    end = Offset(if (outgoing) left + half * 0.35f else right, lineY),
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
+                )
+            }
+        }
+
+        // 2. El golpe: picos blancos dos fotogramas y un anillo que rueda.
+        val sinceHit = seconds - BANNER_HIT_S
+        if (sinceHit >= 0f && sinceHit < 0.07f) {
+            val arm = if (sinceHit < 0.035f) 22.dp.toPx() else 30.dp.toPx()
+            repeat(10) { index ->
+                val angle = index / 10f * (2f * PI.toFloat()) + 0.25f
+                val reach = arm * (0.6f + hashNoise(index, 5) * 0.7f)
+                drawLine(
+                    color = if (sinceHit < 0.035f) Color.White else color,
+                    start = Offset(
+                        center.x + dx + cos(angle) * reach * 0.35f,
+                        center.y + sin(angle) * reach * 0.35f
+                    ),
+                    end = Offset(
+                        center.x + dx + cos(angle) * reach,
+                        center.y + sin(angle) * reach
+                    ),
+                    strokeWidth = 3.dp.toPx()
+                )
+            }
+        }
+        val ringT = sinceHit / 0.32f
+        if (ringT > 0f && ringT < 1f) {
+            val r = 20.dp.toPx() + 34.dp.toPx() * easeOutCubic(ringT)
+            drawOval(
+                color = if (ringT < 0.3f) Color.White else color,
+                topLeft = Offset(center.x + dx - r * 1.5f, center.y - r * 0.75f),
+                size = Size(r * 3f, r * 1.5f),
+                alpha = 1f - ringT,
+                style = Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        // 3. Chispas del impacto, resueltas en el sitio: no hay emisor.
+        if (sinceHit >= 0f && sinceHit < 0.30f) {
+            repeat(12 + combo.coerceAtMost(8)) { index ->
+                val angle = index / 20f * (2f * PI.toFloat()) + 0.4f
+                val speed = 90f + hashNoise(index, 7) * 160f
+                val distance = speed * sinceHit * (1f - sinceHit * 1.2f).coerceAtLeast(0.1f)
+                drawRect(
+                    color = (if (index % 3 == 0) Color.White else color)
+                        .copy(alpha = 1f - sinceHit / 0.30f),
+                    topLeft = Offset(
+                        center.x + dx + cos(angle) * distance.dp.toPx(),
+                        center.y + sin(angle) * distance.dp.toPx()
+                    ),
+                    size = Size(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+        }
+
+        // 4. Estelas: dos copias apagadas persiguiendo a las letras.
+        if (moving && gone < 1f) {
+            listOf(0.03f to 0.28f, 0.015f to 0.48f).forEach { (lag, tone) ->
+                val lagged = if (seconds < BANNER_HIT_S) seconds - lag else seconds + lag
+                PixelFont.run {
+                    drawText(
+                        text = text,
+                        origin = Offset(
+                            center.x + bannerX(lagged).dp.toPx() - wordW / 2f,
+                            center.y - wordH / 2f
+                        ),
+                        pixel = px,
+                        color = color.copy(alpha = tone),
+                        stretchX = stretch
+                    )
+                }
+            }
+        }
+
+        // 5. Las letras, con contorno oscuro, tramos de color y brillo que barre.
+        if (gone < 1f) {
+            val body = if (flash) Color.White else color
+            val top = if (flash) Color.White else lerp(color, Color.White, 0.55f)
+            val bottom = if (flash) Color.White else lerp(color, Color.Black, 0.55f)
+            val sweep = seg(seconds, BANNER_SHINE_FROM_S, BANNER_SHINE_TO_S)
+            PixelFont.run {
+                drawText(
+                    text = text,
+                    origin = Offset(
+                        center.x + dx - wordW / 2f,
+                        center.y - wordH / 2f
+                    ),
+                    pixel = px,
+                    color = body.copy(alpha = 1f - gone),
+                    stretchX = stretch,
+                    top = top.copy(alpha = 1f - gone),
+                    bottom = bottom.copy(alpha = 1f - gone),
+                    outline = RING_OUTLINE.copy(alpha = 1f - gone),
+                    shine = if (sweep > 0f && sweep < 1f) {
+                        -BANNER_SHINE_MARGIN + (cells + BANNER_SHINE_MARGIN * 2) * sweep
+                    } else {
+                        null
+                    }
+                )
+            }
+        }
+
+        // 6. Salida: las motas que se escapan hacia la derecha.
+        if (seconds > BANNER_OUT_S) {
+            val fade = 1f - seg(seconds, BANNER_OUT_S + 0.06f, BANNER_OUT_S + 0.20f)
+            if (fade > 0f) {
+                repeat(10) { index ->
+                    val y = (hashNoise(index, 11) - 0.5f) * 26f
+                    val travel = (seconds - BANNER_OUT_S) * 260f *
+                        (0.5f + hashNoise(index, 13))
+                    drawRect(
+                        color = Color.White.copy(alpha = fade * 0.8f),
+                        topLeft = Offset(
+                            center.x + travel.dp.toPx(),
+                            center.y + y.dp.toPx()
+                        ),
+                        size = Size(6.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dónde caen las letras a lo largo de su vida, en dp respecto al centro: entran
+ * desde la izquierda frenando, se pasan de largo y vibran, y salen disparadas a la
+ * derecha. Es la curva del `xAt` de `ui/combo-counter`.
+ */
+private fun bannerX(t: Float): Float {
+    if (t < BANNER_HIT_S) {
+        val u = 1f - t / BANNER_HIT_S
+        return -32f * u * u
+    }
+    if (t < BANNER_OUT_S) {
+        val e = t - BANNER_HIT_S
+        return 7f * exp(-e * 18f) * sin(e * 34f)
+    }
+    val u = ((t - BANNER_OUT_S) / 0.2f).coerceIn(0f, 1f)
+    return if (u < 0.3f) -4f * easeOutQuad(u / 0.3f)
+    else -4f + 24f * easeInQuad((u - 0.3f) / 0.7f)
+}
+
+/** Ruido determinista por índice: las líneas de velocidad cambian por fotograma. */
+private fun hashNoise(index: Int, salt: Int): Float {
+    var h = index * 374761393 + salt * 668265263
+    h = (h xor (h shr 13)) * 1274126177
+    return ((h xor (h shr 16)) and 0x7fffffff) / 2147483647f
+}
+
+/** Tramo normalizado de [t] entre [from] y [to]. */
+private fun seg(t: Float, from: Float, to: Float): Float =
+    ((t - from) / (to - from)).coerceIn(0f, 1f)
+
+private fun easeOutQuad(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u
+}
+
+private fun easeInQuad(t: Float): Float {
+    val u = t.coerceIn(0f, 1f)
+    return u * u
+}
+
+/** Golpe, pulso y salida del cartel, en segundos. Salen del efecto de pixelfx. */
+private const val BANNER_HIT_S = 0.10f
+private const val BANNER_BEAT_S = 0.42f
+private const val BANNER_OUT_S = 0.95f
+
+/** Vida total del cartel; pasado este tiempo el llamante deja de componerlo. */
+private const val BANNER_LIFE_S = 1.20f
+
+/** Ventana en la que el brillo barre las letras de izquierda a derecha. */
+private const val BANNER_SHINE_FROM_S = 0.55f
+private const val BANNER_SHINE_TO_S = 0.80f
+
+/** Celdas de margen por cada lado que recorre el brillo antes y después del texto. */
+private const val BANNER_SHINE_MARGIN = 2f
+
+/** Lado de una celda de la fuente: el mando de tamaño de todo el cartel. */
+private val BANNER_CELL = 4.dp
+
+/** Alto del lienzo del cartel; deja aire para las líneas de velocidad. */
+private val BANNER_HEIGHT = 150.dp
+
+/** Grosor de las líneas de velocidad. */
+private val BANNER_LINE_STROKE = 1.5.dp
+
+/** Fotogramas por segundo con los que se relanzan las líneas de velocidad. */
+private const val BANNER_FPS = 30f
+
+/** Líneas de velocidad que se intentan por fotograma. */
+private const val BANNER_SPEED_LINES = 18
+
+/** Desfase entre fotogramas: mismas líneas, colocadas de otra forma cada vez. */
+private const val BANNER_FRAME_STRIDE = 31
+
+/** Ensanche horizontal de las letras mientras vuelan: al entrar y al salir. */
+private const val BANNER_STRETCH_IN = 1.22f
+private const val BANNER_STRETCH_OUT = 1.12f
+
+/** Cuánto crecen las letras en el pico del latido. */
+private const val BANNER_PULSE_SCALE = 0.12f
+
+/** Interpolación lineal suelta, para no arrastrar otra dependencia. */
+private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/** Curva de salida rápida y frenada, la que usan el confeti y el golpe. */
+private fun easeOutCubic(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u * u
 }
 
 // ─────────────────────────── Voltorb (Lt. Surge) ───────────────────────────
@@ -1650,10 +1992,16 @@ private val RING_GLOW_STROKE = 11.dp
 
 /** Ondulación del anillo de agua fuera de la ventana de acierto. */
 private val RING_WAVE_AMPLITUDE = 2.5.dp
-private const val RING_WAVE_CYCLES = 6f
 
-/** Duración del estallido y de la etiqueta de acierto/fallo. */
-private const val RING_FEEDBACK_MS = 900
+/** Distancia entre el cuerpo del aro y la cresta de espuma. */
+private val RING_CREST_OFFSET = 1.5.dp
+private val RING_CREST_STROKE = 1.dp
+
+/**
+ * Cuánto dura el tinte de resultado en el círculo fijo del jugador, en ms. Cubre
+ * el arranque del efecto (0,83 s el acierto, 1,03 s el fallo) sin quedarse pegado.
+ */
+private const val RING_TINT_MS = 800L
 
 /** Paleta de agua de los anillos. */
 private val WATER_DEEP = Color(0xFF0D47A1)
@@ -1671,6 +2019,12 @@ private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
 
 /** Rojo del fallo. */
 private val MISS_RED = Color(0xFFFF5252)
+
+/**
+ * Verde del acierto. Es el paso claro de la rampa con la que se exportó
+ * `hydro_burst.png`, así el mensaje y el estallido hablan el mismo idioma.
+ */
+private val HIT_GREEN = Color(0xFF7EE88A)
 
 /** Frames del Voltorb: reposo, carga y resolución, en orden de reproducción. */
 private val VOLTORB_FRAME_RES = intArrayOf(

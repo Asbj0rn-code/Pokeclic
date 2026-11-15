@@ -59,7 +59,12 @@ internal data class GymLeaderLine(
     /** Texto de la línea (`R.string.*`). */
     @param:StringRes val textRes: Int,
     /** Retrato que se muestra mientras se escribe la línea (`R.drawable.*`). */
-    @param:DrawableRes val portraitRes: Int
+    @param:DrawableRes val portraitRes: Int,
+    /**
+     * Segundo retrato que se turna con [portraitRes] mientras la línea se escribe:
+     * la boca abierta y cerrada de un mismo dibujo. `null` deja el retrato quieto.
+     */
+    @param:DrawableRes val altPortraitRes: Int? = null
 )
 
 /**
@@ -73,6 +78,15 @@ internal data class GymLeaderScript(val lines: List<GymLeaderLine>)
 /** Cara de siempre de Brock, y la de sorpresa mientras escucha al jugador. */
 private val brockCalm = R.drawable.brock
 private val brockSurprised = R.drawable.brock_surprised
+
+/**
+ * Misty: la boca abierta y cerrada de su cara de siempre. Se turnan mientras
+ * habla, así que el retrato se mueve sin necesidad de más dibujos.
+ */
+private val mistyHappyOpen = R.drawable.misty_happy
+private val mistyHappyClosed = R.drawable.misty_happy2
+private val mistySurprised = R.drawable.misty_surprised
+private val mistySmiling = R.drawable.misty_smiling
 
 /** Brock: bienvenida, la sequía de retadores, el Team Rocket y la medalla. */
 private val brockScript = GymLeaderScript(
@@ -95,7 +109,33 @@ private val brockScript = GymLeaderScript(
     )
 )
 
-private val leaderScripts: Map<String, GymLeaderScript> = mapOf("brock" to brockScript)
+/**
+ * Misty: la bienvenida aburrida, la sorpresa al oír lo del Team Rocket, la
+ * negativa a regalar la medalla y la pregunta del tutorial.
+ *
+ * Las líneas de su cara de siempre llevan [GymLeaderLine.altPortraitRes]: la boca
+ * se abre y se cierra sola mientras escribe, que es todo lo que hace falta para
+ * que parezca que habla.
+ */
+private val mistyScript = GymLeaderScript(
+    lines = listOf(
+        GymLeaderLine(R.string.gym_leader_line_misty_welcome, mistyHappyOpen, mistyHappyClosed),
+        GymLeaderLine(R.string.gym_leader_line_misty_bored, mistyHappyOpen, mistyHappyClosed),
+        // El jugador le cuenta lo del Team Rocket: ella escucha, ya sorprendida.
+        GymLeaderLine(R.string.gym_leader_line_listen, mistySurprised),
+        GymLeaderLine(R.string.gym_leader_line_listen, mistySurprised),
+        GymLeaderLine(R.string.gym_leader_line_misty_rocket, mistySurprised),
+        GymLeaderLine(R.string.gym_leader_line_listen, mistySurprised),
+        // La medalla no se regala: media sonrisa y el reto.
+        GymLeaderLine(R.string.gym_leader_line_misty_badge, mistySmiling),
+        GymLeaderLine(R.string.gym_leader_line_misty_duel, mistySmiling),
+        // Vuelve a su cara de siempre para ofrecer el tutorial.
+        GymLeaderLine(R.string.gym_leader_line_misty_tutorial, mistyHappyOpen, mistyHappyClosed)
+    )
+)
+
+private val leaderScripts: Map<String, GymLeaderScript> =
+    mapOf("brock" to brockScript, "misty" to mistyScript)
 
 /** Gimnasios con discurso propio; el resto usa la bienvenida genérica. */
 internal val scriptedLeaderGymIds: Set<String> = leaderScripts.keys
@@ -180,6 +220,7 @@ internal fun GymEntryDialogue(
 
     LeaderDialogue(
         portraitRes = line.portraitRes,
+        altPortraitRes = line.altPortraitRes,
         leaderName = leaderName,
         step = stepIndex,
         text = stringResource(line.textRes),

@@ -38,6 +38,19 @@ internal data class GymSceneLayout(
  */
 internal object GymSceneLayouts {
 
+    /**
+     * Escala de sprite de los fondos **pixel-art 2:3** (Brock y Misty): el dibujo
+     * es el mismo tamaño en píxeles, así que el sprite tiene que medir lo mismo en
+     * los dos o uno de los dos se ve fuera de escala. Un cambio aquí mueve ambos
+     * gimnasios a la vez, a propósito.
+     */
+    private object PixelArtSprites {
+        val ENEMY_WIDTH = 164.dp
+        val ENEMY_HEIGHT = 136.dp
+        val PLAYER_WIDTH = 82.dp
+        val PLAYER_HEIGHT = 93.dp
+    }
+
     /** Composición de los gimnasios que aún no tienen una propia. */
     val DEFAULT = GymSceneLayout(
         enemyWidth = 180.dp,
@@ -54,22 +67,26 @@ internal object GymSceneLayouts {
      * dejar aire sobre la tarima.
      */
     private val BROCK = GymSceneLayout(
-        enemyWidth = 164.dp,
-        enemyHeight = 136.dp,
+        enemyWidth = PixelArtSprites.ENEMY_WIDTH,
+        enemyHeight = PixelArtSprites.ENEMY_HEIGHT,
         enemyTop = 152.dp,
-        playerWidth = 82.dp,
-        playerHeight = 93.dp,
+        playerWidth = PixelArtSprites.PLAYER_WIDTH,
+        playerHeight = PixelArtSprites.PLAYER_HEIGHT,
         playerBottom = 140.dp
     )
 
-    /** Misty: conserva la composición del arte de piscina. */
+    /**
+     * Misty: mismo arte pixel-art 2:3 que Brock, así que comparte su escala de
+     * sprite. El anclaje sí es propio: el líder conserva su altura y el Pokémon
+     * del jugador sube sobre la tarima de madera del dibujo.
+     */
     private val MISTY = GymSceneLayout(
-        enemyWidth = 180.dp,
-        enemyHeight = 150.dp,
+        enemyWidth = PixelArtSprites.ENEMY_WIDTH,
+        enemyHeight = PixelArtSprites.ENEMY_HEIGHT,
         enemyTop = 178.dp,
-        playerWidth = 90.dp,
-        playerHeight = 102.dp,
-        playerBottom = 160.dp
+        playerWidth = PixelArtSprites.PLAYER_WIDTH,
+        playerHeight = PixelArtSprites.PLAYER_HEIGHT,
+        playerBottom = 180.dp
     )
 
     /**

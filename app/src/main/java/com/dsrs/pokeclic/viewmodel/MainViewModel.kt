@@ -22,8 +22,6 @@ import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexProjector
-import com.dsrs.pokeclic.model.RingFeedback
-import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
@@ -36,7 +34,6 @@ import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advance
 import com.dsrs.pokeclic.model.advanceZone
-import com.dsrs.pokeclic.model.allowedInteractions
 import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isGymPending
 import com.dsrs.pokeclic.model.isGuidedStep
@@ -723,13 +720,7 @@ class MainViewModel(
         updateGym { current ->
             val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
             val onBeat = GymCombat.isRingOnBeat(ring, current, now)
-            val resolved = current.copy(
-                rings = current.rings.filterNot { it.id == ring.id },
-                ringFeedback = RingFeedback(
-                    ringId = ring.id,
-                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
-                )
-            )
+            val resolved = GymCombat.resolveRings(current, listOf(ring), onBeat, now)
             if (onBeat) GymCombat.addPosture(resolved)
             else applyRingMiss(GymCombat.failPosture(resolved), config.ringMissDamage)
         }
@@ -987,15 +978,9 @@ class MainViewModel(
 
         val expired = GymCombat.expiredRings(next, now)
         if (expired.isNotEmpty()) {
-            val expiredIds = expired.map { it.id }.toSet()
-            next = next.copy(
-                rings = next.rings.filterNot { it.id in expiredIds },
-                ringFeedback = RingFeedback(
-                    ringId = expired.maxOf { it.id },
-                    outcome = RingOutcome.MISS,
-                    count = expired.size
-                )
-            )
+            // Varios pueden caducar en el mismo tick: los cobra todos de una vez y
+            // el combo cae a cero en el mismo sitio que un fallo pulsado.
+            next = GymCombat.resolveRings(next, expired, hit = false, nowMs = now)
             next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
         }
 

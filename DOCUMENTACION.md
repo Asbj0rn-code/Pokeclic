@@ -927,12 +927,21 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `brock_angry.png` | Brock enfadado, en el discurso de furia a mitad de combate |
 | `brock_happy.png` | Brock sonriente, en la despedida al ganar el gimnasio |
 | `medalla_roca.png` | Medalla Roca, que Brock entrega al perder |
+| `misty_happy.png`, `misty_happy2.png` | Misty de siempre, boca abierta y cerrada: se alternan mientras habla |
+| `misty_surprised.png` | Misty sorprendida, mientras escucha lo del Team Rocket |
+| `misty_smiling.png` | Misty con media sonrisa, al negarse a regalar la medalla |
+| `misty_angry.png` | Misty enfadada, en el discurso de furia a mitad de combate |
+| `misty_sad.png` | Misty apenada, al perder el combate |
+| `medalla_cascada.png` | Medalla Cascada, que Misty entrega al perder |
 | `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados de la intro |
 | `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principal visto de espaldas en el gimnasio |
 | `golem.gif` | Enemigo de Brock |
 | `rock.png` | Proyectil del gimnasio |
 | `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
+| `water_gym.png` | Fondo del gimnasio de agua (`drawable-nodpi`, 1536×2304 pixel art) |
 | `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
+| `hydro_burst.png` | Acierto del anillo de Misty (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
+| `hydro_implode.png` | Fallo del anillo de Misty (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
@@ -958,8 +967,9 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 > se muestra a 80 dp. Conviene reducirla a unas 300×300 px o pasarla a WebP.
 > `tall_grass_full.png` y `tall_grass_mid.png` son de 750×750 px y se muestran a
 > 120 dp, así que también admiten reducción. Los fondos de gimnasio (`rock_gym.png`,
-> `water_gym.jpg`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
-> densidad no los reescale; el de roca pasó de 3,4 MB en JPG a ~40 KB en PNG.
+> `water_gym.png`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
+> densidad no los reescale; roca y agua pasaron de varios MB en JPG a ~40 KB y
+> ~29 KB en PNG.
 
 ### Strings (`res/values/strings.xml`)
 
@@ -1606,11 +1616,20 @@ va **por línea**: Brock sigue con su cara de siempre mientras escucha los prime
 «...» y cambia a `brock_surprised` justo en «Espera... ¿me estás diciendo que el
 Team Rocket...?», manteniéndola hasta el estallido; después recupera su cara de
 siempre para la medalla y el reto.
-El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock tiene el
-suyo y Misty y Lt. Surge, que aún no tienen retrato ni guion, conservan el panel de
-bienvenida genérico. La última línea ofrece «Ver tutorial» / «Omitir», que llevan
-a `TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por
-entrada (un reintento tras perder va directo al cartel).
+El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock y Misty
+tienen el suyo y Lt. Surge, que aún no tiene retrato ni guion, conserva el panel de
+bienvenida genérico. Una línea puede declarar un **segundo retrato**
+(`GymLeaderLine.altPortraitRes`): mientras la máquina de escribir avanza, los dos
+se alternan cada 140 ms, que es como Misty mueve la boca entre `misty_happy` y
+`misty_happy2` sin dibujos extra. El tamaño del retrato lo frenan tres topes
+(`leaderPortraitSize`): fracción del ancho, ancho máximo y fracción del alto. Cada
+arte lo frena uno distinto —Brock es vertical (400×750) y manda el alto; Misty es
+más cuadrada (512×686) y manda el ancho—, así que subir el ancho no agranda a
+Brock. La capa extra (`overlay`, la medalla) se compone **la última**: va por
+delante del retrato y también de la caja de diálogo, y no come toques porque no
+declara ninguno. La última línea ofrece «Ver tutorial» / «Omitir», que llevan a
+`TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por entrada
+(un reintento tras perder va directo al cartel).
 
 El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
 pantalla completa: durante el combate **desaparece el bottom menu** (barra y
@@ -1645,9 +1664,12 @@ en el panel de derrota):
    saltársela con daño alto.
    Ese cruce abre además el **discurso de furia** (`GymState.rageSpeech`): el
    combate se **detiene** del todo —el bucle del ViewModel no avanza— y la escena
-   se sustituye por `brock_angry` con dos líneas de diálogo, la segunda en
-   mayúsculas y con el retrato bamboleándose (el grito a su Pokémon). Al cerrarlo
-   se apaga el flag y la siguiente vuelta del bucle ya dispara la oleada de furia.
+   se sustituye por la cara de furia del líder con dos líneas de diálogo, la
+   segunda en mayúsculas y con el retrato bamboleándose (el grito a su Pokémon).
+   Las caras y las frases son por gimnasio (`rageScriptFor`: Brock le grita a su
+   Golem, Misty a su Starmie); un líder sin furia propia conserva las de Brock.
+   Al cerrarlo se apaga el flag y la siguiente vuelta del bucle ya dispara la
+   oleada de furia.
 4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
    lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
    cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
@@ -1659,7 +1681,9 @@ en el panel de derrota):
    detiene y el Pokémon del líder **se hunde y se apaga** (`VICTORY_FADE_MS`,
    `VICTORY_ENEMY_SINK`); después llega la **despedida** (`ui/GymVictory.kt`): la
    cara de cada línea, la medalla apareciendo en el centro cuando la entrega y,
-   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Los gimnasios sin
+   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Cada guion declara
+   su medalla, su descripción y sus caras (`victoryScriptFor`); Misty pasa de
+   `misty_sad` a `misty_happy` y entrega la `medalla_cascada`. Los gimnasios sin
    despedida propia se cierran en cuanto termina el desvanecimiento.
 7. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
    sale del overlay; en el reset las **medallas persisten**, así que los
@@ -1714,7 +1738,7 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
 | `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
 | `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
-| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato, máquina de escribir y avance |
+| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato (con boca que alterna), máquina de escribir, avance y capa superior para la medalla |
 
 ### Estado nuevo (`GameUiState`)
 
@@ -1734,7 +1758,9 @@ roca o el anillo más cercano, o la celda de Voltorb).
   Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
   Registra su composición en `GymSceneLayouts` (tamaño y ancla de los sprites del
   líder y del jugador): cada arte coloca la plataforma a otra altura y, sin
-  entrada, el gimnasio usa `DEFAULT`.
+  entrada, el gimnasio usa `DEFAULT`. Los fondos pixel-art 2:3 (Brock, Misty)
+  comparten la escala de sprite en `PixelArtSprites`: un cambio ahí mueve los dos
+  gimnasios a la vez, y lo que se ajusta por arte es solo el ancla.
 - **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
   (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
 - **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
@@ -1748,6 +1774,32 @@ roca o el anillo más cercano, o la celda de Voltorb).
   `rock-shatter.png` a `drawable-nodpi/rock_shatter.png`. `RockShatterFxTest`
   comprueba que el sheet real coincide con la rejilla declarada en
   `RockShatterFx` (5 columnas, 13 frames de 64×80, 24 fps).
+- **Retocar los efectos del anillo de Misty**: los dos artes viven en pixelfx
+  (`src/fx/water/hydro-burst.js` y `src/fx/water/hydro-implode.js`, con el helper
+  `wetRing`/`wetArc` en `src/fx/water/_lib.js`). Se editan allí, se reexportan con
+  `node tools/render.mjs water/hydro-burst water/hydro-implode --sheet` y se copian
+  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. Las dos hojas van con
+  la rampa de agua a propósito: el aro que se cierra y el estallido siguen siendo
+  agua. El verde del acierto y el rojo del fallo los lleva el **círculo fijo**
+  alrededor del Pokémon (`tinted(...)` y `RING_TINT_MS` en `GymOverlay`).
+  `WaterRingFxTest`
+  comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
+  6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
+  del lienzo ni deja píxeles al terminar.
+- **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` es el
+  `ui/combo-counter` de pixelfx portado a Compose; todo se calcula desde los
+  segundos transcurridos (`BANNER_HIT_S`, `BANNER_BEAT_S`, `BANNER_OUT_S`,
+  `BANNER_LIFE_S`), sin animaciones propias ni estado acumulado. Encadena líneas
+  de velocidad, golpe con picos y anillo, chispas, dos estelas, el pulso del
+  latido, el brillo que barre las letras y la salida con motas. La barra de tiempo
+  del original se deja fuera: el cartel dura 1,2 s y no informa de nada. Las
+  letras no usan la tipografía del sistema: `PixelFont` es la fuente
+  5×7 de pixelfx (`src/core/font.js`, la "big") portada a Kotlin, dibujada con
+  rectángulos, contorno oscuro de una celda y tres tramos de color. El tamaño de
+  celda es el `cell = 4.dp` del cartel; ahí se agranda o achica. El combo vive en
+  `GymState.ringCombo` y viaja en `RingFeedback.combo`: sube con cada acierto y
+  cualquier fallo lo devuelve a 0. Con combo ≥ 2 el cartel usa
+  `gym_ring_combo` (`¡Combo ×N!`).
 - **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
   ataque (hoy hay *lunge* + destello) y proyectiles que aguantan varios toques
   (`Projectile.hitsRemaining` ya existe; el umbral de furia es
