@@ -22,8 +22,6 @@ import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
 import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexProjector
-import com.dsrs.pokeclic.model.RingFeedback
-import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
@@ -723,17 +721,7 @@ class MainViewModel(
         updateGym { current ->
             val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
             val onBeat = GymCombat.isRingOnBeat(ring, current, now)
-            val combo = if (onBeat) current.ringCombo + 1 else 0
-            val resolved = current.copy(
-                rings = current.rings.filterNot { it.id == ring.id },
-                ringCombo = combo,
-                ringFeedback = RingFeedback(
-                    ringId = ring.id,
-                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS,
-                    ringProgress = ring.progressAt(now),
-                    combo = combo
-                )
-            )
+            val resolved = GymCombat.resolveRings(current, listOf(ring), onBeat, now)
             if (onBeat) GymCombat.addPosture(resolved)
             else applyRingMiss(GymCombat.failPosture(resolved), config.ringMissDamage)
         }
@@ -991,19 +979,9 @@ class MainViewModel(
 
         val expired = GymCombat.expiredRings(next, now)
         if (expired.isNotEmpty()) {
-            val expiredIds = expired.map { it.id }.toSet()
-            next = next.copy(
-                rings = next.rings.filterNot { it.id in expiredIds },
-                ringCombo = 0,
-                ringFeedback = RingFeedback(
-                    ringId = expired.maxOf { it.id },
-                    outcome = RingOutcome.MISS,
-                    count = expired.size,
-                    // Un anillo caducado ya había llegado al círculo fijo: el
-                    // efecto arranca en el radio del jugador.
-                    ringProgress = expired.maxOf { it.progressAt(now) }
-                )
-            )
+            // Varios pueden caducar en el mismo tick: los cobra todos de una vez y
+            // el combo cae a cero en el mismo sitio que un fallo pulsado.
+            next = GymCombat.resolveRings(next, expired, hit = false, nowMs = now)
             next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
         }
 

@@ -1767,8 +1767,9 @@ roca o el anillo más cercano, o la celda de Voltorb).
   segundos transcurridos (`BANNER_HIT_S`, `BANNER_BEAT_S`, `BANNER_OUT_S`,
   `BANNER_LIFE_S`), sin animaciones propias ni estado acumulado. Encadena líneas
   de velocidad, golpe con picos y anillo, chispas, dos estelas, el pulso del
-  latido, el brillo que barre las letras, la barra que se vacía y la salida con
-  motas. Las letras no usan la tipografía del sistema: `PixelFont` es la fuente
+  latido, el brillo que barre las letras y la salida con motas. La barra de tiempo
+  del original se deja fuera: el cartel dura 1,2 s y no informa de nada. Las
+  letras no usan la tipografía del sistema: `PixelFont` es la fuente
   5×7 de pixelfx (`src/core/font.js`, la "big") portada a Kotlin, dibujada con
   rectángulos, contorno oscuro de una celda y tres tramos de color. El tamaño de
   celda es el `cell = 4.dp` del cartel; ahí se agranda o achica. El combo vive en

@@ -681,6 +681,36 @@ object GymCombat {
     fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
         state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
 
+    /**
+     * Resuelve [rings]: los saca de la lista, mueve el **combo** y publica el
+     * feedback que pinta la UI.
+     *
+     * Es el único sitio que toca [GymState.ringCombo] a propósito: acertar suma
+     * uno y fallar lo deja en cero, venga el fallo de una pulsación fuera de
+     * ventana o de anillos que caducaron solos. Tenerlo aquí evita que un camino
+     * nuevo se olvide de cortar la racha.
+     *
+     * @param hit `true` si la jugada acertó.
+     * @param rings anillos que se cobran en este evento; suele ser uno, pero
+     *   varios pueden caducar en el mismo tick.
+     */
+    fun resolveRings(state: GymState, rings: List<TimingRing>, hit: Boolean, nowMs: Long): GymState {
+        if (rings.isEmpty()) return state
+        val ids = rings.map { it.id }.toSet()
+        val combo = if (hit) state.ringCombo + 1 else 0
+        return state.copy(
+            rings = state.rings.filterNot { it.id in ids },
+            ringCombo = combo,
+            ringFeedback = RingFeedback(
+                ringId = rings.maxOf { it.id },
+                outcome = if (hit) RingOutcome.HIT else RingOutcome.MISS,
+                count = rings.size,
+                ringProgress = rings.maxOf { it.progressAt(nowMs) },
+                combo = combo
+            )
+        )
+    }
+
     // --- cuadrícula de Voltorb (Lt. Surge) ---------------------------------
 
     /** Voltorb de [cell], o `null` si esa celda está apagada. */

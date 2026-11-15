@@ -746,7 +746,7 @@ class MainViewModelTest {
             assertEquals(2, ringCombo)
         }
 
-        // Un fallo lo devuelve a cero.
+        // Nace el siguiente, se falla y la racha se corta.
         waitForANewRing()
         val third = vm.uiState.value.gym!!.rings.first()
         now = third.spawnedAtMs + 1L
@@ -755,6 +755,17 @@ class MainViewModelTest {
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(0, ringFeedback?.combo)
             assertEquals(0, ringCombo)
+        }
+
+        // Y el siguiente acierto vuelve a empezar en 1: la acumulación se perdió.
+        waitForANewRing()
+        val fourth = vm.uiState.value.gym!!.rings.first()
+        now = fourth.convergeAtMs()
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals("tras el fallo la cuenta arranca de cero", 1, ringFeedback?.combo)
+            assertEquals(1, ringCombo)
         }
     }
 

@@ -847,9 +847,10 @@ private fun RingGymScene(
  *
  * Portado de `ui/combo-counter` de pixelfx: las letras entran coleteando desde la
  * izquierda con líneas de velocidad y dos estelas, frenan de golpe con un destello
- * blanco, un anillo y chispas, laten en el pulso y se van barridas a la derecha
- * mientras una barra se vacía debajo. Todo se calcula desde [seconds], así que no
- * necesita animaciones propias ni acumular estado.
+ * blanco, un anillo y chispas, laten en el pulso y se van barridas a la derecha.
+ * Todo se calcula desde [seconds], así que no necesita animaciones propias ni
+ * acumular estado. La barra de tiempo del original no se trae: el cartel no dura
+ * lo suficiente como para que informar del tiempo restante aporte algo.
  *
  * @param color verde del acierto o rojo del fallo.
  * @param combo aciertos seguidos; solo engorda la lluvia de chispas.
@@ -1018,39 +1019,7 @@ private fun RingResultBanner(
             }
         }
 
-        // 6. Barra del combo: aparece con el golpe y se vacía hasta la salida.
-        val barIn = seg(seconds, BANNER_HIT_S + 0.10f, BANNER_HIT_S + 0.20f) *
-            (if (seconds > BANNER_OUT_S) 0f else 1f)
-        if (barIn > 0f) {
-            val barW = wordW * barIn
-            val left = 1f - seg(seconds, BANNER_HIT_S + 0.20f, BANNER_OUT_S)
-            val x0 = center.x + dx - wordW / 2f
-            val y0 = center.y + wordH / 2f + 10.dp.toPx()
-            drawRect(
-                color = Color(0xFF06111C).copy(alpha = 1f - gone),
-                topLeft = Offset(x0 - 2.dp.toPx(), y0 - 2.dp.toPx()),
-                size = Size(barW + 4.dp.toPx(), 6.dp.toPx())
-            )
-            drawRect(
-                color = color.copy(alpha = 0.3f * (1f - gone)),
-                topLeft = Offset(x0, y0),
-                size = Size(barW, 2.dp.toPx())
-            )
-            if (left > 0f) {
-                drawRect(
-                    color = color.copy(alpha = 1f - gone),
-                    topLeft = Offset(x0, y0),
-                    size = Size(barW * left, 2.dp.toPx())
-                )
-                drawRect(
-                    color = Color.White.copy(alpha = 1f - gone),
-                    topLeft = Offset(x0, y0),
-                    size = Size(barW * left, 1.dp.toPx())
-                )
-            }
-        }
-
-        // 7. Salida: las motas que se escapan hacia la derecha.
+        // 6. Salida: las motas que se escapan hacia la derecha.
         if (seconds > BANNER_OUT_S) {
             val fade = 1f - seg(seconds, BANNER_OUT_S + 0.06f, BANNER_OUT_S + 0.20f)
             if (fade > 0f) {
