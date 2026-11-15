@@ -45,6 +45,127 @@ class ModelTest {
         assertEquals(1f, typeDamageMultiplier(null, PokemonType.ROCK))
     }
 
+    // --- tabla de tipos completa (15 × 15) ----------------------------------
+
+    /**
+     * Orden de filas (atacante) y columnas (defensor) de la matriz aprobada.
+     * La expectativa de los tests es **independiente** de producción: no se
+     * deriva de `strongAgainst`, `weakAgainst` ni de `effectiveness()`.
+     */
+    private val typeOrder = listOf(
+        PokemonType.NORMAL,
+        PokemonType.FIRE,
+        PokemonType.WATER,
+        PokemonType.GRASS,
+        PokemonType.ELECTRIC,
+        PokemonType.ROCK,
+        PokemonType.FLYING,
+        PokemonType.POISON,
+        PokemonType.BUG,
+        PokemonType.GROUND,
+        PokemonType.FIGHTING,
+        PokemonType.PSYCHIC,
+        PokemonType.ICE,
+        PokemonType.GHOST,
+        PokemonType.DRAGON
+    )
+
+    /**
+     * Matriz completa en formato compacto: una fila por atacante y una columna
+     * por defensor, en el orden de [typeOrder]. `2` = ×2, `h` = ×0,5
+     * (incluidas las inmunidades del juego original) y `1` = ×1.
+     */
+    private val expectedChart = listOf(
+        "11111h1111111h1", // NORMAL
+        "1hh21h11211121h", // FIRE
+        "12hh1211121111h", // WATER
+        "1h2h12hhh21111h", // GRASS
+        "112hh1211h1111h", // ELECTRIC
+        "121111212hh1211", // ROCK
+        "1112hh112121111", // FLYING
+        "11121h1h1h111h1", // POISON
+        "1h1211hh11h21h1", // BUG
+        "121h22h2h111111", // GROUND
+        "211112hhh11h2h1", // FIGHTING
+        "11111112112h111", // PSYCHIC
+        "1hh211211211h12", // ICE
+        "h11111111112121", // GHOST
+        "111111111111112", // DRAGON
+    )
+
+    /** El enum expone exactamente los 15 tipos de la tabla aprobada. */
+    @Test
+    fun typeChart_hasTheFifteenApprovedTypes() {
+        assertEquals(15, PokemonType.entries.size)
+        assertEquals(typeOrder.toSet(), PokemonType.entries.toSet())
+    }
+
+    /**
+     * Los 225 enfrentamientos deben coincidir con la matriz aprobada. Un
+     * multiplicador válido (0,5 / 1 / 2) colocado en una celda equivocada
+     * también hace fallar este test: no basta con comprobar el rango.
+     */
+    @Test
+    fun typeChart_matchesTheApproved225CellMatrix() {
+        assertEquals(typeOrder.size, expectedChart.size)
+
+        typeOrder.forEachIndexed { rowIndex, attacker ->
+            val row = expectedChart[rowIndex]
+            assertEquals(
+                "La fila de $attacker debe tener una celda por defensor",
+                typeOrder.size,
+                row.length
+            )
+            typeOrder.forEachIndexed { columnIndex, defender ->
+                val expected = when (row[columnIndex]) {
+                    '2' -> 2f
+                    '1' -> 1f
+                    'h' -> 0.5f
+                    else -> error(
+                        "Celda inesperada '${row[columnIndex]}' en $attacker → $defender"
+                    )
+                }
+                assertEquals(
+                    "$attacker → $defender",
+                    expected,
+                    attacker.effectiveness(defender),
+                    0f
+                )
+            }
+        }
+    }
+
+    /**
+     * Contrastes que la matriz ya cubre, aislados para que se lean: relaciones
+     * que no se deducen por simetría, inmunidades convertidas a ×0,5 y tipos
+     * nuevos.
+     */
+    @Test
+    fun typeChart_keepsTheNonSymmetricAndImmunityRelations() {
+        // Agua → Eléctrico es neutro aunque Eléctrico → Agua sea ×2.
+        assertEquals(1f, PokemonType.WATER.effectiveness(PokemonType.ELECTRIC))
+        assertEquals(2f, PokemonType.ELECTRIC.effectiveness(PokemonType.WATER))
+        // Roca no es débil contra Agua ni contra Planta.
+        assertEquals(1f, PokemonType.ROCK.effectiveness(PokemonType.WATER))
+        assertEquals(1f, PokemonType.ROCK.effectiveness(PokemonType.GRASS))
+        // Dragón → Agua es neutro.
+        assertEquals(1f, PokemonType.DRAGON.effectiveness(PokemonType.WATER))
+        // Planta → Eléctrico es neutro; Planta → Planta es poco eficaz.
+        assertEquals(1f, PokemonType.GRASS.effectiveness(PokemonType.ELECTRIC))
+        assertEquals(0.5f, PokemonType.GRASS.effectiveness(PokemonType.GRASS))
+        // Inmunidades del juego original, representadas como ×0,5.
+        assertEquals(0.5f, PokemonType.NORMAL.effectiveness(PokemonType.GHOST))
+        assertEquals(0.5f, PokemonType.FIGHTING.effectiveness(PokemonType.GHOST))
+        assertEquals(0.5f, PokemonType.GHOST.effectiveness(PokemonType.NORMAL))
+        assertEquals(0.5f, PokemonType.ELECTRIC.effectiveness(PokemonType.GROUND))
+        assertEquals(0.5f, PokemonType.GROUND.effectiveness(PokemonType.FLYING))
+        // Tipos nuevos: Fantasma y Dragón.
+        assertEquals(2f, PokemonType.GHOST.effectiveness(PokemonType.PSYCHIC))
+        assertEquals(2f, PokemonType.GHOST.effectiveness(PokemonType.GHOST))
+        assertEquals(2f, PokemonType.ICE.effectiveness(PokemonType.DRAGON))
+        assertEquals(2f, PokemonType.DRAGON.effectiveness(PokemonType.DRAGON))
+    }
+
     @Test
     fun projectileProgressGoesFromZeroToOne() {
         val projectile = Projectile(id = 1L, column = 0, spawnedAtMs = 1_000L, travelMs = 2_000L)

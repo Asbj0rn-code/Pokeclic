@@ -1861,6 +1861,13 @@ fun typeColor(type: PokemonType?): Color = when (type) {
     PokemonType.ROCK -> Color(0xFFB6A136)
     PokemonType.FLYING -> Color(0xFFA98FF3)
     PokemonType.POISON -> Color(0xFFA33EA1)
+    PokemonType.BUG -> Color(0xFFA8B820)
+    PokemonType.GROUND -> Color(0xFFE0C068)
+    PokemonType.FIGHTING -> Color(0xFFC03028)
+    PokemonType.PSYCHIC -> Color(0xFFF85888)
+    PokemonType.ICE -> Color(0xFF98D8D8)
+    PokemonType.GHOST -> Color(0xFF705898)
+    PokemonType.DRAGON -> Color(0xFF7038F8)
     null -> Color(0xFF9E9E9E)
 }
 
