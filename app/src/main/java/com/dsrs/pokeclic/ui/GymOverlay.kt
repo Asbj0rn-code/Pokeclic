@@ -12,6 +12,7 @@ package com.dsrs.pokeclic.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,8 +49,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -130,15 +133,57 @@ import androidx.compose.foundation.shape.CircleShape
 fun GymOverlay(
     state: GymState,
     onProjectileHit: (Long) -> Unit,
+    onProjectileMiss: () -> Unit,
     onRingTap: () -> Unit,
     onVoltorbTap: (Int) -> Unit,
     onEnemyHit: () -> Unit,
+    onRageSpeechDone: () -> Unit,
+    onVictoryDone: () -> Unit,
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     showDefeat: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    // Discurso de furia: sustituye la escena entera. El ViewModel deja el combate
+    // en pausa mientras `rageSpeech` esté activo, así que aquí no hay nada que
+    // pintar del HUD ni de los sprites.
+    if (state.rageSpeech) {
+        GymRageSpeech(
+            leaderName = state.leaderName,
+            onFinished = onRageSpeechDone,
+            modifier = modifier
+        )
+        return
+    }
+
     val exposed = state.phase == GymPhase.EXPOSED
+    // Composición propia del gimnasio: cada arte coloca la plataforma del líder y
+    // el suelo del jugador a otra altura.
+    val layout = GymSceneLayouts.forGym(state.gymId)
+
+    // Victoria: primero el Pokémon del líder se hunde y se apaga; después llega
+    // su despedida. Sin guion propio, el combate se cierra en cuanto termina el
+    // desvanecimiento.
+    val won = state.outcome == GymOutcome.WON
+    val victoryScript = remember(state.gymId) { victoryScriptFor(state.gymId) }
+    val defeatFade = remember { Animatable(0f) }
+    var victoryVisible by remember(state.gymId) { mutableStateOf(false) }
+
+    LaunchedEffect(won) {
+        if (!won) return@LaunchedEffect
+        defeatFade.animateTo(1f, tween(VICTORY_FADE_MS, easing = FastOutSlowInEasing))
+        if (victoryScript == null) onVictoryDone() else victoryVisible = true
+    }
+
+    if (victoryVisible && victoryScript != null) {
+        GymVictory(
+            script = victoryScript,
+            leaderName = state.leaderName,
+            onFinished = onVictoryDone,
+            modifier = modifier
+        )
+        return
+    }
 
     // El combate oculta el bottom menu, así que el `Scaffold` ya no reserva el
     // inset inferior: se aplica aquí para que el sprite del jugador no quede
@@ -151,13 +196,13 @@ fun GymOverlay(
         modifier = modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .pointerInput(state.mechanic, exposed) {
+            .pointerInput(state.mechanic, exposed, layout) {
                 if (state.mechanic != GymMechanic.TIMING_RINGS) return@pointerInput
 
-                val enemyLeftPx = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                val enemyTopPx = ENEMY_TOP.toPx()
-                val enemyRightPx = enemyLeftPx + ENEMY_WIDTH.toPx()
-                val enemyBottomPx = enemyTopPx + ENEMY_HEIGHT.toPx()
+                val enemyLeftPx = (size.width - layout.enemyWidth.toPx()) / 2f
+                val enemyTopPx = layout.enemyTop.toPx()
+                val enemyRightPx = enemyLeftPx + layout.enemyWidth.toPx()
+                val enemyBottomPx = enemyTopPx + layout.enemyHeight.toPx()
 
                 awaitEachGesture {
                     // El minijuego se juzga al **apoyar** el dedo, no al
@@ -181,18 +226,25 @@ fun GymOverlay(
             GymMechanic.PROJECTILES -> GymScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 onProjectileHit = onProjectileHit,
+                onMiss = onProjectileMiss,
                 onEnemyHit = onEnemyHit,
                 modifier = Modifier.fillMaxSize()
             )
             GymMechanic.TIMING_RINGS -> RingGymScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 modifier = Modifier.fillMaxSize()
             )
             GymMechanic.VOLTORB_GRID -> VoltorbGridScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 onVoltorbTap = onVoltorbTap,
                 onEnemyHit = onEnemyHit,
                 modifier = Modifier.fillMaxSize()
@@ -233,7 +285,10 @@ fun GymOverlay(
 private fun GymScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     onProjectileHit: (Long) -> Unit,
+    onMiss: () -> Unit,
     onEnemyHit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -257,9 +312,11 @@ private fun GymScene(
     }
 
     // Cada rotura dispara una animación de ataque (hacia adelante y vuelta) y un
-    // destello en el punto tocado. Son el sustituto del sprite de ataque real.
+    // estallido de roca en el punto tocado. Son el sustituto del sprite de
+    // ataque real.
     var attackNonce by remember { mutableIntStateOf(0) }
-    var hitPoint by remember { mutableStateOf(Offset.Zero) }
+    val bursts = remember { mutableStateListOf<RockBurst>() }
+    var nextBurstId by remember { mutableLongStateOf(0L) }
 
     val lunge = remember { Animatable(0f) }
     LaunchedEffect(attackNonce) {
@@ -268,11 +325,11 @@ private fun GymScene(
         lunge.animateTo(1f, tween(durationMillis = 90))
         lunge.animateTo(0f, tween(durationMillis = 110))
     }
-    val flash = remember { Animatable(0f) }
-    LaunchedEffect(attackNonce) {
-        if (attackNonce == 0) return@LaunchedEffect
-        flash.snapTo(0.85f)
-        flash.animateTo(0f, tween(durationMillis = 220))
+
+    // Sprite sheet del estallido: una sola decodificación por escena, compartida
+    // por todos los estallidos activos.
+    val shatterSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.rock_shatter).asImageBitmap()
     }
 
     // Latido del enemigo mientras está expuesto.
@@ -292,11 +349,11 @@ private fun GymScene(
 
         // Reparto vertical: el enemigo arranca por debajo del HUD y las rocas caen
         // desde su base hasta la cabeza del jugador.
-        val spawnY = ENEMY_TOP + ENEMY_HEIGHT
-        val impactY = (maxHeight - PLAYER_BOTTOM - PLAYER_HEIGHT + PLAYER_HIT_INSET)
+        val spawnY = layout.enemyTop + layout.enemyHeight
+        val impactY = (maxHeight - layout.playerBottom - layout.playerHeight + PLAYER_HIT_INSET)
             .coerceAtLeast(spawnY + 24.dp)
 
-        val rockSize = (cellWidth * 0.72f).coerceIn(36.dp, 56.dp)
+        val rockSize = projectileSizeFor(cellWidth)
 
         state.projectiles.forEach { projectile ->
             val progress = projectile.progressAt(now)
@@ -312,17 +369,6 @@ private fun GymScene(
             )
         }
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val alpha = flash.value
-            if (alpha > 0f) {
-                drawCircle(
-                    color = typeColor(state.leadType).copy(alpha = alpha),
-                    radius = 26.dp.toPx() * (1.4f - alpha * 0.4f),
-                    center = hitPoint
-                )
-            }
-        }
-
         // Enemigo, con pulso mientras está expuesto.
         GymSpriteBox(
             gifRes = enemyGifFor(state.gymId),
@@ -331,12 +377,15 @@ private fun GymScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -348,8 +397,8 @@ private fun GymScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = -PLAYER_BOTTOM)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+                .offset(y = -layout.playerBottom)
+                .size(layout.playerWidth, layout.playerHeight)
                 .graphicsLayer {
                     translationY = -26.dp.toPx() * lunge.value
                     val scale = 1f + 0.05f * lunge.value
@@ -357,6 +406,19 @@ private fun GymScene(
                     scaleY = scale
                 }
         )
+
+        // Estallidos de las rocas rotas. Van encima de los sprites: la roca se
+        // parte donde estaba y los trozos salen hacia la cámara.
+        bursts.forEach { burst ->
+            key(burst.id) {
+                RockShatterBurst(
+                    sheet = shatterSheet,
+                    center = burst.center,
+                    rockSize = burst.size,
+                    onFinished = { bursts.removeAll { it.id == burst.id } }
+                )
+            }
+        }
 
         // Barra de postura justo debajo del enemigo: se llena con los aciertos
         // del jugador y, al completarse, abre la ventana. En furia se tiñe de rojo.
@@ -374,10 +436,10 @@ private fun GymScene(
                         PROJECTILE_MIN_HIT_RADIUS.toPx()
                     )
 
-                    val enemyLeftPx = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                    val enemyTopPx = ENEMY_TOP.toPx()
-                    val enemyRightPx = enemyLeftPx + ENEMY_WIDTH.toPx()
-                    val enemyBottomPx = enemyTopPx + ENEMY_HEIGHT.toPx()
+                    val enemyLeftPx = (size.width - layout.enemyWidth.toPx()) / 2f
+                    val enemyTopPx = layout.enemyTop.toPx()
+                    val enemyRightPx = enemyLeftPx + layout.enemyWidth.toPx()
+                    val enemyBottomPx = enemyTopPx + layout.enemyHeight.toPx()
 
                     // El acierto se mide donde estaba la roca **al apoyar el dedo**:
                     // al caer se movería y el toque "se escaparía".
@@ -412,10 +474,14 @@ private fun GymScene(
                                     // columnas contiguas no se acierten de más.
                                     .filter { it.second <= hitRadius * hitRadius }
                                     .minByOrNull { it.second }
-                                hit?.let {
-                                    hitPoint = it.third
+                                if (hit == null) {
+                                    // Toque al aire: resta postura, igual que un
+                                    // fallo en las otras mecánicas.
+                                    onMiss()
+                                } else {
                                     attackNonce++
-                                    onProjectileHit(it.first.id)
+                                    bursts += RockBurst(nextBurstId++, hit.third, rockSize)
+                                    onProjectileHit(hit.first.id)
                                 }
                             }
                         }
@@ -442,6 +508,8 @@ private fun GymScene(
 private fun RingGymScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     modifier: Modifier = Modifier
 ) {
     // Reloj de fotogramas: el radio de cada anillo sale de su progreso, así que
@@ -479,7 +547,7 @@ private fun RingGymScene(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(
                 x = size.width / 2f,
-                y = size.height - PLAYER_BOTTOM.toPx() - PLAYER_HEIGHT.toPx() / 2f
+                y = size.height - layout.playerBottom.toPx() - layout.playerHeight.toPx() / 2f
             )
             val targetRadius = RING_TARGET_RADIUS.toPx()
             val startRadius = RING_START_RADIUS.toPx()
@@ -665,12 +733,15 @@ private fun RingGymScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -682,8 +753,8 @@ private fun RingGymScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = -PLAYER_BOTTOM)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+                .offset(y = -layout.playerBottom)
+                .size(layout.playerWidth, layout.playerHeight)
         )
 
         // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
@@ -747,6 +818,8 @@ private fun RingGymScene(
 private fun VoltorbGridScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     onVoltorbTap: (Int) -> Unit,
     onEnemyHit: () -> Unit,
     modifier: Modifier = Modifier
@@ -833,8 +906,8 @@ private fun VoltorbGridScene(
         // si la pantalla es demasiado baja, la celda se encoge y la cuadrícula deja
         // de ocupar todo el ancho en vez de desbordarse.
         val cellFromWidth = (maxWidth - VOLTORB_GAP * (cols - 1)) / cols
-        val gridTop = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + VOLTORB_BAR_RESERVE
-        val bottomReserved = PLAYER_HEIGHT + VOLTORB_PLAYER_GAP + VOLTORB_HP_BAR_RESERVE
+        val gridTop = layout.enemyTop + layout.enemyHeight + VOLTORB_BAR_RESERVE
+        val bottomReserved = layout.playerHeight + VOLTORB_PLAYER_GAP + VOLTORB_HP_BAR_RESERVE
         val maxGridHeight =
             (maxHeight - gridTop - bottomReserved).coerceAtLeast(VOLTORB_MIN_AREA)
         val cellFromHeight = (maxGridHeight - VOLTORB_GAP * (rows - 1)) / rows
@@ -947,12 +1020,15 @@ private fun VoltorbGridScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, VOLTORB_ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -965,8 +1041,8 @@ private fun VoltorbGridScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = (maxWidth - PLAYER_WIDTH) / 2f, y = playerTop)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+                .offset(x = (maxWidth - layout.playerWidth) / 2f, y = playerTop)
+                .size(layout.playerWidth, layout.playerHeight)
         )
 
         Box(
@@ -978,10 +1054,10 @@ private fun VoltorbGridScene(
                     val side = cellSide.toPx()
                     val gapPx = VOLTORB_GAP.toPx()
 
-                    val enemyLeft = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                    val enemyTop = ENEMY_TOP.toPx()
-                    val enemyRight = enemyLeft + ENEMY_WIDTH.toPx()
-                    val enemyBottom = enemyTop + VOLTORB_ENEMY_HEIGHT.toPx()
+                    val enemyLeft = (size.width - layout.enemyWidth.toPx()) / 2f
+                    val enemyTop = layout.enemyTop.toPx()
+                    val enemyRight = enemyLeft + layout.enemyWidth.toPx()
+                    val enemyBottom = enemyTop + layout.enemyHeight.toPx()
 
                     detectTapGestures { tap ->
                         if (
@@ -1528,17 +1604,11 @@ private const val LANE_WIDTH_FRACTION = 0.72f
 /** Tope de la franja para que en pantallas grandes no se abran demasiado. */
 private val LANE_MAX_WIDTH = 340.dp
 
-/** Tamaño y posición del enemigo (el GIF de Golem es 72×57, ratio ~1.26). */
-private val ENEMY_WIDTH = 180.dp
-private val ENEMY_HEIGHT = 150.dp
-private val ENEMY_TOP = 178.dp
-
-/** Tamaño y posición del jugador. */
-private val PLAYER_WIDTH = 90.dp
-private val PLAYER_HEIGHT = 102.dp
-private val PLAYER_BOTTOM = 160.dp
-
-/** Separación de la barra de vida del jugador respecto al borde inferior. */
+/**
+ * Separación de la barra de vida del jugador respecto al borde inferior. El
+ * tamaño y la posición de los sprites salen de [GymSceneLayouts], uno por
+ * gimnasio.
+ */
 private val PLAYER_HP_BOTTOM_PADDING = 10.dp
 
 /** Cuánto por debajo de la cabeza del jugador se considera impacto. */
@@ -1568,10 +1638,9 @@ private val RAGE_COLOR = Color(0xFFFF5252)
  * entrada y grosor del trazo. El anillo que entra se cierra desde
  * [RING_START_RADIUS] hasta [RING_TARGET_RADIUS].
  *
- * El radio fijo se calcula para el cuadro del jugador ([PLAYER_WIDTH] ×
- * [PLAYER_HEIGHT]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
- * unos 10 dp de margen, la misma holgura que había con 110 × 122 dp y 92 dp.
- * Si vuelven a cambiar esos tamaños, ajustar ambos radios en la misma
+ * El radio fijo se calcula para el cuadro del jugador del gimnasio de Misty
+ * ([GymSceneLayouts]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
+ * unos 10 dp de margen. Si cambia ese cuadro, ajustar ambos radios en la misma
  * proporción.
  */
 private val RING_TARGET_RADIUS = 78.dp
@@ -1636,9 +1705,6 @@ private const val VOLTORB_WOBBLE_FROM_FRAME = 4
 private val VOLTORB_GAP = 7.dp
 private val VOLTORB_MIN_CELL = 26.dp
 private val VOLTORB_BAR_RESERVE = 40.dp
-
-/** El líder se dibuja más bajo aquí para dejarle la altura a la cuadrícula. */
-private val VOLTORB_ENEMY_HEIGHT = 116.dp
 
 /**
  * Tablero oscuro difuminado detrás de la cuadrícula: margen alrededor de las
@@ -1726,6 +1792,23 @@ private const val PROJECTILE_HIT_FRACTION = 0.6f
 
 /** Radio de acierto mínimo, por debajo del cual la roca cuesta clicarla. */
 private val PROJECTILE_MIN_HIT_RADIUS = 28.dp
+
+/**
+ * Tamaño del proyectil como fracción del ancho de columna: la roca ocupa la
+ * mayor parte de su carril sin tocar la vecina. Los topes evitan que se achique
+ * de más en pantallas angostas o se desborde en las anchas.
+ */
+private const val PROJECTILE_SIZE_FRACTION = 0.85f
+private val PROJECTILE_MIN_SIZE = 36.dp
+private val PROJECTILE_MAX_SIZE = 64.dp
+
+/**
+ * Tamaño del proyectil para un carril de [cellWidth]. El estallido se dibuja
+ * proporcional a este valor ([RockShatterFx.SCALE]), así que agrandar la roca
+ * agranda también su rotura.
+ */
+internal fun projectileSizeFor(cellWidth: Dp): Dp =
+    (cellWidth * PROJECTILE_SIZE_FRACTION).coerceIn(PROJECTILE_MIN_SIZE, PROJECTILE_MAX_SIZE)
 
 
 

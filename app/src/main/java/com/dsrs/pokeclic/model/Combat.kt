@@ -1,6 +1,7 @@
 package com.dsrs.pokeclic.model
 
 import kotlin.math.ceil
+import kotlin.random.Random
 
 /**
  * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
@@ -201,10 +202,13 @@ data class Gym(
 enum class GymPhase { ATTACKING, EXPOSED }
 
 /**
- * Resultado global del intento de gimnasio. No existe `WON`: al ganar se cierra
- * la escena y se actualiza la partida, así que no hace falta un estado ganador.
+ * Resultado global del intento de gimnasio.
+ *
+ * [WON] no cierra la partida por sí solo: deja el combate detenido para que la
+ * capa de victoria muestre la despedida del líder y solo entonces se cobre la
+ * medalla. [LOST] mantiene el panel de derrota de siempre.
  */
-enum class GymOutcome { ACTIVE, LOST }
+enum class GymOutcome { ACTIVE, LOST, WON }
 
 /**
  * Un proyectil del combate de gimnasio (estado **transitorio**).
@@ -396,6 +400,8 @@ data class VoltorbFeedback(
  * @param rage el líder está por debajo del 25 %: oleadas más densas y rápidas.
  * @param rageRoundPlayed ya se jugó una ronda completa de furia; hasta entonces
  *   el líder no puede morir, para que la furia nunca se pueda saltar.
+ * @param rageSpeech el líder está dando su discurso de furia: el combate queda
+ *   **en pausa** (el bucle no avanza) hasta que el jugador lo cierra.
  * @param leadSpeciesId especie del Pokémon principal, para elegir su sprite.
  * @param leadName nombre visible del principal (placeholder si no hay arte).
  * @param leadType tipo del principal; decide el multiplicador y el color del
@@ -426,6 +432,7 @@ data class GymState(
     val exposureRemainingMs: Long = 0L,
     val rage: Boolean = false,
     val rageRoundPlayed: Boolean = false,
+    val rageSpeech: Boolean = false,
     val leadSpeciesId: String? = null,
     val leadName: String? = null,
     val leadType: PokemonType? = null,
@@ -465,6 +472,19 @@ data class GymState(
 object GymCombat {
 
     /**
+     * Cuánto varía la caída de cada roca respecto de la duración del gimnasio.
+     * Es lo que rompe la fila: dos rocas de la misma ráfaga no bajan en línea.
+     */
+    private const val PROJECTILE_TRAVEL_JITTER = 0.2
+
+    /**
+     * Arranque adelantado máximo de una roca, como fracción de su propia caída:
+     * nace algo más abajo, así la ráfaga no aparece alineada en el borde. Se
+     * mantiene bajo para que la roca no "aparezca" de golpe a media caída.
+     */
+    private const val PROJECTILE_HEAD_START = 0.1
+
+    /**
      * ¿El líder está en furia? Debe quedar **estrictamente** por debajo del 25 %
      * de su vida máxima: al 25 % exacto todavía no entra.
      */
@@ -501,6 +521,9 @@ object GymCombat {
         return state.copy(
             leaderHp = threshold,
             rage = true,
+            // El combate se detiene para el discurso del líder: la furia se
+            // presenta antes de que caiga la primera oleada.
+            rageSpeech = true,
             phase = GymPhase.ATTACKING,
             posture = 0,
             exposureRemainingMs = 0L,
@@ -545,6 +568,22 @@ object GymCombat {
     }
 
     /**
+     * Fallo del jugador: **resta postura**.
+     *
+     * Un clic fallado deshace parte del trabajo de los aciertos, que es lo que
+     * impide llenar la barra a base de toques a ciegas. Se aplica en cada
+     * mecánica cuando el toque no acierta: la roca que no estaba, el anillo que
+     * no llegó o el Voltorb apagado. Nunca baja de cero y no actúa fuera de
+     * [GymPhase.ATTACKING] (durante la ventana expuesta la barra ya corre por
+     * tiempo).
+     */
+    fun failPosture(state: GymState, hits: Int = 1): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+        if (hits <= 0 || state.posture <= 0) return state
+        return state.copy(posture = (state.posture - hits).coerceAtLeast(0))
+    }
+
+    /**
      * Destruye el proyectil tocado (o le resta un toque si le quedaban varios).
      *
      * Romper rocas **es un acierto**: suma postura. Si el proyectil ya no existe
@@ -564,6 +603,43 @@ object GymCombat {
             state.projectiles.filterNot { it.id == projectileId }
         }
         return addPosture(state.copy(projectiles = projectiles))
+    }
+
+    /**
+     * Ráfaga de rocas: una por columna distinta, sin filas.
+     *
+     * Antes todas las rocas de una ráfaga compartían duración y arranque, así que
+     * bajaban alineadas como una fila. Ahora cada una lleva su propia caída: la
+     * duración varía ±[PROJECTILE_TRAVEL_JITTER] y arranca algo más abajo
+     * ([PROJECTILE_HEAD_START] de su recorrido), de modo que la ráfaga se abre en
+     * cuanto aparece.
+     */
+    fun spawnSalvo(
+        firstId: Long,
+        columns: Int,
+        maxPerSpawn: Int,
+        travelMs: Long,
+        nowMs: Long,
+        random: Random
+    ): List<Projectile> {
+        if (columns <= 0 || maxPerSpawn <= 0) return emptyList()
+
+        val salvoSize = random.nextInt(1, maxPerSpawn + 1).coerceAtMost(columns)
+        val chosen = (0 until columns).shuffled(random).take(salvoSize)
+
+        return chosen.mapIndexed { index, column ->
+            val travel = (travelMs * random.nextDouble(
+                1.0 - PROJECTILE_TRAVEL_JITTER,
+                1.0 + PROJECTILE_TRAVEL_JITTER
+            )).toLong().coerceAtLeast(1L)
+            val headStart = (travel * random.nextDouble(0.0, PROJECTILE_HEAD_START)).toLong()
+            Projectile(
+                id = firstId + index,
+                column = column,
+                spawnedAtMs = nowMs - headStart,
+                travelMs = travel
+            )
+        }
     }
 
     /**

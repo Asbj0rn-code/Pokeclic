@@ -71,7 +71,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 
 /** Milisegundos entre cada letra del efecto "máquina de escribir". */
-private const val TYPE_CHAR_MS = 35L
+internal const val TYPE_CHAR_MS = 35L
 
 /** Milisegundos de cada frame de la animación de habla (boca abierta / cerrada). */
 private const val TALK_FRAME_MS = 160L
@@ -421,7 +421,7 @@ fun IntroOverlay(
 
 /** Caja de diálogo estilo Pokémon: rectángulo blanco con borde negro. */
 @Composable
-private fun DialogueBox(
+internal fun DialogueBox(
     text: String,
     complete: Boolean,
     onClick: () -> Unit,

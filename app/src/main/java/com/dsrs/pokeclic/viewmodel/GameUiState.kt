@@ -98,6 +98,8 @@ data class GameUiState(
     val leadType: PokemonType? = null,
     val isGymReady: Boolean = false,
     val gymLeaderName: String? = null,
+    /** Id del gimnasio de la zona: elige el retrato y el discurso del líder. */
+    val gymId: String? = null,
     /** Mecánica del gimnasio de la zona, también con la capa de entrada abierta. */
     val gymMechanic: GymMechanic = GymMechanic.PROJECTILES,
     /**
