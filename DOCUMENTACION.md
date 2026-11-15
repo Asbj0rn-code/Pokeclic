@@ -1764,7 +1764,11 @@ roca o el anillo más cercano, o la celda de Voltorb).
   del lienzo ni deja píxeles al terminar.
 - **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` deriva
   toda la animación de un solo `progress` (golpe de entrada, sacudida, confeti y
-  desvanecido), así que se ajusta moviendo esos tramos. El combo vive en
+  desvanecido), así que se ajusta moviendo esos tramos. Las letras no usan la
+  tipografía del sistema: `PixelFont` es la fuente 5×7 de pixelfx
+  (`src/core/font.js`, la "big") portada a Kotlin, dibujada con rectángulos y con
+  sombra dura de un píxel. El tamaño de celda es el `cell = 4.dp` del cartel; ahí
+  se agranda o achica. El combo vive en
   `GymState.ringCombo` y viaja en `RingFeedback.combo`: sube con cada acierto y
   cualquier fallo lo devuelve a 0. Con combo ≥ 2 el cartel usa
   `gym_ring_combo` (`¡Combo ×N!`).

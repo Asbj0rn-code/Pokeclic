@@ -69,7 +69,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -906,19 +905,29 @@ private fun RingResultBanner(
                 )
             }
         }
-        Text(
-            text = text,
-            color = color,
-            style = MaterialTheme.typography.headlineSmall.copy(
-                shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
-            ),
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.graphicsLayer {
-                val scale = pop * comboBoost
-                scaleX = scale
-                scaleY = scale
+        // Letras de píxeles, no tipografía del sistema: la fuente 5×7 de pixelfx.
+        val cell = 4.dp
+        val textWidth = cell * PixelFont.widthOf(text) + cell
+        val textHeight = cell * PixelFont.HEIGHT + cell
+        Canvas(
+            modifier = Modifier
+                .size(textWidth, textHeight)
+                .graphicsLayer {
+                    val scale = pop * comboBoost
+                    scaleX = scale
+                    scaleY = scale
+                }
+        ) {
+            PixelFont.run {
+                drawText(
+                    text = text,
+                    origin = Offset.Zero,
+                    pixel = cell.toPx(),
+                    color = color,
+                    shadow = Color.Black
+                )
             }
-        )
+        }
     }
 }
 
