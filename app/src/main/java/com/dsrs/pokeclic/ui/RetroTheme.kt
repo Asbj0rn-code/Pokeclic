@@ -7,6 +7,7 @@ package com.dsrs.pokeclic.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,6 +37,7 @@ internal object RetroColors {
     // Chasis / hardware
     val PokedexRed = Color(0xFFDC0A2D)
     val PokedexDarkRed = Color(0xFF8B001D)
+    val HeaderBurgundy = Color(0xFF430D18)
     val SteelPanel = Color(0xFF303840)
     val SteelEdge = Color(0xFF14181D)
     val SteelBevel = Color(0xFF55636F)
@@ -139,6 +141,8 @@ internal fun RetroLcdPanel(
     selected: Boolean = false,
     fill: Boolean = false,
     shadowOffset: Dp = 2.dp,
+    shape: Shape = CellShape,
+    borderWidth: Dp = 2.dp,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -147,9 +151,8 @@ internal fun RetroLcdPanel(
         backgroundColor = if (selected) RetroColors.PokedexRed else RetroColors.LcdDark,
         outerBorder = if (selected) RetroColors.PokedexDarkRed else RetroColors.DialogBorderOuter,
         innerBorder = if (selected) Color(0xFFE8ACB2) else Color(0xFF4E5A66),
-        shape = CellShape,
-        borderWidth = 2.dp,
-        innerGap = 1.dp,
+        shape = shape,
+        borderWidth = borderWidth,
         shadowOffset = shadowOffset,
         fill = fill,
         contentPadding = contentPadding,
@@ -194,3 +197,32 @@ internal fun PixelImage(
         filterQuality = FilterQuality.None
     )
 }
+
+/**
+ * Placa de **una sola** línea de borde negro con sombra dura desplazada: el marco
+ * del HUD de combate, de sus mensajes y de sus paneles.
+ *
+ * A diferencia de [RetroPanel], no lleva filete claro interior: el borde queda
+ * solo y grueso, como el de las cajas de estado de GBA. [shadowOffset] se reserva
+ * con padding para que la sombra no se coma el contenido vecino.
+ */
+internal fun Modifier.retroPlate(
+    fill: Color = RetroColors.DialogCream,
+    borderColor: Color = RetroColors.InkBlack,
+    borderWidth: Dp = 2.dp,
+    shadowOffset: Dp = 3.dp
+): Modifier = this
+    .padding(end = shadowOffset, bottom = shadowOffset)
+    .drawBehind {
+        val off = shadowOffset.toPx()
+        if (off > 0f) {
+            drawRect(
+                color = RetroColors.HardShadow,
+                topLeft = Offset(off, off),
+                size = size
+            )
+        }
+    }
+    .background(fill)
+    .border(borderWidth, borderColor)
+

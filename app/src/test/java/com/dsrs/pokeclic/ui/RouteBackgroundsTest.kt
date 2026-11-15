@@ -8,7 +8,33 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import javax.imageio.ImageIO
 import kotlin.math.abs
+
+/**
+ * Arte real (`drawable-nodpi`) de cada fondo horizontal, por `Zone.id`. El
+ * catálogo solo guarda el id del recurso, así que el fichero se nombra aquí.
+ */
+private val HORIZONTAL_ARTWORK = mapOf(
+    "ruta3" to "background_ruta3.png",
+    "mt_moon" to "background_mt_moon.png",
+    "ciudad_celeste" to "background_ciudad_celeste.png"
+)
+
+/**
+ * Ancho del PNG en píxeles de arte. El working dir de los tests es el módulo
+ * `app`, con respaldo para invocaciones desde la raíz.
+ */
+private fun artworkWidth(fileName: String): Int {
+    val candidates = listOf(
+        File("src/main/res/drawable-nodpi/$fileName"),
+        File("app/src/main/res/drawable-nodpi/$fileName")
+    )
+    val file = candidates.firstOrNull { it.exists() }
+        ?: error("No se encontró el arte $fileName en $candidates")
+    return ImageIO.read(file).width
+}
 
 /**
  * Todas las zonas tienen que poder animarse. Las que no tengan fondo propio caen
@@ -31,25 +57,32 @@ class RouteBackgroundsTest {
     }
 
     @Test
-    fun everyZone_advancesVertically() {
+    fun everyZone_advancesAlongItsAxis() {
         ZoneCatalog.zones.forEach { zone ->
             val motion = RouteBackgrounds.forZone(zone.id).motion
-            val vertical = motion.verticalDistanceAt(motion.cycleDistance.toDouble())
-            assertTrue("${zone.id} sin avance vertical", vertical > 0.0)
+            // Los tramos rectos son el avance: en vertical suben y en horizontal
+            // se corren de lado, pero en los dos casos el ciclo recorre algo.
+            val advance = motion.verticalDistanceAt(motion.cycleDistance.toDouble())
+            assertTrue("${zone.id} sin avance", advance > 0.0)
         }
     }
 
     @Test
-    fun everyZone_changesDirection() {
+    fun everyZone_hasTheLegsItsAxisNeeds() {
         ZoneCatalog.zones.forEach { zone ->
             val motion = RouteBackgrounds.forZone(zone.id).motion
             assertTrue("${zone.id} sin tramo recto", motion.legs.any { !it.isLateral })
-            assertTrue("${zone.id} sin tramo lateral", motion.legs.any { it.isLateral })
+            // Las verticales actuales alternan recto y lateral (el entrenador
+            // cambia de orientación). Un fondo horizontal puede ser recto; si
+            // lleva laterales, los tests del modelo comprueban el giro.
+            if (motion.axis == RouteScrollAxis.VERTICAL) {
+                assertTrue("${zone.id} sin tramo lateral", motion.legs.any { it.isLateral })
+            }
         }
     }
 
     @Test
-    fun everyZone_movesTheSamePerClickInBothAxes() {
+    fun everyZone_movesTheSamePerClick() {
         // La ley del modelo: la distancia de un tramo ya no es un dato aparte,
         // sale de sus clics. Un clic de lado recorre lo mismo que uno recto.
         ZoneCatalog.zones.forEach { zone ->
@@ -72,12 +105,22 @@ class RouteBackgroundsTest {
             background.startAnchor?.let { anchor ->
                 assertTrue(
                     "${zone.id}: startAnchor $anchor deja el arte fuera de la pantalla",
-                    anchor in 0f..1f
+                    // Fracción de pantalla donde cae el borde inferior del arte.
+                    // Por encima del alto del arte medido en pantallas (~1,5 en un
+                    // móvil) la cuenta enrolla y el encuadre vuelve a empezar, así
+                    // que el tope es solo de cordura: cada zona clava su encuadre
+                    // real en su propio test.
+                    anchor in 0f..2f
                 )
             }
             assertTrue(
-                "${zone.id}: startOffset ${background.startOffset} corre la imagen más de una pantalla",
-                abs(background.startOffset) < 1f
+                "${zone.id}: startOffset ${background.startOffset} corre la imagen más de un ancho de arte",
+                // El corrimiento se enrolla módulo el ancho del arte, así que el
+                // tope real es un ancho de arte medido en pantallas. El arte más
+                // ancho del catálogo mide 4608 px (cuatro anchos de cámara), de ahí
+                // 4: un arte del doble de ancho necesita ±1 para dejar su marco
+                // izquierdo bajo el entrenador, y uno de cuatro anchos necesita ±2.
+                abs(background.startOffset) <= 4f
             )
         }
     }
@@ -113,12 +156,293 @@ class RouteBackgroundsTest {
     @Test
     fun onlyZonesWithAnEntry_showTheAnimatedBackground() {
         // El fondo animado se muestra en zonas con fauna y, además, en las que
-        // tienen arte propio: Pueblo Paleta no tiene encuentros y aun así lo
-        // enseña. Las ciudades sin entrada siguen con el fondo liso.
+        // tienen arte propio: Pueblo Paleta y Ciudad Verde no tienen encuentros y
+        // aun así lo enseñan. Las ciudades sin entrada siguen con el fondo liso.
         assertTrue(RouteBackgrounds.hasOwnArtwork("pueblo_paleta"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_plateada"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
-        assertFalse(RouteBackgrounds.hasOwnArtwork("ciudad_verde"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_celeste"))
+        assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
+    }
+
+    @Test
+    fun rutaTres_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ruta3,
+            RouteBackgrounds.forZone("ruta3").imageRes
+        )
+    }
+
+    @Test
+    fun rutaTres_scrollsSideways() {
+        // La ruta 3 es la primera zona que avanza en horizontal.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ruta3").motion.axis
+        )
+    }
+
+    @Test
+    fun rutaTres_startsAtTheLeftFrameOnTheCentreLine() {
+        // -0,5 de ancho de pantalla lleva al entrenador al **borde izquierdo** del
+        // arte; el ancla deja el **eje central horizontal** del arte a su altura.
+        val background = RouteBackgrounds.forZone("ruta3")
+        assertEquals(-0.5f, background.startOffset, 1e-6f)
+        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun rutaTres_closesItsLoop() {
+        // El bucle puede durar varias vueltas: lo que cierra es el superciclo
+        // completo. Sus rectos suman vueltas enteras al arte (15 clics cada una:
+        // 1152 px / 76,8) y los laterales se compensan entre sí.
+        val motion = RouteBackgrounds.forZone("ruta3").motion
+        val cycle = motion.cycleDistance.toDouble()
+        val straightClicks = motion.legs
+            .filterNot { it.isLateral }
+            .sumOf { it.clicks.toDouble() }
+        val clicksPerArtWidth = 15.0
+
+        assertTrue(
+            "Los rectos deben avanzar al menos un ancho de arte",
+            straightClicks >= clicksPerArtWidth
+        )
+        assertEquals(
+            "Los clics rectos deben sumar vueltas enteras al arte",
+            0.0,
+            straightClicks % clicksPerArtWidth,
+            1e-9
+        )
+        assertEquals(
+            "Los laterales deben volver a la misma altura",
+            0f,
+            motion.lateralDistanceAt(cycle),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun rutaTres_readsItsDirectionsInTheHorizontalFrame() {
+        // La dirección sale de cada tramo, leída en el marco girado: recto →
+        // derecha, LEFT → arriba, RIGHT → abajo. Se comprueba la ruta que tenga la
+        // zona en cada momento, sin fijar un diseño concreto.
+        val motion = RouteBackgrounds.forZone("ruta3").motion
+        val expected = mapOf(
+            Direction.BACK to Direction.RIGHT,
+            Direction.LEFT to Direction.BACK,
+            Direction.RIGHT to Direction.FRONT
+        )
+
+        var step = 1L
+        motion.legs.forEach { leg ->
+            repeat(leg.clicks.toInt()) {
+                assertEquals(
+                    "clic $step del tramo ${leg.direction}",
+                    expected.getValue(leg.direction),
+                    motion.directionForStep(step)
+                )
+                step++
+            }
+        }
+    }
+
+    @Test
+    fun ciudadPlateada_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_plateada,
+            RouteBackgrounds.forZone("ciudad_plateada").imageRes
+        )
+    }
+
+    @Test
+    fun mtMoon_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_mt_moon,
+            RouteBackgrounds.forZone("mt_moon").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadPlateada_startsAtTheBottomOfItsArtwork() {
+        // El borde inferior del arte cae en el centro de la pantalla, donde está el
+        // entrenador: la ciudad se recorre desde su parte baja hacia arriba.
+        assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_plateada").startAnchor!!, 0f)
+    }
+
+    @Test
+    fun ciudadPlateada_closesItsLoop() {
+        // El arte mide 3840 px de alto (dos altos de cámara), así que una vuelta
+        // completa al dibujo pide 3840 × 25 / 1920 = 50 clics rectos. Los rectos
+        // tienen que sumar múltiplos de 50 y los dos sentidos laterales lo mismo,
+        // o cada vuelta empieza en otro píxel y a otra altura.
+        val motion = RouteBackgrounds.forZone("ciudad_plateada").motion
+        val straightClicks = motion.legs
+            .filterNot { it.isLateral }
+            .sumOf { it.clicks.toDouble() }
+        val clicksPerArtHeight = 50.0
+
+        assertTrue(
+            "Los rectos deben avanzar al menos una vuelta al arte",
+            straightClicks >= clicksPerArtHeight
+        )
+        assertEquals(
+            "Los clics rectos deben sumar vueltas enteras al arte",
+            0.0,
+            straightClicks % clicksPerArtHeight,
+            1e-9
+        )
+        assertEquals(
+            "Los laterales deben volver a la línea central",
+            0f,
+            motion.lateralDistanceAt(motion.cycleDistance.toDouble()),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun mtMoon_scrollsSideways() {
+        // Segundo fondo horizontal: el arte es más ancho (2304 px) que el de Ruta 3.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("mt_moon").motion.axis
+        )
+    }
+
+    @Test
+    fun mtMoon_closesItsLoop() {
+        // Une clic = 76,8 px de arte, salga del drawable que salga. Con 2304 px de
+        // ancho, una vuelta al dibujo son 2304 / 76,8 = 30 clics rectos. Los
+        // laterales tienen que volver a la misma altura.
+        val motion = RouteBackgrounds.forZone("mt_moon").motion
+        val cycle = motion.cycleDistance.toDouble()
+        val straightClicks = motion.legs
+            .filterNot { it.isLateral }
+            .sumOf { it.clicks.toDouble() }
+        val clicksPerArtWidth = 30.0
+
+        assertTrue(
+            "Los rectos deben avanzar al menos un ancho de arte",
+            straightClicks >= clicksPerArtWidth
+        )
+        assertEquals(
+            "Los clics rectos deben sumar vueltas enteras al arte",
+            0.0,
+            straightClicks % clicksPerArtWidth,
+            1e-9
+        )
+        assertEquals(
+            "Los laterales deben volver a la misma altura",
+            0f,
+            motion.lateralDistanceAt(cycle),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun mtMoon_startsOnTheLeftFrameOfItsArtworkOnTheCentreLine() {
+        // El arte mide dos pantallas de ancho, así que poner al entrenador sobre su
+        // marco izquierdo pide un corrimiento de una pantalla entera: -0,5 dejaría
+        // el borde del dibujo en el borde de la pantalla (25 % del arte) y 0 en el
+        // centro. El ancla hereda la calibración de Ruta 3, que deja el eje central
+        // horizontal del arte a la altura del entrenador.
+        val background = RouteBackgrounds.forZone("mt_moon")
+        assertEquals(-1f, background.startOffset, 1e-6f)
+        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun ciudadCeleste_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_celeste,
+            RouteBackgrounds.forZone("ciudad_celeste").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadCeleste_scrollsSideways() {
+        // Tercer fondo horizontal, con el arte de 4608 px: cuatro anchos de cámara.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ciudad_celeste").motion.axis
+        )
+    }
+
+    @Test
+    fun ciudadCeleste_startsOnTheLeftFrameOfItsArtwork() {
+        // El arte mide cuatro pantallas de ancho, así que dejar al entrenador sobre
+        // su **marco izquierdo** pide dos pantallas enteras: -2 lo pone en el 0 %
+        // del dibujo (-1 lo dejaría en el 25 % y 0 en el centro). El encuadre
+        // vertical (`startAnchor`) es un valor de ajuste manual y no se clava aquí:
+        // solo lo vigila el rango sano de `everyZone_hasASaneStart`.
+        val background = RouteBackgrounds.forZone("ciudad_celeste")
+        assertEquals(-2f, background.startOffset, 1e-6f)
+    }
+
+    @Test
+    fun horizontalZones_closeTheirLoopAgainstTheRealArtwork() {
+        // Un clic recorre CAMERA_HEIGHT / CLICKS_PER_TILE px de arte, así que una
+        // vuelta completa al dibujo son `ancho * CLICKS_PER_TILE / CAMERA_HEIGHT`
+        // clics rectos, sea cual sea el tamaño del PNG. Se mide sobre el fichero
+        // real: si el arte se reemplaza por otro más ancho o más estrecho, este
+        // test avisa de que los tramos ya no cierran el bucle.
+        val horizontalZones = RouteBackgrounds.configuredZoneIds
+            .filter { RouteBackgrounds.forZone(it).motion.axis == RouteScrollAxis.HORIZONTAL }
+            .toSet()
+        assertEquals(
+            "Registrar en HORIZONTAL_ARTWORK el arte de cada fondo horizontal",
+            horizontalZones,
+            HORIZONTAL_ARTWORK.keys
+        )
+
+        horizontalZones.forEach { zone ->
+            val motion = RouteBackgrounds.forZone(zone).motion
+            val clicksPerArtWidth = artworkWidth(HORIZONTAL_ARTWORK.getValue(zone)) *
+                RouteScrollDefaults.CLICKS_PER_TILE / RouteScrollDefaults.CAMERA_HEIGHT
+            val straightClicks = motion.legs
+                .filterNot { it.isLateral }
+                .sumOf { it.clicks.toDouble() }
+
+            assertTrue("$zone: el bucle no avanza", straightClicks > 0.0)
+            assertEquals(
+                "$zone: los rectos deben sumar vueltas enteras al arte " +
+                    "(una vuelta = $clicksPerArtWidth clics)",
+                0.0,
+                straightClicks % clicksPerArtWidth,
+                1e-6
+            )
+            assertEquals(
+                "$zone: los laterales deben volver a la misma altura",
+                0f,
+                motion.lateralDistanceAt(motion.cycleDistance.toDouble()),
+                1e-6f
+            )
+        }
+    }
+
+    @Test
+    fun ciudadVerde_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_verde,
+            RouteBackgrounds.forZone("ciudad_verde").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadVerde_startsAtTheBottomOfItsArtwork() {
+        // Arranca por el tramo bajo del arte, no por el principio.
+        assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_verde").startAnchor!!, 0f)
+    }
+
+    @Test
+    fun ciudadVerde_returnsToTheCentreLineBecauseBothSidesBalance() {
+        // 7 clics a cada lado: el zigzag no acumula deriva lateral. Si la
+        // trayectoria deja de estar balanceada, el personaje quedará cada vuelta
+        // más corrido y este test lo delatará.
+        val motion = RouteBackgrounds.forZone("ciudad_verde").motion
+        assertEquals(0f, motion.lateralDistanceAt(motion.cycleDistance.toDouble()), 1e-4f)
     }
 
     @Test

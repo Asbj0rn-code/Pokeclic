@@ -1,13 +1,16 @@
 package com.dsrs.pokeclic.viewmodel
 
-import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.GymCatalog
+import com.dsrs.pokeclic.model.GymCombat
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
+import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpriteRepository
+import com.dsrs.pokeclic.model.TutorialAction
 import com.dsrs.pokeclic.model.Zone
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -43,18 +46,6 @@ class MainViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
-    }
-
-    private class FakeStore : GameStateStore {
-        var saved: GameSnapshot? = null
-        override fun load(): GameSnapshot? = saved
-        override fun save(snapshot: GameSnapshot) { saved = snapshot }
-        override fun clear(): Boolean { saved = null; return true }
-    }
-
-    private class FakeSprites : SpriteRepository {
-        override fun frameCount(direction: Direction): Int = 1
-        override fun frame(direction: Direction, index: Int): Int = 0
     }
 
     /**
@@ -95,6 +86,14 @@ class MainViewModelTest {
     private val cityThenMeadowZones = listOf(
         Zone("z_ciudad", "Ciudad", 100L, emptyList()),
         Zone("z_prado", "Prado", 100L, listOf("pidgey"))
+    )
+
+    /**
+     * Cueva (Mt.Moon): salvajes sin modo hierba alta. Los clics avanzan la barra
+     * y, a la vez, alimentan el temporizador de encuentros.
+     */
+    private val caveZones = listOf(
+        Zone("z_cueva", "Cueva", 100L, listOf("zubat"), alwaysWilds = true)
     )
 
     /** Mismo recorrido corto, pero con el gimnasio de Misty en la zona central. */
@@ -213,7 +212,7 @@ class MainViewModelTest {
         assertFalse(state.isTallGrass)
         assertEquals(0f, state.walkProgress)
         assertNull(state.encounter)
-        assertNull(state.fishing)
+        assertNull(state.catching)
     }
 
     @Test
@@ -343,19 +342,31 @@ class MainViewModelTest {
         assertNotNull(enraged)
         assertTrue(enraged!!.rage)
         assertEquals(GymPhase.ATTACKING, enraged.phase)
-        assertEquals(14, enraged.leaderHp)      // umbral de furia de Brock (25 % de 60)
+        assertEquals(GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp), enraged.leaderHp)
         assertFalse(enraged.rageRoundPlayed)
+
+        // La furia abre el discurso del líder, con el combate en pausa.
+        dismissRageSpeech(vm)
 
         // Ronda de furia completa: al romper la postura queda jugada.
         fillBrockPosture(vm, clock)
         assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
         assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
 
-        // Potencia de clic básica (1): los 14 HP restantes caen en la ventana.
+        // Potencia de clic básica (1): los HP restantes caen en la ventana.
         guard = 0
-        while (vm.uiState.value.gym != null && guard++ < 120) {
+        while (vm.uiState.value.gym?.outcome == GymOutcome.ACTIVE && guard++ < 120) {
             vm.onGymEnemyHit()
         }
+
+        // La victoria no cierra el combate: deja el estado en WON para que la capa
+        // de despedida lo cuente, y la medalla se cobra al cerrarla.
+        with(vm.uiState.value.gym!!) {
+            assertEquals(GymOutcome.WON, outcome)
+            assertEquals(0, leaderHp)
+        }
+        assertFalse("la medalla no puede cobrarse antes de la despedida", "brock" in vm.uiState.value.medals)
+        vm.onGymVictoryDone()
 
         val state = vm.uiState.value
         assertNull(state.gym)
@@ -390,28 +401,38 @@ class MainViewModelTest {
         testScope.runCurrent()
 
         fillBrockPosture(vm, clock)
-        assertTrue(vm.uiState.value.clickPower > 60) // un golpe bastaría para matarlo
+        // Un golpe bastaría para matarlo.
+        assertTrue(vm.uiState.value.clickPower > GymCatalog.brock.leaderHp)
 
         vm.onGymEnemyHit()
 
         val enraged = vm.uiState.value.gym
         assertNotNull(enraged)
         with(enraged!!) {
-            assertEquals(14, leaderHp)
+            assertEquals(GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp), leaderHp)
             assertTrue(rage)
             assertEquals(GymPhase.ATTACKING, phase)
             assertFalse(rageRoundPlayed)
         }
 
+        // El discurso de furia frena el combate hasta que el jugador lo cierra.
+        dismissRageSpeech(vm)
+
         // Ya no está expuesto: el golpe siguiente no le hace daño.
         vm.onGymEnemyHit()
-        assertEquals(14, vm.uiState.value.gym!!.leaderHp)
+        assertEquals(
+            GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp),
+            vm.uiState.value.gym!!.leaderHp
+        )
 
         // Ronda de furia obligatoria y, después, el golpe letal sí entra.
         fillBrockPosture(vm, clock)
         assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
 
         vm.onGymEnemyHit()
+
+        assertEquals(GymOutcome.WON, vm.uiState.value.gym?.outcome)
+        vm.onGymVictoryDone()
 
         assertNull(vm.uiState.value.gym)
         assertTrue("brock" in vm.uiState.value.medals)
@@ -455,6 +476,9 @@ class MainViewModelTest {
         assertTrue(enraged!!.rage)
         assertTrue(enraged.projectiles.isEmpty())
 
+        // El discurso de furia se cierra antes de que arranque la ronda.
+        dismissRageSpeech(vm)
+
         // La ronda de furia arranca con el mismo respiro que una ronda normal:
         // nada cae en el acto ni se cobra de golpe la espera de la exposición.
         tick()
@@ -469,6 +493,84 @@ class MainViewModelTest {
             "ráfaga acumulada: ${projectiles.size} rocas en un segundo",
             projectiles.size <= 2
         )
+    }
+
+    @Test
+    fun rageSpeech_freezesTheCombatUntilItIsClosed() {
+        val clock = TestClock()
+        val vm = viewModel(nowMs = { clock.now }, random = Random(7))
+        tapZone(vm, times = 5)          // Z1 al límite
+        vm.onAdvanceZone()              // → Z2 (gimnasio)
+        tapZone(vm, times = 3)          // Z2 al límite
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        fillBrockPosture(vm, clock)
+        var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.EXPOSED && guard++ < 120) {
+            vm.onGymEnemyHit()
+        }
+
+        val atSpeech = vm.uiState.value.gym!!
+        assertTrue("la furia debería abrir su discurso", atSpeech.rageSpeech)
+        assertTrue(atSpeech.projectiles.isEmpty())
+
+        // Con el discurso abierto el combate no avanza: ni rocas ni daño, por
+        // mucho tiempo de juego que pase.
+        repeat(60) {
+            clock.now += 400L
+            tick()
+        }
+        with(vm.uiState.value.gym!!) {
+            assertTrue("cayeron rocas durante el discurso", projectiles.isEmpty())
+            assertEquals("la vida del líder cambió en pausa", atSpeech.leaderHp, leaderHp)
+            assertEquals("la vida del jugador cambió en pausa", atSpeech.playerHp, playerHp)
+        }
+
+        // Al cerrarlo, la furia arranca de verdad.
+        vm.onGymRageSpeechDone()
+        assertFalse(vm.uiState.value.gym!!.rageSpeech)
+        var spawned = false
+        repeat(60) {
+            clock.now += 400L
+            tick()
+            if (vm.uiState.value.gym!!.projectiles.isNotEmpty()) spawned = true
+        }
+        assertTrue("tras el discurso deberían volver a caer rocas", spawned)
+    }
+
+    @Test
+    fun missedClicksDrainThePostureBar() {
+        val clock = TestClock()
+        val vm = viewModel(nowMs = { clock.now }, random = Random(7))
+        tapZone(vm, times = 5)          // Z1 al límite
+        vm.onAdvanceZone()              // → Z2 (gimnasio)
+        tapZone(vm, times = 3)          // Z2 al límite
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        // Se rompe una roca para tener algo de postura que perder.
+        var guard = 0
+        while (vm.uiState.value.gym!!.projectiles.isEmpty() && guard++ < 20) {
+            clock.now += 400L
+            tick()
+        }
+        val rock = vm.uiState.value.gym!!.projectiles.first()
+        vm.onGymProjectileHit(rock.id)
+
+        val afterHit = vm.uiState.value.gym!!.posture
+        assertTrue("el acierto debería sumar postura", afterHit > 0)
+
+        vm.onGymMiss()
+        assertEquals("un clic fallado resta postura", afterHit - 1, vm.uiState.value.gym!!.posture)
+
+        // La barra se queda en cero, nunca negativa.
+        repeat(50) { vm.onGymMiss() }
+        assertEquals(0, vm.uiState.value.gym!!.posture)
     }
 
     // --- Gimnasio de Misty: anillos rítmicos ---------------------------------
@@ -511,6 +613,17 @@ class MainViewModelTest {
                 ?.map { it.id }
                 ?.forEach { vm.onGymProjectileHit(it) }
         }
+    }
+
+    /**
+     * Cierra el discurso de furia. Mientras está abierto el combate no avanza, así
+     * que cualquier test que siga jugando tras entrar en furia tiene que pasar
+     * por aquí.
+     */
+    private fun dismissRageSpeech(vm: MainViewModel) {
+        assertTrue("la furia debería abrir su discurso", vm.uiState.value.gym?.rageSpeech == true)
+        vm.onGymRageSpeechDone()
+        assertFalse("el discurso no se cerró", vm.uiState.value.gym?.rageSpeech == true)
     }
 
     @Test
@@ -566,6 +679,10 @@ class MainViewModelTest {
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
+            // Acertar justo en la convergencia: el efecto arranca en el círculo fijo.
+            assertEquals(1f, ringFeedback!!.ringProgress, 0.02f)
+            assertEquals("el primer acierto abre el combo", 1, ringFeedback!!.combo)
+            assertEquals(1, ringCombo)
         }
     }
 
@@ -589,6 +706,66 @@ class MainViewModelTest {
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
+            // Pulsar nada más nacer: el anillo está casi en su radio de entrada, así
+            // que el efecto de fallo arranca grande y se cierra sobre el sprite.
+            assertTrue("progreso casi nulo", ringFeedback!!.ringProgress < 0.1f)
+            assertEquals("un fallo no cuenta como combo", 0, ringFeedback!!.combo)
+            assertEquals(0, ringCombo)
+        }
+    }
+
+    @Test
+    fun consecutiveHitsRaiseTheComboAndAMissResetsIt() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+
+        fun waitForANewRing(): Long {
+            var guard = 0
+            while (vm.uiState.value.gym!!.rings.isEmpty() && guard++ < 40) {
+                now += 100L
+                tick()
+            }
+            return vm.uiState.value.gym!!.rings.first().id
+        }
+
+        val first = vm.uiState.value.gym!!.rings.single()
+        now = first.convergeAtMs()
+        vm.onGymRingTap()
+        assertEquals(1, vm.uiState.value.gym!!.ringCombo)
+
+        // Nace el siguiente y también se acierta: el combo sube.
+        waitForANewRing()
+        val second = vm.uiState.value.gym!!.rings.first()
+        now = second.convergeAtMs()
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals("dos aciertos seguidos son combo 2", 2, ringFeedback?.combo)
+            assertEquals(2, ringCombo)
+        }
+
+        // Nace el siguiente, se falla y la racha se corta.
+        waitForANewRing()
+        val third = vm.uiState.value.gym!!.rings.first()
+        now = third.spawnedAtMs + 1L
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(0, ringFeedback?.combo)
+            assertEquals(0, ringCombo)
+        }
+
+        // Y el siguiente acierto vuelve a empezar en 1: la acumulación se perdió.
+        waitForANewRing()
+        val fourth = vm.uiState.value.gym!!.rings.first()
+        now = fourth.convergeAtMs()
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals("tras el fallo la cuenta arranca de cero", 1, ringFeedback?.combo)
+            assertEquals(1, ringCombo)
         }
     }
 
@@ -611,6 +788,7 @@ class MainViewModelTest {
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
             assertEquals(1, ringFeedback?.count)
+            assertEquals("un anillo caducado corta el combo", 0, ringFeedback?.combo)
         }
     }
 
@@ -816,6 +994,7 @@ class MainViewModelTest {
         var now = 0L
         val vm = viewModel(nowMs = { now }, zones = cityThenMeadowZones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         // 1 · Ciudad: no aparece nada aunque el temporizador de caminar cruce
         //     el umbral del encuentro.
@@ -827,7 +1006,7 @@ class MainViewModelTest {
 
         with(vm.uiState.value) {
             assertNull(encounter)
-            assertNull(fishing)
+            assertNull(catching)
             assertEquals(0, zoneIndex)
         }
 
@@ -847,7 +1026,89 @@ class MainViewModelTest {
 
         val afterMeadow = vm.uiState.value
         assertNotNull(afterMeadow.encounter)
-        assertNotNull(afterMeadow.fishing)
+        assertNotNull(afterMeadow.catching)
+    }
+
+    /**
+     * Cueva (Mt.Moon): los clics suman a la barra **y** alimentan el temporizador
+     * de encuentros, así que aparecen salvajes sin activar la hierba alta.
+     */
+    @Test
+    fun caveZone_countsClicksAndSpawnsEncountersWhileAdvancing() {
+        val vm = viewModel(nowMs = { 0L }, zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
+
+        tapZone(vm, 2)
+        with(vm.uiState.value) {
+            assertFalse(isTallGrass)
+            assertTrue("la cueva debe sumar clics a la barra", zoneClicks > 0L)
+            assertNull(encounter)
+        }
+
+        vm.onPokeBallTouch(Direction.BACK) // deja actividad reciente para el bucle
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        with(vm.uiState.value) {
+            assertNotNull("la cueva genera salvajes al avanzar", encounter)
+            assertNotNull(catching)
+            assertFalse("sin hierba alta no hay sprite ni modo", isTallGrass)
+        }
+    }
+
+    /** En una cueva el botón de hierba no existe: pulsarlo no cambia nada. */
+    @Test
+    fun caveZone_ignoresTheTallGrassToggle() {
+        val vm = viewModel(zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
+
+        vm.onTallGrassToggle()
+
+        assertFalse(vm.uiState.value.isTallGrass)
+    }
+
+    /** Al cruzar de una ruta con hierba a la cueva, el modo hierba se cierra. */
+    @Test
+    fun caveZone_enteredFromTallGrass_clearsTheGrassMode() {
+        val route = Zone("z_ruta", "Ruta", 2L, listOf("pidgey"))
+        val vm = viewModel(zones = listOf(route, caveZones.single()))
+        vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
+
+        tapZone(vm, 2)
+        vm.onTallGrassToggle()
+        assertTrue(vm.uiState.value.isTallGrass)
+
+        vm.onAdvanceZone()
+
+        with(vm.uiState.value) {
+            assertEquals(1, zoneIndex)
+            assertFalse(isTallGrass)
+            assertTrue(alwaysWilds)
+        }
+    }
+
+    /** Con el minijuego abierto no se acumulan clics ni aparece otro salvaje. */
+    @Test
+    fun caveZone_pausesWhileAnEncounterIsOpen() {
+        val vm = viewModel(nowMs = { 0L }, zones = caveZones)
+        vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
+        vm.onPokeBallTouch(Direction.BACK)
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+
+        val encounter = vm.uiState.value.encounter ?: error("la cueva no abrió encuentro")
+        val clicks = vm.uiState.value.zoneClicks
+
+        repeat(5) { vm.onPokeBallTouch(Direction.BACK) }
+        testScope.advanceTimeBy(30_000L)
+        testScope.runCurrent()
+
+        assertEquals(clicks, vm.uiState.value.zoneClicks)
+        assertEquals(encounter, vm.uiState.value.encounter)
     }
 
     /**
@@ -866,7 +1127,7 @@ class MainViewModelTest {
     }
 
     /**
-     * Modo captura: con el encuentro (partida de pesca) en pantalla, un
+     * Modo captura: con el encuentro (partida de captura) en pantalla, un
      * toque que alcanzara la Pokébola tampoco cuenta para el avance.
      */
     @Test

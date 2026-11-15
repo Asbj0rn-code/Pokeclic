@@ -63,33 +63,39 @@ data class TrainerState(
  * @param name nombre mostrado.
  * @param type tipo elemental, decide ventajas y desventajas.
  * @param captureDifficulty 0f (trivial) a 1f (muy difícil); alimenta la
- *   dificultad del minijuego de pesca (`FishingDefaults.configFor`).
+ *   dificultad del minijuego de captura (`CatchingDefaults.configFor`).
  * @param coinReward monedas otorgadas la **primera vez** que se captura la
  *   especie (una sola vez para siempre).
+ * @param dexNumber número de la Pokédex nacional; resuelve el sprite de
+ *   `Pokedex/` (`pokedexSprite`).
  */
 data class Species(
     val id: String,
     val name: String,
     val type: PokemonType,
     val captureDifficulty: Float,
-    val coinReward: Int
+    val coinReward: Int,
+    val dexNumber: Int
 )
 
 /**
  * Un Pokémon salvaje que ha aparecido en la hierba alta y espera a ser capturado.
  *
  * Es estado **transitorio**: no se persiste mientras está abierto. La captura
- * se juega con el minijuego de pesca (`FishingGame`); su estado en curso vive
- * en `GameUiState.fishing`, así que aquí solo viaja la especie en liza.
+ * se juega con el minijuego de captura (`CatchingGame`); su estado en curso vive
+ * en `GameUiState.catching`, así que aquí solo viaja la especie en liza.
  *
  * @param speciesId clave del catálogo (SpriteRepository y recompensas).
  * @param speciesName nombre mostrado, ya resuelto para la UI.
  * @param speciesType tipo elemental, para el color del sustituto de sprite.
+ * @param speciesDexNumber número de la Pokédex nacional, ya resuelto para que
+ *   la UI pinte el sprite de `Pokedex/` sin consultar el catálogo.
  */
 data class Encounter(
     val speciesId: String,
     val speciesName: String,
-    val speciesType: PokemonType
+    val speciesType: PokemonType,
+    val speciesDexNumber: Int = 0
 )
 
 /**
@@ -129,7 +135,14 @@ data class Zone(
     val name: String,
     val clickRequirement: Long,
     val wildSpeciesIds: List<String>,
-    val gymId: String? = null
+    val gymId: String? = null,
+    /**
+     * La zona es una **cueva** (Mt.Moon): genera salvajes al avanzar sin modo
+     * hierba alta. El botón de hierba se oculta, el fondo se mueve y los clics
+     * cuentan para la barra igual que en una ruta, pero el encuentro aparece por
+     * el mero hecho de caminar. No hay sprite de hierba bajo el entrenador.
+     */
+    val alwaysWilds: Boolean = false
 )
 
 /**
@@ -162,9 +175,17 @@ fun isGymPending(zone: Zone, gymClearedRun: Set<String>): Boolean =
  * navegación y animación del entrenador) queda fuera a propósito.
  *
  * **Permanentes**: `playerName`, `seenSpecies`, `rewardedSpecies`, `medals`,
- * `starterSpeciesId` y `starterBond`. **De la run**: `ownedSpecies`,
- * `leadSpeciesId`, `gymClearedRun` y el progreso de zona; se vacían (o vuelven
- * al starter) al resetear.
+ * `starterSpeciesId`, `starterBond` y `caughtSpecies` (capturas históricas
+ * para la Pokédex); los avistamientos y las capturas históricas **sobreviven
+ * al reset de la run** y solo desaparecen con el borrado total. **De la
+ * run**: `ownedSpecies`, `leadSpeciesId`, `gymClearedRun` y el progreso de
+ * zona; se vacían (o vuelven al starter) al resetear.
+ *
+ * Los tres conjuntos permanentes **no son intercambiables**: `seenSpecies`
+ * registra conocimiento, `caughtSpecies` la historia que alimenta el estado
+ * REGISTERED de la Pokédex y `rewardedSpecies` el pago único de monedas. Se
+ * solapan en la práctica (capturar implica ver y, la primera vez, recompensar),
+ * pero consolidarlos acoplaría la regla de recompensa a la presentación.
  *
  * Las mejoras comprables (potencia de clic y vida) se retiraron por no tener UI
  * ni forma de adquirirse; volverán como sistema de progresión en una etapa
@@ -175,6 +196,17 @@ data class GameSnapshot(
     val coins: Long = 0L,
     val seenSpecies: Set<String> = emptySet(),
     val rewardedSpecies: Set<String> = emptySet(),
+    /**
+     * Capturas históricas (meta permanente): especies alguna vez obtenidas,
+     * incluida la evolución del inicial elegido. Alimenta el estado
+     * **REGISTERED** de la Pokédex (capturada en una run anterior y no poseída
+     * ahora) y sobrevive a los resets; **CAUGHT** sigue siendo la posesión de
+     * la run actual (`ownedSpecies` o el starter).
+     *
+     * Se separa a propósito de `ownedSpecies` (posesión de la run actual) y de
+     * `rewardedSpecies` (especies ya recompensadas una única vez).
+     */
+    val caughtSpecies: Set<String> = emptySet(),
     val medals: Set<String> = emptySet(),
     val starterSpeciesId: String? = null,
     val starterBond: Int = 0,
@@ -182,5 +214,26 @@ data class GameSnapshot(
     val leadSpeciesId: String? = null,
     val gymClearedRun: Set<String> = emptySet(),
     val zoneIndex: Int = 0,
-    val zoneClicks: Long = 0L
+    val zoneClicks: Long = 0L,
+    /**
+     * Progreso del tutorial explicativo: fase actual de la máquina
+     * de estados (`model/Tutorial.kt`). Se persiste por su nombre estable y se
+     * rehidrata con `tutorialPhaseFromName`.
+     *
+     * El valor por defecto (`COMPLETED`) es el semántica segura de «tutorial no
+     * ofrecido» para cualquier constructor que no lo declare (guardados
+     * parciales, código que aún no lo cablea). Para un **guardado antiguo sin
+     * la clave**, `GameStateStore` resuelve el respaldo real: `COMPLETED` si ya
+     * hay starter y `PENDING` si no.
+     */
+    val tutorialPhase: TutorialPhase = TutorialPhase.COMPLETED,
+    /**
+     * Momento del paso guiado: `true` cuando el jugador **cerró con una
+     * pulsación** el mensaje explicativo del paso actual (visibilidad separada
+     * de la fase). Solo entonces se habilita la interacción del paso; cerrar
+     * el mensaje no completa el paso. Cada transición de fase lo reinicia a
+     * `false` para reabrir el mensaje siguiente. Persistido para que la
+     * reapcripción devuelva exactamente al mismo momento del paso.
+     */
+    val tutorialMessageClosed: Boolean = false
 )

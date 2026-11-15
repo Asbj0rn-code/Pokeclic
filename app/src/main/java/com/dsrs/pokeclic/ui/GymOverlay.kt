@@ -12,14 +12,17 @@ package com.dsrs.pokeclic.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,29 +31,28 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -67,18 +69,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.dsrs.pokeclic.R
@@ -93,6 +98,7 @@ import com.dsrs.pokeclic.model.VoltorbFeedback
 import com.dsrs.pokeclic.model.VoltorbOutcome
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.annotation.DrawableRes
@@ -127,34 +133,77 @@ import androidx.compose.foundation.shape.CircleShape
 fun GymOverlay(
     state: GymState,
     onProjectileHit: (Long) -> Unit,
+    onProjectileMiss: () -> Unit,
     onRingTap: () -> Unit,
     onVoltorbTap: (Int) -> Unit,
     onEnemyHit: () -> Unit,
+    onRageSpeechDone: () -> Unit,
+    onVictoryDone: () -> Unit,
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     showDefeat: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    // Discurso de furia: sustituye la escena entera. El ViewModel deja el combate
+    // en pausa mientras `rageSpeech` esté activo, así que aquí no hay nada que
+    // pintar del HUD ni de los sprites.
+    if (state.rageSpeech) {
+        GymRageSpeech(
+            gymId = state.gymId,
+            leaderName = state.leaderName,
+            onFinished = onRageSpeechDone,
+            modifier = modifier
+        )
+        return
+    }
+
     val exposed = state.phase == GymPhase.EXPOSED
+    // Composición propia del gimnasio: cada arte coloca la plataforma del líder y
+    // el suelo del jugador a otra altura.
+    val layout = GymSceneLayouts.forGym(state.gymId)
+
+    // Victoria: primero el Pokémon del líder se hunde y se apaga; después llega
+    // su despedida. Sin guion propio, el combate se cierra en cuanto termina el
+    // desvanecimiento.
+    val won = state.outcome == GymOutcome.WON
+    val victoryScript = remember(state.gymId) { victoryScriptFor(state.gymId) }
+    val defeatFade = remember { Animatable(0f) }
+    var victoryVisible by remember(state.gymId) { mutableStateOf(false) }
+
+    LaunchedEffect(won) {
+        if (!won) return@LaunchedEffect
+        defeatFade.animateTo(1f, tween(VICTORY_FADE_MS, easing = FastOutSlowInEasing))
+        if (victoryScript == null) onVictoryDone() else victoryVisible = true
+    }
+
+    if (victoryVisible && victoryScript != null) {
+        GymVictory(
+            script = victoryScript,
+            leaderName = state.leaderName,
+            onFinished = onVictoryDone,
+            modifier = modifier
+        )
+        return
+    }
 
     // El combate oculta el bottom menu, así que el `Scaffold` ya no reserva el
     // inset inferior: se aplica aquí para que el sprite del jugador no quede
     // debajo de la barra de navegación.
     //
     // El minijuego de anillos juzga los toques en la **raíz** del overlay, como
-    // hace la pesca: así ningún sprite, barra o capa intermedia puede dejar el
+    // hace la captura: así ningún sprite, barra o capa intermedia puede dejar el
     // gesto sin receptor.
     Box(
         modifier = modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .pointerInput(state.mechanic, exposed) {
+            .pointerInput(state.mechanic, exposed, layout) {
                 if (state.mechanic != GymMechanic.TIMING_RINGS) return@pointerInput
 
-                val enemyLeftPx = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                val enemyTopPx = ENEMY_TOP.toPx()
-                val enemyRightPx = enemyLeftPx + ENEMY_WIDTH.toPx()
-                val enemyBottomPx = enemyTopPx + ENEMY_HEIGHT.toPx()
+                val enemyLeftPx = (size.width - layout.enemyWidth.toPx()) / 2f
+                val enemyTopPx = layout.enemyTop.toPx()
+                val enemyRightPx = enemyLeftPx + layout.enemyWidth.toPx()
+                val enemyBottomPx = enemyTopPx + layout.enemyHeight.toPx()
 
                 awaitEachGesture {
                     // El minijuego se juzga al **apoyar** el dedo, no al
@@ -178,18 +227,25 @@ fun GymOverlay(
             GymMechanic.PROJECTILES -> GymScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 onProjectileHit = onProjectileHit,
+                onMiss = onProjectileMiss,
                 onEnemyHit = onEnemyHit,
                 modifier = Modifier.fillMaxSize()
             )
             GymMechanic.TIMING_RINGS -> RingGymScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 modifier = Modifier.fillMaxSize()
             )
             GymMechanic.VOLTORB_GRID -> VoltorbGridScene(
                 state = state,
                 exposed = exposed,
+                layout = layout,
+                enemyFade = defeatFade.value,
                 onVoltorbTap = onVoltorbTap,
                 onEnemyHit = onEnemyHit,
                 modifier = Modifier.fillMaxSize()
@@ -200,9 +256,8 @@ fun GymOverlay(
             state = state,
             exposed = exposed,
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .padding(12.dp)
+                .align(Alignment.TopStart)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
         )
 
         PlayerHpBar(
@@ -231,7 +286,10 @@ fun GymOverlay(
 private fun GymScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     onProjectileHit: (Long) -> Unit,
+    onMiss: () -> Unit,
     onEnemyHit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -255,9 +313,11 @@ private fun GymScene(
     }
 
     // Cada rotura dispara una animación de ataque (hacia adelante y vuelta) y un
-    // destello en el punto tocado. Son el sustituto del sprite de ataque real.
+    // estallido de roca en el punto tocado. Son el sustituto del sprite de
+    // ataque real.
     var attackNonce by remember { mutableIntStateOf(0) }
-    var hitPoint by remember { mutableStateOf(Offset.Zero) }
+    val bursts = remember { mutableStateListOf<RockBurst>() }
+    var nextBurstId by remember { mutableLongStateOf(0L) }
 
     val lunge = remember { Animatable(0f) }
     LaunchedEffect(attackNonce) {
@@ -266,11 +326,11 @@ private fun GymScene(
         lunge.animateTo(1f, tween(durationMillis = 90))
         lunge.animateTo(0f, tween(durationMillis = 110))
     }
-    val flash = remember { Animatable(0f) }
-    LaunchedEffect(attackNonce) {
-        if (attackNonce == 0) return@LaunchedEffect
-        flash.snapTo(0.85f)
-        flash.animateTo(0f, tween(durationMillis = 220))
+
+    // Sprite sheet del estallido: una sola decodificación por escena, compartida
+    // por todos los estallidos activos.
+    val shatterSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.rock_shatter).asImageBitmap()
     }
 
     // Latido del enemigo mientras está expuesto.
@@ -290,11 +350,11 @@ private fun GymScene(
 
         // Reparto vertical: el enemigo arranca por debajo del HUD y las rocas caen
         // desde su base hasta la cabeza del jugador.
-        val spawnY = ENEMY_TOP + ENEMY_HEIGHT
-        val impactY = (maxHeight - PLAYER_BOTTOM - PLAYER_HEIGHT + PLAYER_HIT_INSET)
+        val spawnY = layout.enemyTop + layout.enemyHeight
+        val impactY = (maxHeight - layout.playerBottom - layout.playerHeight + PLAYER_HIT_INSET)
             .coerceAtLeast(spawnY + 24.dp)
 
-        val rockSize = (cellWidth * 0.72f).coerceIn(36.dp, 56.dp)
+        val rockSize = projectileSizeFor(cellWidth)
 
         state.projectiles.forEach { projectile ->
             val progress = projectile.progressAt(now)
@@ -310,17 +370,6 @@ private fun GymScene(
             )
         }
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val alpha = flash.value
-            if (alpha > 0f) {
-                drawCircle(
-                    color = typeColor(state.leadType).copy(alpha = alpha),
-                    radius = 26.dp.toPx() * (1.4f - alpha * 0.4f),
-                    center = hitPoint
-                )
-            }
-        }
-
         // Enemigo, con pulso mientras está expuesto.
         GymSpriteBox(
             gifRes = enemyGifFor(state.gymId),
@@ -329,12 +378,15 @@ private fun GymScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -346,8 +398,8 @@ private fun GymScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = -PLAYER_BOTTOM)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+                .offset(y = -layout.playerBottom)
+                .size(layout.playerWidth, layout.playerHeight)
                 .graphicsLayer {
                     translationY = -26.dp.toPx() * lunge.value
                     val scale = 1f + 0.05f * lunge.value
@@ -356,16 +408,21 @@ private fun GymScene(
                 }
         )
 
+        // Estallidos de las rocas rotas. Van encima de los sprites: la roca se
+        // parte donde estaba y los trozos salen hacia la cámara.
+        bursts.forEach { burst ->
+            key(burst.id) {
+                RockShatterBurst(
+                    sheet = shatterSheet,
+                    center = burst.center,
+                    rockSize = burst.size,
+                    onFinished = { bursts.removeAll { it.id == burst.id } }
+                )
+            }
+        }
+
         // Barra de postura justo debajo del enemigo: se llena con los aciertos
         // del jugador y, al completarse, abre la ventana. En furia se tiñe de rojo.
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
-        )
-
         // Capa de toque única: enemigo si está expuesto, o la roca más cercana.
         Box(
             modifier = Modifier
@@ -380,10 +437,10 @@ private fun GymScene(
                         PROJECTILE_MIN_HIT_RADIUS.toPx()
                     )
 
-                    val enemyLeftPx = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                    val enemyTopPx = ENEMY_TOP.toPx()
-                    val enemyRightPx = enemyLeftPx + ENEMY_WIDTH.toPx()
-                    val enemyBottomPx = enemyTopPx + ENEMY_HEIGHT.toPx()
+                    val enemyLeftPx = (size.width - layout.enemyWidth.toPx()) / 2f
+                    val enemyTopPx = layout.enemyTop.toPx()
+                    val enemyRightPx = enemyLeftPx + layout.enemyWidth.toPx()
+                    val enemyBottomPx = enemyTopPx + layout.enemyHeight.toPx()
 
                     // El acierto se mide donde estaba la roca **al apoyar el dedo**:
                     // al caer se movería y el toque "se escaparía".
@@ -418,10 +475,14 @@ private fun GymScene(
                                     // columnas contiguas no se acierten de más.
                                     .filter { it.second <= hitRadius * hitRadius }
                                     .minByOrNull { it.second }
-                                hit?.let {
-                                    hitPoint = it.third
+                                if (hit == null) {
+                                    // Toque al aire: resta postura, igual que un
+                                    // fallo en las otras mecánicas.
+                                    onMiss()
+                                } else {
                                     attackNonce++
-                                    onProjectileHit(it.first.id)
+                                    bursts += RockBurst(nextBurstId++, hit.third, rockSize)
+                                    onProjectileHit(hit.first.id)
                                 }
                             }
                         }
@@ -440,7 +501,7 @@ private fun GymScene(
  * el anillo que se cierra lo toca. El modelo decide aciertos y fallos: aquí solo
  * se pinta el radio derivado del tiempo y se envía el toque.
  *
- * El gesto se captura en la raíz de [GymOverlay], igual que en la pesca: esta
+ * El gesto se captura en la raíz de [GymOverlay], igual que en la captura: esta
  * escena solo pinta. No hay acierto por posición: el minijuego es de **momento**,
  * no de puntería.
  */
@@ -448,6 +509,8 @@ private fun GymScene(
 private fun RingGymScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     modifier: Modifier = Modifier
 ) {
     // Reloj de fotogramas: el radio de cada anillo sale de su progreso, así que
@@ -461,15 +524,41 @@ private fun RingGymScene(
     }
     val now = clock.longValue
     val currentState by rememberUpdatedState(state)
+    val context = LocalContext.current
 
     // Acierto/fallo del último anillo: el ViewModel publica el resultado y aquí
-    // se convierte en un estallido de agua o uno rojo, más la etiqueta flotante.
+    // se convierte en un estallido de agua (hoja de pixelfx), más el cartel.
+    // El instante de arranque es la única autoridad temporal: el sprite sheet se
+    // indexa por tiempo y el cartel se calcula desde los mismos segundos.
     val feedback = state.ringFeedback
-    val feedbackProgress = remember { Animatable(1f) }
+    var fxStartMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(feedback?.ringId) {
-        if (feedback == null) return@LaunchedEffect
-        feedbackProgress.snapTo(0f)
-        feedbackProgress.animateTo(1f, tween(durationMillis = RING_FEEDBACK_MS))
+        if (feedback != null) fxStartMs = nowMs()
+    }
+
+    // Una decodificación por escena para cada hoja.
+    val burstSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_burst).asImageBitmap()
+    }
+    val implodeSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_implode).asImageBitmap()
+    }
+
+    // El resultado tiñe el **círculo fijo** que rodea al Pokémon, no el aro que se
+    // cierra ni el estallido: esos siguen siendo agua. Así el color dice "acierto"
+    // o "fallo" sin disfrazar el ataque de otra cosa.
+    val resultTint = when (feedback?.outcome) {
+        RingOutcome.HIT -> HIT_GREEN
+        RingOutcome.MISS -> MISS_RED
+        null -> null
+    }
+    val tintAge = now - fxStartMs
+    val tintMix = if (resultTint != null && tintAge in 0 until RING_TINT_MS) {
+        val u = tintAge / RING_TINT_MS.toFloat()
+        // Aguanta encendido un tercio del tiempo y luego se apaga.
+        if (u < 0.35f) 1f else (1f - (u - 0.35f) / 0.65f).coerceIn(0f, 1f)
+    } else {
+        0f
     }
 
     // Latido del enemigo mientras está expuesto.
@@ -485,7 +574,7 @@ private fun RingGymScene(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(
                 x = size.width / 2f,
-                y = size.height - PLAYER_BOTTOM.toPx() - PLAYER_HEIGHT.toPx() / 2f
+                y = size.height - layout.playerBottom.toPx() - layout.playerHeight.toPx() / 2f
             )
             val targetRadius = RING_TARGET_RADIUS.toPx()
             val startRadius = RING_START_RADIUS.toPx()
@@ -493,10 +582,29 @@ private fun RingGymScene(
             val outlineStroke = Stroke(width = (RING_STROKE + 3.dp).toPx())
             val foamStroke = Stroke(width = 1.dp.toPx())
 
+            // El color del resultado. El círculo fijo es el que lo lleva: el aro
+            // que se cierra y el estallido se quedan en agua.
+            fun tinted(base: Color): Color =
+                if (resultTint == null || tintMix <= 0f) base
+                else lerp(base, resultTint, tintMix)
+
+            // Halo del resultado: envuelve el círculo fijo mientras dura el aviso.
+            if (resultTint != null && tintMix > 0.01f) {
+                drawCircle(
+                    color = resultTint.copy(alpha = 0.34f * tintMix),
+                    radius = targetRadius,
+                    center = center,
+                    style = Stroke(width = RING_GLOW_STROKE.toPx() * 2f)
+                )
+            }
+
             // Charco de agua bajo el Pokémon: da profundidad al círculo fijo.
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(WATER_POOL.copy(alpha = 0.34f), Color.Transparent),
+                    colors = listOf(
+                        tinted(WATER_POOL).copy(alpha = 0.34f + 0.26f * tintMix),
+                        Color.Transparent
+                    ),
                     center = center,
                     radius = targetRadius
                 ),
@@ -514,13 +622,13 @@ private fun RingGymScene(
                 style = outlineStroke
             )
             drawCircle(
-                color = WATER_LIGHT.copy(alpha = 0.95f),
+                color = tinted(WATER_LIGHT).copy(alpha = 0.95f),
                 radius = targetRadius,
                 center = center,
                 style = mainStroke
             )
             drawCircle(
-                color = WATER_FOAM.copy(alpha = 0.95f),
+                color = tinted(WATER_FOAM).copy(alpha = 0.95f),
                 radius = targetRadius - 3.dp.toPx(),
                 center = center,
                 style = foamStroke
@@ -533,19 +641,26 @@ private fun RingGymScene(
                 val bubbleX = center.x + (index - 2f) * (targetRadius * 0.28f)
                 val bubbleY = center.y + targetRadius * 0.82f - phase * targetRadius * 1.6f
                 drawCircle(
-                    color = WATER_FOAM.copy(alpha = 0.42f * (1f - phase)),
+                    color = tinted(WATER_FOAM).copy(alpha = 0.42f * (1f - phase)),
                     radius = if (index % 2 == 0) 3.dp.toPx() else 2.dp.toPx(),
                     center = Offset(bubbleX, bubbleY)
                 )
             }
 
-            // Anillos que se cierran: agua profunda, espuma, ondulación y gotas.
+            // Anillos que se cierran. El aro es una banda de agua: contorno oscuro
+            // que lo separa del fondo, cuerpo con degradado, cresta de espuma,
+            // cáusticas que giran y gotas que se desprenden hacia fuera.
             currentState.rings.forEach { ring ->
-                val radius = startRadius + (targetRadius - startRadius) * ring.progressAt(now)
+                val progress = ring.progressAt(now)
+                val radius = startRadius + (targetRadius - startRadius) * progress
                 val onBeat = ring.isInWindow(now, currentState.ringWindowMs)
+                // Un aro grande ondula; al llegar al círculo fijo se alisa.
+                val energy = ((radius - targetRadius) / (startRadius - targetRadius))
+                    .coerceIn(0f, 1f)
 
+                // Halo: el volumen de agua que empuja el aro.
                 drawCircle(
-                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.30f),
+                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.26f),
                     radius = radius,
                     center = center,
                     style = Stroke(width = RING_GLOW_STROKE.toPx())
@@ -566,101 +681,82 @@ private fun RingGymScene(
                     center = center
                 )
 
-                if (onBeat) {
-                    // En su ventana el anillo queda liso: es la señal exacta.
-                    drawCircle(
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        radius = radius,
-                        center = center,
-                        style = outlineStroke
-                    )
-                    drawCircle(
-                        brush = ringBrush,
-                        radius = radius,
-                        center = center,
-                        style = mainStroke
-                    )
-                } else {
-                    // Fuera de la ventana, el borde ondula como una ola.
-                    val wave = Path()
-                    val segments = 72
-                    for (step in 0..segments) {
-                        val angle = step * (2.0 * PI / segments).toFloat()
-                        val ripple = sin(angle * RING_WAVE_CYCLES + now / 220f) *
-                            RING_WAVE_AMPLITUDE.toPx()
-                        val x = center.x + cos(angle) * (radius + ripple)
-                        val y = center.y + sin(angle) * (radius + ripple)
-                        if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                // La onda: dos armónicos con velocidades distintas, para que no se
+                // lea como un círculo perfecto que respira.
+                val wave = Path()
+                val crestWave = Path()
+                val segments = 72
+                for (step in 0..segments) {
+                    val angle = step * (2.0 * PI / segments).toFloat()
+                    val ripple = if (onBeat) {
+                        0f
+                    } else {
+                        (sin(angle * 5f - now / 260f) * 0.62f +
+                            sin(angle * 11f + now / 190f) * 0.38f) *
+                            RING_WAVE_AMPLITUDE.toPx() * (0.25f + 0.75f * energy)
                     }
-                    wave.close()
-                    drawPath(
-                        path = wave,
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        style = outlineStroke
-                    )
-                    drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                    val x = center.x + cos(angle) * (radius + ripple)
+                    val y = center.y + sin(angle) * (radius + ripple)
+                    if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                    val crestRadius = radius + ripple + RING_CREST_OFFSET.toPx()
+                    val cx = center.x + cos(angle) * crestRadius
+                    val cy = center.y + sin(angle) * crestRadius
+                    if (step == 0) crestWave.moveTo(cx, cy) else crestWave.lineTo(cx, cy)
                 }
+                wave.close()
+                crestWave.close()
 
-                drawCircle(
-                    color = WATER_FOAM.copy(alpha = if (onBeat) 0.95f else 0.65f),
-                    radius = radius - 3.dp.toPx(),
-                    center = center,
+                drawPath(
+                    path = wave,
+                    color = RING_OUTLINE.copy(alpha = 0.62f),
+                    style = outlineStroke
+                )
+                drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                // Cresta de espuma en el borde exterior.
+                drawPath(
+                    path = crestWave,
+                    color = WATER_FOAM.copy(alpha = if (onBeat) 1f else 0.78f),
                     style = foamStroke
                 )
 
-                // Gotas de espuma que orbitan el anillo y respiran con el tiempo.
-                val spin = (now % 7_000L) / 7_000f * 360f
-                repeat(4) { dropIndex ->
-                    val direction = if (dropIndex % 2 == 0) 1f else -1f
-                    val angle = (dropIndex * 90f + spin * direction) * PI.toFloat() / 180f
-                    val dropX = center.x + cos(angle) * radius
-                    val dropY = center.y + sin(angle) * radius
-                    val dropRadius = (dropIndex + 2).dp.toPx() *
-                        (0.75f + 0.25f * sin(now / 300f + dropIndex))
+                // Cáusticas: arcos cortos que corren por la cresta a distinta
+                // velocidad, como la luz sobre el agua en movimiento.
+                if (!onBeat) {
+                    repeat(4) { index ->
+                        val spinMs = 2_100L + index * 380L
+                        val base = (index * 90f) + (now % spinMs) / spinMs.toFloat() * 360f
+                        val sweep = 16f + index * 4f
+                        val arcRadius = radius + RING_CREST_OFFSET.toPx() + 1.dp.toPx()
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.30f + 0.12f * energy),
+                            startAngle = base,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
+                            size = Size(arcRadius * 2f, arcRadius * 2f),
+                            style = Stroke(width = RING_CREST_STROKE.toPx())
+                        )
+                    }
+                }
+
+                // Gotas que se desprenden del aro hacia fuera y se apagan.
+                repeat(6) { index ->
+                    val periodMs = 900L + index * 120L
+                    val phase = ((now + index * 217L) % periodMs) / periodMs.toFloat()
+                    val angle = index * (360f / 6f) + progress * 90f
+                    val rad = angle * PI.toFloat() / 180f
+                    val distance = radius + phase * 7.dp.toPx()
                     drawCircle(
-                        color = if (onBeat) Color.White.copy(alpha = 0.95f)
-                        else WATER_FOAM.copy(alpha = 0.9f),
-                        radius = dropRadius,
-                        center = Offset(dropX, dropY)
+                        color = if (onBeat) Color.White.copy(alpha = 0.9f * (1f - phase))
+                        else WATER_FOAM.copy(alpha = 0.85f * (1f - phase)),
+                        radius = (1.2f + (index % 3) * 0.5f).dp.toPx() * (1f - phase * 0.5f),
+                        center = Offset(center.x + cos(rad) * distance, center.y + sin(rad) * distance)
                     )
                 }
             }
 
-            // Estallido del resultado: salpicadura de espuma o onda roja.
-            val progress = feedbackProgress.value
-            if (feedback != null && progress < 1f) {
-                val fade = 1f - progress
-                when (feedback.outcome) {
-                    RingOutcome.HIT -> {
-                        drawCircle(
-                            color = WATER_FOAM.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 42.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (4f * fade + 1f).dp.toPx())
-                        )
-                        repeat(8) { dropIndex ->
-                            val angle = dropIndex * 45f * PI.toFloat() / 180f
-                            val distance = targetRadius + 60.dp.toPx() * progress
-                            drawCircle(
-                                color = WATER_LIGHT.copy(alpha = 0.9f * fade),
-                                radius = (3.5f * fade + 1f).dp.toPx(),
-                                center = Offset(
-                                    center.x + cos(angle) * distance,
-                                    center.y + sin(angle) * distance
-                                )
-                            )
-                        }
-                    }
-                    RingOutcome.MISS -> {
-                        drawCircle(
-                            color = MISS_RED.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 36.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (5f * fade + 1f).dp.toPx())
-                        )
-                    }
-                }
-            }
+            // El resultado lo pinta la capa de sprite sheets que va por encima de
+            // los sprites: el anillo fallado tiene que cerrarse *sobre* el Pokémon.
         }
 
         // Enemigo, con pulso mientras está expuesto.
@@ -671,12 +767,15 @@ private fun RingGymScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -688,54 +787,354 @@ private fun RingGymScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = -PLAYER_BOTTOM)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
+                .offset(y = -layout.playerBottom)
+                .size(layout.playerWidth, layout.playerHeight)
         )
 
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + ENEMY_HEIGHT + 6.dp)
-        )
-
-        // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
-        // cueva. Sube y se desvanece con el mismo reloj que el estallido.
+        // Efecto del resultado, por encima de los sprites: el acierto salpica y el
+        // fallo cierra el anillo sobre el Pokémon y estalla en el centro. Arranca
+        // en el radio que tenía el anillo al resolverse, no en el del jugador.
         feedback?.let { result ->
-            val progress = feedbackProgress.value
-            // Se queda legible un instante y después se desvanece.
-            val fade = if (progress < 0.45f) {
-                1f
-            } else {
-                ((1f - progress) / 0.55f).coerceIn(0f, 1f)
+            val spec = WaterRingSheet.forOutcome(result.outcome)
+            val elapsed = now - fxStartMs
+            if (elapsed >= 0L && elapsed < spec.durationMs) {
+                val sheet = if (result.outcome == RingOutcome.HIT) burstSheet else implodeSheet
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val targetRadius = RING_TARGET_RADIUS.toPx()
+                    val startRadius = RING_START_RADIUS.toPx()
+                    val radius = startRadius + (targetRadius - startRadius) * result.ringProgress
+                    drawWaterRingFx(
+                        sheet = sheet,
+                        spec = spec,
+                        frame = spec.frameAt(elapsed),
+                        center = Offset(
+                            x = size.width / 2f,
+                            y = size.height - layout.playerBottom.toPx() -
+                                layout.playerHeight.toPx() / 2f
+                        ),
+                        radiusPx = radius
+                    )
+                }
             }
+        }
+
+        // Cartel del resultado, portado de `ui/combo-counter` de pixelfx: entra
+        // coleteando, golpea y se va barrido. Verde para aciertos, rojo para fallos.
+        feedback?.let { result ->
             val hit = result.outcome == RingOutcome.HIT
             val label = when {
+                hit && result.combo >= 2 -> stringResource(R.string.gym_ring_combo, result.combo)
                 hit -> stringResource(R.string.gym_ring_hit)
                 result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
                 else -> stringResource(R.string.gym_ring_miss)
             }
-            Text(
-                text = label,
-                color = if (hit) WATER_FOAM else MISS_RED,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
-                ),
-                fontWeight = FontWeight.Black,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-36).dp)
-                    .graphicsLayer {
-                        alpha = fade
-                        val scale = 1f + 0.18f * progress
-                        scaleX = scale
-                        scaleY = scale
-                    }
-            )
+            val seconds = (now - fxStartMs) / 1000f
+            if (seconds >= 0f && seconds < BANNER_LIFE_S) {
+                RingResultBanner(
+                    text = label,
+                    color = if (hit) HIT_GREEN else MISS_RED,
+                    combo = if (hit) result.combo else 0,
+                    seconds = seconds,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
 
     }
+}
+
+/**
+ * Cartel del resultado del anillo.
+ *
+ * Portado de `ui/combo-counter` de pixelfx: las letras entran coleteando desde la
+ * izquierda con líneas de velocidad y dos estelas, frenan de golpe con un destello
+ * blanco, un anillo y chispas, laten en el pulso y se van barridas a la derecha.
+ * Todo se calcula desde [seconds], así que no necesita animaciones propias ni
+ * acumular estado. La barra de tiempo del original no se trae: el cartel no dura
+ * lo suficiente como para que informar del tiempo restante aporte algo.
+ *
+ * @param color verde del acierto o rojo del fallo.
+ * @param combo aciertos seguidos; solo engorda la lluvia de chispas.
+ */
+@Composable
+private fun RingResultBanner(
+    text: String,
+    color: Color,
+    combo: Int,
+    seconds: Float,
+    modifier: Modifier = Modifier
+) {
+    val cell = BANNER_CELL
+    val cells = PixelFont.widthOf(text)
+
+    // Latido del pulso: las letras crecen un 12 % y destellan blanco en el pico.
+    val fromBeat = (seconds - BANNER_BEAT_S) / 0.05f
+    val pulse = exp(-(fromBeat * fromBeat))
+    val flash = (seconds >= BANNER_HIT_S && seconds < BANNER_HIT_S + 0.07f) || pulse > 0.6f
+    // Salida: se va barrida a la derecha.
+    val gone = seg(seconds, BANNER_OUT_S + 0.08f, BANNER_OUT_S + 0.20f)
+    val moving = seconds < BANNER_HIT_S || seconds > BANNER_OUT_S + 0.06f
+    val stretch = when {
+        !moving -> 1f
+        seconds < BANNER_HIT_S -> BANNER_STRETCH_IN
+        else -> BANNER_STRETCH_OUT
+    }
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(BANNER_HEIGHT)
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val px = cell.toPx() * (1f + BANNER_PULSE_SCALE * pulse)
+        val wordW = cells * px * stretch
+        val wordH = PixelFont.HEIGHT * px
+        val dx = bannerX(seconds).dp.toPx()
+        val frame = (seconds * BANNER_FPS).toInt()
+
+        // 1. Líneas de velocidad: se relanzan cada fotograma, como una viñeta.
+        val lineK = when {
+            seconds < BANNER_HIT_S -> 1f
+            seconds < BANNER_OUT_S ->
+                (1f - (seconds - BANNER_HIT_S) / 0.35f).coerceAtLeast(0f) * 0.9f
+            else -> seg(seconds, BANNER_OUT_S + 0.04f, BANNER_OUT_S + 0.12f) *
+                (1f - seg(seconds, BANNER_OUT_S + 0.18f, BANNER_OUT_S + 0.30f))
+        }
+        if (lineK > 0.02f) {
+            val outgoing = seconds >= BANNER_OUT_S
+            repeat(BANNER_SPEED_LINES) { index ->
+                // Cada fotograma relanza las líneas: mismo índice, semilla distinta.
+                val seed = frame * BANNER_FRAME_STRIDE + index
+                if (hashNoise(seed, 3) > lineK) return@repeat
+                val y = (hashNoise(seed, 1) - 0.5f) * 60f
+                val half = 8f + hashNoise(seed, 2) * 25f
+                val x = (hashNoise(seed, 4) - 0.5f) * 190f
+                val left = center.x + (x - half).dp.toPx()
+                val right = center.x + (x + half).dp.toPx()
+                val lineY = center.y + y.dp.toPx()
+                drawLine(
+                    color = color.copy(alpha = 0.45f),
+                    start = Offset(left, lineY),
+                    end = Offset(right, lineY),
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
+                )
+                // La punta que marca el sentido de la marcha va en blanco.
+                drawLine(
+                    color = Color.White.copy(alpha = 0.6f),
+                    start = Offset(if (outgoing) left else right - half * 0.35f, lineY),
+                    end = Offset(if (outgoing) left + half * 0.35f else right, lineY),
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
+                )
+            }
+        }
+
+        // 2. El golpe: picos blancos dos fotogramas y un anillo que rueda.
+        val sinceHit = seconds - BANNER_HIT_S
+        if (sinceHit >= 0f && sinceHit < 0.07f) {
+            val arm = if (sinceHit < 0.035f) 22.dp.toPx() else 30.dp.toPx()
+            repeat(10) { index ->
+                val angle = index / 10f * (2f * PI.toFloat()) + 0.25f
+                val reach = arm * (0.6f + hashNoise(index, 5) * 0.7f)
+                drawLine(
+                    color = if (sinceHit < 0.035f) Color.White else color,
+                    start = Offset(
+                        center.x + dx + cos(angle) * reach * 0.35f,
+                        center.y + sin(angle) * reach * 0.35f
+                    ),
+                    end = Offset(
+                        center.x + dx + cos(angle) * reach,
+                        center.y + sin(angle) * reach
+                    ),
+                    strokeWidth = 3.dp.toPx()
+                )
+            }
+        }
+        val ringT = sinceHit / 0.32f
+        if (ringT > 0f && ringT < 1f) {
+            val r = 20.dp.toPx() + 34.dp.toPx() * easeOutCubic(ringT)
+            drawOval(
+                color = if (ringT < 0.3f) Color.White else color,
+                topLeft = Offset(center.x + dx - r * 1.5f, center.y - r * 0.75f),
+                size = Size(r * 3f, r * 1.5f),
+                alpha = 1f - ringT,
+                style = Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        // 3. Chispas del impacto, resueltas en el sitio: no hay emisor.
+        if (sinceHit >= 0f && sinceHit < 0.30f) {
+            repeat(12 + combo.coerceAtMost(8)) { index ->
+                val angle = index / 20f * (2f * PI.toFloat()) + 0.4f
+                val speed = 90f + hashNoise(index, 7) * 160f
+                val distance = speed * sinceHit * (1f - sinceHit * 1.2f).coerceAtLeast(0.1f)
+                drawRect(
+                    color = (if (index % 3 == 0) Color.White else color)
+                        .copy(alpha = 1f - sinceHit / 0.30f),
+                    topLeft = Offset(
+                        center.x + dx + cos(angle) * distance.dp.toPx(),
+                        center.y + sin(angle) * distance.dp.toPx()
+                    ),
+                    size = Size(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+        }
+
+        // 4. Estelas: dos copias apagadas persiguiendo a las letras.
+        if (moving && gone < 1f) {
+            listOf(0.03f to 0.28f, 0.015f to 0.48f).forEach { (lag, tone) ->
+                val lagged = if (seconds < BANNER_HIT_S) seconds - lag else seconds + lag
+                PixelFont.run {
+                    drawText(
+                        text = text,
+                        origin = Offset(
+                            center.x + bannerX(lagged).dp.toPx() - wordW / 2f,
+                            center.y - wordH / 2f
+                        ),
+                        pixel = px,
+                        color = color.copy(alpha = tone),
+                        stretchX = stretch
+                    )
+                }
+            }
+        }
+
+        // 5. Las letras, con contorno oscuro, tramos de color y brillo que barre.
+        if (gone < 1f) {
+            val body = if (flash) Color.White else color
+            val top = if (flash) Color.White else lerp(color, Color.White, 0.55f)
+            val bottom = if (flash) Color.White else lerp(color, Color.Black, 0.55f)
+            val sweep = seg(seconds, BANNER_SHINE_FROM_S, BANNER_SHINE_TO_S)
+            PixelFont.run {
+                drawText(
+                    text = text,
+                    origin = Offset(
+                        center.x + dx - wordW / 2f,
+                        center.y - wordH / 2f
+                    ),
+                    pixel = px,
+                    color = body.copy(alpha = 1f - gone),
+                    stretchX = stretch,
+                    top = top.copy(alpha = 1f - gone),
+                    bottom = bottom.copy(alpha = 1f - gone),
+                    outline = RING_OUTLINE.copy(alpha = 1f - gone),
+                    shine = if (sweep > 0f && sweep < 1f) {
+                        -BANNER_SHINE_MARGIN + (cells + BANNER_SHINE_MARGIN * 2) * sweep
+                    } else {
+                        null
+                    }
+                )
+            }
+        }
+
+        // 6. Salida: las motas que se escapan hacia la derecha.
+        if (seconds > BANNER_OUT_S) {
+            val fade = 1f - seg(seconds, BANNER_OUT_S + 0.06f, BANNER_OUT_S + 0.20f)
+            if (fade > 0f) {
+                repeat(10) { index ->
+                    val y = (hashNoise(index, 11) - 0.5f) * 26f
+                    val travel = (seconds - BANNER_OUT_S) * 260f *
+                        (0.5f + hashNoise(index, 13))
+                    drawRect(
+                        color = Color.White.copy(alpha = fade * 0.8f),
+                        topLeft = Offset(
+                            center.x + travel.dp.toPx(),
+                            center.y + y.dp.toPx()
+                        ),
+                        size = Size(6.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dónde caen las letras a lo largo de su vida, en dp respecto al centro: entran
+ * desde la izquierda frenando, se pasan de largo y vibran, y salen disparadas a la
+ * derecha. Es la curva del `xAt` de `ui/combo-counter`.
+ */
+private fun bannerX(t: Float): Float {
+    if (t < BANNER_HIT_S) {
+        val u = 1f - t / BANNER_HIT_S
+        return -32f * u * u
+    }
+    if (t < BANNER_OUT_S) {
+        val e = t - BANNER_HIT_S
+        return 7f * exp(-e * 18f) * sin(e * 34f)
+    }
+    val u = ((t - BANNER_OUT_S) / 0.2f).coerceIn(0f, 1f)
+    return if (u < 0.3f) -4f * easeOutQuad(u / 0.3f)
+    else -4f + 24f * easeInQuad((u - 0.3f) / 0.7f)
+}
+
+/** Ruido determinista por índice: las líneas de velocidad cambian por fotograma. */
+private fun hashNoise(index: Int, salt: Int): Float {
+    var h = index * 374761393 + salt * 668265263
+    h = (h xor (h shr 13)) * 1274126177
+    return ((h xor (h shr 16)) and 0x7fffffff) / 2147483647f
+}
+
+/** Tramo normalizado de [t] entre [from] y [to]. */
+private fun seg(t: Float, from: Float, to: Float): Float =
+    ((t - from) / (to - from)).coerceIn(0f, 1f)
+
+private fun easeOutQuad(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u
+}
+
+private fun easeInQuad(t: Float): Float {
+    val u = t.coerceIn(0f, 1f)
+    return u * u
+}
+
+/** Golpe, pulso y salida del cartel, en segundos. Salen del efecto de pixelfx. */
+private const val BANNER_HIT_S = 0.10f
+private const val BANNER_BEAT_S = 0.42f
+private const val BANNER_OUT_S = 0.95f
+
+/** Vida total del cartel; pasado este tiempo el llamante deja de componerlo. */
+private const val BANNER_LIFE_S = 1.20f
+
+/** Ventana en la que el brillo barre las letras de izquierda a derecha. */
+private const val BANNER_SHINE_FROM_S = 0.55f
+private const val BANNER_SHINE_TO_S = 0.80f
+
+/** Celdas de margen por cada lado que recorre el brillo antes y después del texto. */
+private const val BANNER_SHINE_MARGIN = 2f
+
+/** Lado de una celda de la fuente: el mando de tamaño de todo el cartel. */
+private val BANNER_CELL = 4.dp
+
+/** Alto del lienzo del cartel; deja aire para las líneas de velocidad. */
+private val BANNER_HEIGHT = 150.dp
+
+/** Grosor de las líneas de velocidad. */
+private val BANNER_LINE_STROKE = 1.5.dp
+
+/** Fotogramas por segundo con los que se relanzan las líneas de velocidad. */
+private const val BANNER_FPS = 30f
+
+/** Líneas de velocidad que se intentan por fotograma. */
+private const val BANNER_SPEED_LINES = 18
+
+/** Desfase entre fotogramas: mismas líneas, colocadas de otra forma cada vez. */
+private const val BANNER_FRAME_STRIDE = 31
+
+/** Ensanche horizontal de las letras mientras vuelan: al entrar y al salir. */
+private const val BANNER_STRETCH_IN = 1.22f
+private const val BANNER_STRETCH_OUT = 1.12f
+
+/** Cuánto crecen las letras en el pico del latido. */
+private const val BANNER_PULSE_SCALE = 0.12f
+
+/** Interpolación lineal suelta, para no arrastrar otra dependencia. */
+private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/** Curva de salida rápida y frenada, la que usan el confeti y el golpe. */
+private fun easeOutCubic(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u * u
 }
 
 // ─────────────────────────── Voltorb (Lt. Surge) ───────────────────────────
@@ -761,6 +1160,8 @@ private fun RingGymScene(
 private fun VoltorbGridScene(
     state: GymState,
     exposed: Boolean,
+    layout: GymSceneLayout,
+    enemyFade: Float,
     onVoltorbTap: (Int) -> Unit,
     onEnemyHit: () -> Unit,
     modifier: Modifier = Modifier
@@ -847,8 +1248,8 @@ private fun VoltorbGridScene(
         // si la pantalla es demasiado baja, la celda se encoge y la cuadrícula deja
         // de ocupar todo el ancho en vez de desbordarse.
         val cellFromWidth = (maxWidth - VOLTORB_GAP * (cols - 1)) / cols
-        val gridTop = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + VOLTORB_BAR_RESERVE
-        val bottomReserved = PLAYER_HEIGHT + VOLTORB_PLAYER_GAP + VOLTORB_HP_BAR_RESERVE
+        val gridTop = layout.enemyTop + layout.enemyHeight + VOLTORB_BAR_RESERVE
+        val bottomReserved = layout.playerHeight + VOLTORB_PLAYER_GAP + VOLTORB_HP_BAR_RESERVE
         val maxGridHeight =
             (maxHeight - gridTop - bottomReserved).coerceAtLeast(VOLTORB_MIN_AREA)
         val cellFromHeight = (maxGridHeight - VOLTORB_GAP * (rows - 1)) / rows
@@ -961,12 +1362,15 @@ private fun VoltorbGridScene(
             contentDescription = stringResource(R.string.gym_title, state.leaderName),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP)
-                .size(ENEMY_WIDTH, VOLTORB_ENEMY_HEIGHT)
+                .offset(y = layout.enemyTop)
+                .size(layout.enemyWidth, layout.enemyHeight)
                 .graphicsLayer {
                     val scale = if (exposed) pulseScale else 1f
                     scaleX = scale
                     scaleY = scale
+                    // Al perder, el Pokémon del líder se hunde y se apaga.
+                    alpha = 1f - enemyFade
+                    translationY = enemyFade * VICTORY_ENEMY_SINK.toPx()
                 }
         )
 
@@ -979,16 +1383,8 @@ private fun VoltorbGridScene(
             contentDescription = state.leadName,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = (maxWidth - PLAYER_WIDTH) / 2f, y = playerTop)
-                .size(PLAYER_WIDTH, PLAYER_HEIGHT)
-        )
-
-        GymPostureBar(
-            state = state,
-            exposed = exposed,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = ENEMY_TOP + VOLTORB_ENEMY_HEIGHT + 6.dp)
+                .offset(x = (maxWidth - layout.playerWidth) / 2f, y = playerTop)
+                .size(layout.playerWidth, layout.playerHeight)
         )
 
         Box(
@@ -1000,10 +1396,10 @@ private fun VoltorbGridScene(
                     val side = cellSide.toPx()
                     val gapPx = VOLTORB_GAP.toPx()
 
-                    val enemyLeft = (size.width - ENEMY_WIDTH.toPx()) / 2f
-                    val enemyTop = ENEMY_TOP.toPx()
-                    val enemyRight = enemyLeft + ENEMY_WIDTH.toPx()
-                    val enemyBottom = enemyTop + VOLTORB_ENEMY_HEIGHT.toPx()
+                    val enemyLeft = (size.width - layout.enemyWidth.toPx()) / 2f
+                    val enemyTop = layout.enemyTop.toPx()
+                    val enemyRight = enemyLeft + layout.enemyWidth.toPx()
+                    val enemyBottom = enemyTop + layout.enemyHeight.toPx()
 
                     detectTapGestures { tap ->
                         if (
@@ -1225,11 +1621,139 @@ private fun DrawScope.drawVoltorbCell(
     }
 }
 
+/** Color clásico del tubo según lo lleno que esté. */
+private fun hpColor(fraction: Float): Color = when {
+    fraction > 0.5f -> RetroColors.HpGreen
+    fraction > 0.2f -> RetroColors.HpYellow
+    else -> RetroColors.HpRed
+}
+
 /**
- * Barra de **postura** del líder bajo su sprite: se llena con cada acierto del
- * jugador y, al completarse, rompe la postura y abre su ventana. Durante la
- * ventana muestra el tiempo restante y, en furia, se tiñe de rojo. La comparten
- * las tres mecánicas de gimnasio para que la lectura no cambie entre líderes.
+ * Tubo de vida estilo GBA: pista oscura, relleno sólido con brillo superior y
+ * borde negro. Sustituye a `LinearProgressIndicator`, que pintaba el morado del
+ * tema por defecto y no se leía como un juego de Pokémon.
+ */
+@Composable
+private fun GymHpTube(
+    fraction: Float,
+    color: Color,
+    modifier: Modifier = Modifier,
+    tubeHeight: Dp = HP_TUBE_HEIGHT
+) {
+    val animated by animateFloatAsState(targetValue = fraction, label = "gymHpTube")
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        modifier = modifier
+            .height(tubeHeight)
+            .clip(shape)
+            .background(RetroColors.BarTrack)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(animated)
+                .background(color)
+        ) {
+            // Brillo del tubo de cristal: franja clara en el tercio superior.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.34f)
+                    .background(Color.White.copy(alpha = 0.35f))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .border(HP_TUBE_BORDER, RetroColors.InkBlack, shape)
+        )
+    }
+}
+
+/**
+ * Fila de vida: etiqueta PS, tubo y cifras. La comparten la placa del líder y la
+ * del principal para que ambas barras se lean igual.
+ *
+ * [below] dibuja contenido pegado debajo del tubo, dentro de la misma columna:
+ * así la barra de postura del líder queda exactamente del mismo ancho que su
+ * barra de vida.
+ */
+@Composable
+private fun GymHpRow(
+    fraction: Float,
+    hp: Int,
+    maxHp: Int,
+    modifier: Modifier = Modifier,
+    below: @Composable ColumnScope.() -> Unit = {}
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.gym_hp_label),
+            color = HP_LABEL_COLOR,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.sp
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            GymHpTube(
+                fraction = fraction,
+                color = hpColor(fraction),
+                modifier = Modifier.fillMaxWidth()
+            )
+            below()
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.gym_hp_pair, hp, maxHp),
+            color = HP_NUMBER_COLOR,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp
+        )
+    }
+}
+
+/**
+ * Placa de estado de un Pokémon: nombre arriba y, debajo, su fila de vida. Sin
+ * nivel —en este juego no existe— y con el color del tubo siguiendo el porcentaje.
+ */
+@Composable
+private fun GymStatPlate(
+    name: String?,
+    fraction: Float,
+    hp: Int,
+    maxHp: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .retroPlate()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        if (!name.isNullOrBlank()) {
+            Text(
+                text = name,
+                color = RetroColors.InkBlack,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        GymHpRow(fraction = fraction, hp = hp, maxHp = maxHp)
+    }
+}
+
+/**
+ * Tubo de **postura** del líder, pegado debajo de su barra de vida dentro de la
+ * misma placa. Se llena con cada acierto del jugador y, al completarse, rompe la
+ * postura y abre su ventana. Solo se pinta el tubo —sin cifras ni etiqueta— y el
+ * estado se lee por color: ámbar mientras se llena, amarillo en la ventana
+ * expuesta y rojo en furia.
  */
 @Composable
 private fun GymPostureBar(
@@ -1242,27 +1766,12 @@ private fun GymPostureBar(
         state.rage -> RAGE_COLOR
         else -> POSTURE_COLOR
     }
-    Column(
-        modifier = modifier.width(POSTURE_WIDTH),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        LinearProgressIndicator(
-            progress = { state.postureFraction },
-            modifier = Modifier.fillMaxWidth(),
-            color = postureColor
-        )
-        Spacer(modifier = Modifier.size(2.dp))
-        Text(
-            text = if (exposed) {
-                stringResource(R.string.gym_exposed)
-            } else {
-                stringResource(R.string.gym_posture, state.posture, state.postureMax)
-            },
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (exposed) FontWeight.Bold else FontWeight.Normal,
-            color = if (exposed) EXPOSED_COLOR else Color.White
-        )
-    }
+    GymHpTube(
+        fraction = state.postureFraction,
+        color = postureColor,
+        tubeHeight = POSTURE_TUBE_HEIGHT,
+        modifier = modifier
+    )
 }
 
 /**
@@ -1289,8 +1798,14 @@ private fun GymSpriteBox(
 }
 
 /**
- * HUD superior: vida del líder y una pista que cambia con la fase. Usa `Box` en
- * vez de `Surface` para **no consumir** los toques que pasan por detrás.
+ * HUD superior: placa de estado del Pokémon del líder —de lado a lado, con la
+ * postura pegada debajo de la vida—. Sin `Surface` ni fondo translúcido, para
+ * **no consumir** los toques que pasan por detrás.
+ *
+ * El nombre es el del Pokémon que pelea, no el del líder, y no hay nivel: en este
+ * juego la barra mide la vida del Pokémon, no del entrenador. Se retiraron el
+ * cartel "Gimnasio de…", la línea de tipo y la caja con la pista: cómo se juega lo
+ * explica el tutorial de entrada al gimnasio.
  */
 @Composable
 private fun GymHud(
@@ -1298,110 +1813,127 @@ private fun GymHud(
     exposed: Boolean,
     modifier: Modifier = Modifier
 ) {
-    CompositionLocalProvider(LocalContentColor provides Color.White) {
-        Box(
-            modifier = modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.5f))
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+    GymLeaderPlate(
+        state = state,
+        exposed = exposed,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+/**
+ * Placa del Pokémon del líder: nombre —con el chip de furia a la derecha—, su
+ * barra de vida y, justo debajo, la barra de postura. Ocupa todo el ancho para
+ * que la vida se lea de lado a lado de la pantalla.
+ */
+@Composable
+private fun GymLeaderPlate(
+    state: GymState,
+    exposed: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .retroPlate()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = enemyNameFor(state.gymId) ?: state.leaderName,
+                color = RetroColors.InkBlack,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (state.rage) {
                 Text(
-                    text = stringResource(R.string.gym_title, state.leaderName),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(text = stringResource(R.string.gym_type, state.gymType.name))
-
-                LinearProgressIndicator(
-                    progress = { state.leaderHpFraction },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(text = stringResource(R.string.gym_leader_hp, state.leaderHp, state.leaderMaxHp))
-
-                if (state.rage) {
-                    Text(
-                        text = stringResource(R.string.gym_rage),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = RAGE_COLOR
-                    )
-                }
-
-                Text(
-                    text = stringResource(
-                        when {
-                            exposed -> R.string.gym_enemy_hint
-                            state.mechanic == GymMechanic.TIMING_RINGS -> R.string.gym_ring_hint
-                            state.mechanic == GymMechanic.VOLTORB_GRID -> R.string.gym_voltorb_hint
-                            else -> R.string.gym_projectile_hint
-                        }
-                    ),
-                    style = MaterialTheme.typography.bodySmall
+                    text = stringResource(R.string.gym_rage),
+                    color = RetroColors.DialogCream,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(RAGE_COLOR)
+                        .border(PLATE_BORDER, RetroColors.InkBlack)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
         }
+
+        GymHpRow(
+            fraction = state.leaderHpFraction,
+            hp = state.leaderHp,
+            maxHp = state.leaderMaxHp,
+            below = {
+                GymPostureBar(
+                    state = state,
+                    exposed = exposed,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        )
     }
 }
 
 /**
- * Vida del jugador anclada al borde inferior, lejos del HUD del líder. Se dibuja
- * como la barra de postura (barra + etiqueta) para mantener el mismo lenguaje.
+ * Vida del principal del jugador, anclada al borde inferior. Usa la misma placa
+ * que el HUD del líder para que ambos se lean con el mismo lenguaje.
  */
 @Composable
 private fun PlayerHpBar(
     state: GymState,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.width(POSTURE_WIDTH),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        LinearProgressIndicator(
-            progress = { state.playerHpFraction },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.size(2.dp))
-        Text(
-            text = stringResource(R.string.gym_hp, state.playerHp, state.maxHp),
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White
-        )
-    }
+    GymStatPlate(
+        name = state.leadName,
+        fraction = state.playerHpFraction,
+        hp = state.playerHp,
+        maxHp = state.maxHp,
+        modifier = modifier.width(PLAYER_PLATE_WIDTH)
+    )
 }
 
-/** Panel de derrota centrado, con reintentar y salir. */
+/**
+ * Panel de derrota centrado: placa y botones con el mismo lenguaje que el HUD de
+ * vida, en lugar de `Surface` + `Button` de Material.
+ */
 @Composable
 private fun DefeatPanel(
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 8.dp,
-        modifier = modifier.padding(24.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp)
+            .retroPlate()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.gym_lost),
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center
+        Text(
+            text = stringResource(R.string.gym_lost),
+            color = RetroColors.InkBlack,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 20.sp,
+            textAlign = TextAlign.Center
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RetroButton(
+                label = stringResource(R.string.gym_retry),
+                onClick = onRetry,
+                modifier = Modifier.weight(1f)
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRetry) {
-                    Text(text = stringResource(R.string.gym_retry))
-                }
-                OutlinedButton(onClick = onLeave) {
-                    Text(text = stringResource(R.string.gym_leave))
-                }
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_leave),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = onLeave,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -1414,24 +1946,29 @@ private const val LANE_WIDTH_FRACTION = 0.72f
 /** Tope de la franja para que en pantallas grandes no se abran demasiado. */
 private val LANE_MAX_WIDTH = 340.dp
 
-/** Tamaño y posición del enemigo (el GIF de Golem es 72×57, ratio ~1.26). */
-private val ENEMY_WIDTH = 180.dp
-private val ENEMY_HEIGHT = 150.dp
-private val ENEMY_TOP = 178.dp
-
-/** Tamaño y posición del jugador. */
-private val PLAYER_WIDTH = 90.dp
-private val PLAYER_HEIGHT = 102.dp
-private val PLAYER_BOTTOM = 160.dp
-
-/** Separación de la barra de vida del jugador respecto al borde inferior. */
+/**
+ * Separación de la barra de vida del jugador respecto al borde inferior. El
+ * tamaño y la posición de los sprites salen de [GymSceneLayouts], uno por
+ * gimnasio.
+ */
 private val PLAYER_HP_BOTTOM_PADDING = 10.dp
 
 /** Cuánto por debajo de la cabeza del jugador se considera impacto. */
 private val PLAYER_HIT_INSET = 16.dp
 
-/** Ancho de la barra de postura. */
-private val POSTURE_WIDTH = 200.dp
+/**
+ * Medidas del HUD de placas: ancho de la placa del principal, alto del tubo de
+ * cada barra y grosor del borde/sombra dura de la placa.
+ */
+private val PLAYER_PLATE_WIDTH = 196.dp
+private val HP_TUBE_HEIGHT = 12.dp
+private val POSTURE_TUBE_HEIGHT = 10.dp
+private val HP_TUBE_BORDER = 2.dp
+private val PLATE_BORDER = 2.dp
+
+/** Tinta de la etiqueta PS y de las cifras dentro de la placa clara. */
+private val HP_LABEL_COLOR = Color(0xFFE8A33D)
+private val HP_NUMBER_COLOR = Color(0xFF3C4652)
 
 /** Colores de la barra de postura, del estado expuesto y de la furia. */
 private val POSTURE_COLOR = Color(0xFFFFC107)
@@ -1443,10 +1980,9 @@ private val RAGE_COLOR = Color(0xFFFF5252)
  * entrada y grosor del trazo. El anillo que entra se cierra desde
  * [RING_START_RADIUS] hasta [RING_TARGET_RADIUS].
  *
- * El radio fijo se calcula para el cuadro del jugador ([PLAYER_WIDTH] ×
- * [PLAYER_HEIGHT]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
- * unos 10 dp de margen, la misma holgura que había con 110 × 122 dp y 92 dp.
- * Si vuelven a cambiar esos tamaños, ajustar ambos radios en la misma
+ * El radio fijo se calcula para el cuadro del jugador del gimnasio de Misty
+ * ([GymSceneLayouts]): con 90 × 102 dp la semidiagonal mide ≈ 68 dp y 78 dp deja
+ * unos 10 dp de margen. Si cambia ese cuadro, ajustar ambos radios en la misma
  * proporción.
  */
 private val RING_TARGET_RADIUS = 78.dp
@@ -1456,10 +1992,16 @@ private val RING_GLOW_STROKE = 11.dp
 
 /** Ondulación del anillo de agua fuera de la ventana de acierto. */
 private val RING_WAVE_AMPLITUDE = 2.5.dp
-private const val RING_WAVE_CYCLES = 6f
 
-/** Duración del estallido y de la etiqueta de acierto/fallo. */
-private const val RING_FEEDBACK_MS = 900
+/** Distancia entre el cuerpo del aro y la cresta de espuma. */
+private val RING_CREST_OFFSET = 1.5.dp
+private val RING_CREST_STROKE = 1.dp
+
+/**
+ * Cuánto dura el tinte de resultado en el círculo fijo del jugador, en ms. Cubre
+ * el arranque del efecto (0,83 s el acierto, 1,03 s el fallo) sin quedarse pegado.
+ */
+private const val RING_TINT_MS = 800L
 
 /** Paleta de agua de los anillos. */
 private val WATER_DEEP = Color(0xFF0D47A1)
@@ -1477,6 +2019,12 @@ private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
 
 /** Rojo del fallo. */
 private val MISS_RED = Color(0xFFFF5252)
+
+/**
+ * Verde del acierto. Es el paso claro de la rampa con la que se exportó
+ * `hydro_burst.png`, así el mensaje y el estallido hablan el mismo idioma.
+ */
+private val HIT_GREEN = Color(0xFF7EE88A)
 
 /** Frames del Voltorb: reposo, carga y resolución, en orden de reproducción. */
 private val VOLTORB_FRAME_RES = intArrayOf(
@@ -1511,9 +2059,6 @@ private const val VOLTORB_WOBBLE_FROM_FRAME = 4
 private val VOLTORB_GAP = 7.dp
 private val VOLTORB_MIN_CELL = 26.dp
 private val VOLTORB_BAR_RESERVE = 40.dp
-
-/** El líder se dibuja más bajo aquí para dejarle la altura a la cuadrícula. */
-private val VOLTORB_ENEMY_HEIGHT = 116.dp
 
 /**
  * Tablero oscuro difuminado detrás de la cuadrícula: margen alrededor de las
@@ -1602,6 +2147,23 @@ private const val PROJECTILE_HIT_FRACTION = 0.6f
 /** Radio de acierto mínimo, por debajo del cual la roca cuesta clicarla. */
 private val PROJECTILE_MIN_HIT_RADIUS = 28.dp
 
+/**
+ * Tamaño del proyectil como fracción del ancho de columna: la roca ocupa la
+ * mayor parte de su carril sin tocar la vecina. Los topes evitan que se achique
+ * de más en pantallas angostas o se desborde en las anchas.
+ */
+private const val PROJECTILE_SIZE_FRACTION = 0.85f
+private val PROJECTILE_MIN_SIZE = 36.dp
+private val PROJECTILE_MAX_SIZE = 64.dp
+
+/**
+ * Tamaño del proyectil para un carril de [cellWidth]. El estallido se dibuja
+ * proporcional a este valor ([RockShatterFx.SCALE]), así que agrandar la roca
+ * agranda también su rotura.
+ */
+internal fun projectileSizeFor(cellWidth: Dp): Dp =
+    (cellWidth * PROJECTILE_SIZE_FRACTION).coerceIn(PROJECTILE_MIN_SIZE, PROJECTILE_MAX_SIZE)
+
 
 
 /**
@@ -1617,6 +2179,20 @@ fun enemyGifFor(gymId: String): Int? = when (gymId) {
     "brock" -> R.drawable.golem
     "misty" -> R.drawable.starmie
     "surge" -> R.drawable.raichu
+    else -> null
+}
+
+/**
+ * Nombre del Pokémon del líder, o `null` si ese gimnasio aún no lo declara.
+ *
+ * Vive junto a [enemyGifFor] porque es el mismo punto donde un id de dominio se
+ * traduce a lo que se pinta: la placa de estado muestra el Pokémon que pelea, no
+ * al entrenador. Tiene que coincidir con el sprite de arriba.
+ */
+fun enemyNameFor(gymId: String): String? = when (gymId) {
+    "brock" -> "Golem"
+    "misty" -> "Starmie"
+    "surge" -> "Raichu"
     else -> null
 }
 
@@ -1639,6 +2215,13 @@ fun typeColor(type: PokemonType?): Color = when (type) {
     PokemonType.ROCK -> Color(0xFFB6A136)
     PokemonType.FLYING -> Color(0xFFA98FF3)
     PokemonType.POISON -> Color(0xFFA33EA1)
+    PokemonType.BUG -> Color(0xFFA8B820)
+    PokemonType.GROUND -> Color(0xFFE0C068)
+    PokemonType.FIGHTING -> Color(0xFFC03028)
+    PokemonType.PSYCHIC -> Color(0xFFF85888)
+    PokemonType.ICE -> Color(0xFF98D8D8)
+    PokemonType.GHOST -> Color(0xFF705898)
+    PokemonType.DRAGON -> Color(0xFF7038F8)
     null -> Color(0xFF9E9E9E)
 }
 

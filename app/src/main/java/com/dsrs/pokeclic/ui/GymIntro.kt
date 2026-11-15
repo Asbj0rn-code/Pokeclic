@@ -18,7 +18,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,19 +32,18 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,12 +54,8 @@ import com.dsrs.pokeclic.model.GymMechanic
 import kotlinx.coroutines.delay
 
 /**
- * scrim de la capa: semiobscuro para atenuar la cueva del gimnasio (dibujada
- * por `AppRoot` detrás) sin taparla, manteniendo la legibilidad del texto.
+ * color de tinta para los pasos dentro de la caja crema.
  */
-private val IntroScrim = Color(0xFF04070C).copy(alpha = 0.70f)
-
-/** color de tinta para los pasos dentro de la caja crema. */
 private val StepInk = RetroColors.InkBlack
 
 /** intervalo de la revelación de los pasos del tutorial. */
@@ -74,18 +68,16 @@ private fun IntroPanel(
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    RetroPanel(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .heightIn(max = 480.dp),
-        contentPadding = contentPadding
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            content = content
-        )
-    }
+            .heightIn(max = 480.dp)
+            .retroPlate()
+            .padding(contentPadding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content
+    )
 }
 
 // ─────────────────────────── capa raíz ───────────────────────────
@@ -105,35 +97,62 @@ private fun IntroPanel(
 @Composable
 fun GymIntroLayer(
     phase: GymIntroPhase,
+    gymId: String?,
     leaderName: String?,
     mechanic: GymMechanic,
     onWatchTutorial: () -> Unit,
     onSkip: () -> Unit,
-    onAccepted: () -> Unit
+    onAccepted: () -> Unit,
+    onCurtainClosed: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(IntroScrim)
-            .modalBlocking()
-            .navigationBarsPadding()
-    ) {
-        when (phase) {
-            GymIntroPhase.WELCOME ->
-                WelcomePanel(
-                    leaderName = leaderName,
-                    onWatchTutorial = onWatchTutorial,
-                    onSkip = onSkip,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            GymIntroPhase.TUTORIAL ->
-                TutorialPanel(
-                    steps = tutorialStepsFor(mechanic),
-                    onAccepted = onAccepted,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            GymIntroPhase.COUNTDOWN ->
-                CountdownBanner(modifier = Modifier.align(Alignment.Center))
+    // La cortinilla se ve una vez por entrada: al pasar al tutorial o al cartel
+    // de arranque ya no vuelve a cerrarse.
+    var curtainDone by rememberSaveable { mutableStateOf(false) }
+
+    if (phase == GymIntroPhase.WELCOME && !curtainDone) {
+        // Ocupa toda la pantalla, también la franja de la barra de navegación.
+        GymEntryCurtain(
+            onClosed = onCurtainClosed,
+            onOpened = { curtainDone = true }
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .modalBlocking()
+                .navigationBarsPadding()
+        ) {
+            when (phase) {
+                GymIntroPhase.WELCOME -> {
+                    // El líder con guion propio da la bienvenida de viva voz; los
+                    // que aún no lo tienen conservan el panel genérico.
+                    val script = leaderScriptFor(gymId)
+                    if (script != null) {
+                        GymEntryDialogue(
+                            script = script,
+                            leaderName = leaderName,
+                            onWatchTutorial = onWatchTutorial,
+                            onSkip = onSkip,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        WelcomePanel(
+                            leaderName = leaderName,
+                            onWatchTutorial = onWatchTutorial,
+                            onSkip = onSkip,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                }
+                GymIntroPhase.TUTORIAL ->
+                    TutorialPanel(
+                        steps = tutorialStepsFor(mechanic),
+                        onAccepted = onAccepted,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                GymIntroPhase.COUNTDOWN ->
+                    CountdownBanner(modifier = Modifier.align(Alignment.Center))
+            }
         }
     }
 }
@@ -168,12 +187,18 @@ private fun WelcomePanel(
         )
         Spacer(modifier = Modifier.padding(top = 14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onWatchTutorial) {
-                Text(text = stringResource(R.string.gym_intro_watch))
-            }
-            OutlinedButton(onClick = onSkip) {
-                Text(text = stringResource(R.string.gym_intro_skip))
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_intro_watch),
+                onClick = onWatchTutorial,
+                modifier = Modifier.weight(1f)
+            )
+            RetroButton(
+                label = stringResource(R.string.gym_intro_skip),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = onSkip,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -279,12 +304,18 @@ private fun TutorialPanel(
         }
         Spacer(modifier = Modifier.padding(top = 14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = { replayNonce++ }) {
-                Text(text = stringResource(R.string.gym_tutorial_repeat))
-            }
-            Button(onClick = onAccepted) {
-                Text(text = stringResource(R.string.gym_tutorial_accept))
-            }
+            RetroButton(
+                label = stringResource(R.string.gym_tutorial_repeat),
+                base = RetroColors.ResetBase,
+                edge = RetroColors.ResetEdge,
+                onClick = { replayNonce++ },
+                modifier = Modifier.weight(1f)
+            )
+            RetroButton(
+                label = stringResource(R.string.gym_tutorial_accept),
+                onClick = onAccepted,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -298,9 +329,11 @@ private fun TutorialPanel(
  */
 @Composable
 private fun CountdownBanner(modifier: Modifier = Modifier) {
-    RetroPanel(
-        modifier = modifier.padding(horizontal = 24.dp),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp)
+    Column(
+        modifier = modifier
+            .padding(horizontal = 24.dp)
+            .retroPlate()
+            .padding(horizontal = 22.dp, vertical = 16.dp)
     ) {
         Text(
             text = stringResource(R.string.gym_countdown),

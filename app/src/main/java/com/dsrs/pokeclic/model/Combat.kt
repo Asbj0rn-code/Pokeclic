@@ -1,6 +1,7 @@
 package com.dsrs.pokeclic.model
 
 import kotlin.math.ceil
+import kotlin.random.Random
 
 /**
  * Modelo del combate: tipos elementales, gimnasios, fases, proyectiles, anillos
@@ -18,9 +19,14 @@ const val RAGE_HP_FRACTION = 0.25f
 /**
  * Tipos elementales usados por el juego.
  *
- * Es un subconjunto de los tipos de la primera generación: solo los que
- * aparecen en el contenido planificado. Añadir un tipo es añadir una constante y
- * sus entradas en las tablas de efectividad.
+ * Son los **15 tipos** de la tabla aprobada para Pokeclic: los de la primera
+ * generación sin Siniestro, Acero ni Hada. Cada especie tiene un único tipo y
+ * todas las constantes tienen entrada en las dos tablas de efectividad, aunque
+ * su lista esté vacía. Las relaciones de inmunidad del juego original se
+ * recogen como ×0,5: no hay multiplicadores ×0.
+ *
+ * Añadir un tipo es añadir una constante, sus entradas en las tablas y su rama
+ * de presentación (`typeColor`).
  */
 enum class PokemonType {
     NORMAL,
@@ -30,14 +36,22 @@ enum class PokemonType {
     ELECTRIC,
     ROCK,
     FLYING,
-    POISON;
+    POISON,
+    BUG,
+    GROUND,
+    FIGHTING,
+    PSYCHIC,
+    ICE,
+    GHOST,
+    DRAGON;
 
     /**
      * Efectividad de este tipo (atacante) contra [defender].
      *
      * 2f = súper eficaz (ventaja para el atacante), 0.5f = poco eficaz
-     * (desventaja) y 1f = neutro. La tabla es una simplificación del juego
-     * original, suficiente para el minijuego de gimnasio y la captura.
+     * (desventaja, incluidas las inmunidades del juego original) y 1f = neutro.
+     * Es la tabla completa de 15 × 15 tipos: no se deducen relaciones por
+     * simetría. Solo la lee [typeDamageMultiplier] para el daño de gimnasio.
      */
     fun effectiveness(defender: PokemonType): Float = when {
         defender in strongAgainst.getValue(this) -> 2f
@@ -48,24 +62,38 @@ enum class PokemonType {
     private companion object {
         val strongAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
             NORMAL to emptySet(),
-            FIRE to setOf(GRASS),
-            WATER to setOf(FIRE, ROCK),
-            GRASS to setOf(WATER, ROCK),
+            FIRE to setOf(GRASS, BUG, ICE),
+            WATER to setOf(FIRE, ROCK, GROUND),
+            GRASS to setOf(WATER, ROCK, GROUND),
             ELECTRIC to setOf(WATER, FLYING),
-            ROCK to setOf(FIRE, FLYING),
-            FLYING to setOf(GRASS),
-            POISON to setOf(GRASS)
+            ROCK to setOf(FIRE, FLYING, BUG, ICE),
+            FLYING to setOf(GRASS, BUG, FIGHTING),
+            POISON to setOf(GRASS),
+            BUG to setOf(GRASS, PSYCHIC),
+            GROUND to setOf(FIRE, ELECTRIC, ROCK, POISON),
+            FIGHTING to setOf(NORMAL, ROCK, ICE),
+            PSYCHIC to setOf(POISON, FIGHTING),
+            ICE to setOf(GRASS, FLYING, GROUND, DRAGON),
+            GHOST to setOf(PSYCHIC, GHOST),
+            DRAGON to setOf(DRAGON)
         )
 
         val weakAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
-            NORMAL to setOf(ROCK),
-            FIRE to setOf(WATER, ROCK),
-            WATER to setOf(GRASS, ELECTRIC),
-            GRASS to setOf(FIRE, FLYING, POISON),
-            ELECTRIC to setOf(GRASS),
-            ROCK to setOf(WATER, GRASS),
+            NORMAL to setOf(ROCK, GHOST),
+            FIRE to setOf(FIRE, WATER, ROCK, DRAGON),
+            WATER to setOf(WATER, GRASS, DRAGON),
+            GRASS to setOf(FIRE, GRASS, FLYING, POISON, BUG, DRAGON),
+            ELECTRIC to setOf(GRASS, ELECTRIC, GROUND, DRAGON),
+            ROCK to setOf(GROUND, FIGHTING),
             FLYING to setOf(ELECTRIC, ROCK),
-            POISON to setOf(ROCK)
+            POISON to setOf(ROCK, POISON, GROUND, GHOST),
+            BUG to setOf(FIRE, FLYING, POISON, FIGHTING, GHOST),
+            GROUND to setOf(GRASS, FLYING, BUG),
+            FIGHTING to setOf(FLYING, POISON, BUG, PSYCHIC, GHOST),
+            PSYCHIC to setOf(PSYCHIC),
+            ICE to setOf(FIRE, WATER, ICE),
+            GHOST to setOf(NORMAL),
+            DRAGON to emptySet()
         )
     }
 }
@@ -201,10 +229,13 @@ data class Gym(
 enum class GymPhase { ATTACKING, EXPOSED }
 
 /**
- * Resultado global del intento de gimnasio. No existe `WON`: al ganar se cierra
- * la escena y se actualiza la partida, así que no hace falta un estado ganador.
+ * Resultado global del intento de gimnasio.
+ *
+ * [WON] no cierra la partida por sí solo: deja el combate detenido para que la
+ * capa de victoria muestre la despedida del líder y solo entonces se cobre la
+ * medalla. [LOST] mantiene el panel de derrota de siempre.
  */
-enum class GymOutcome { ACTIVE, LOST }
+enum class GymOutcome { ACTIVE, LOST, WON }
 
 /**
  * Un proyectil del combate de gimnasio (estado **transitorio**).
@@ -295,11 +326,20 @@ enum class RingOutcome {
  * @param outcome acierto o fallo.
  * @param count anillos cobrados en el mismo evento; solo puede ser mayor que 1
  *   cuando varios caducan en el mismo tick.
+ * @param ringProgress avance del anillo al resolverse, `0` recién nacido y `1`
+ *   cuando ya tocó el círculo fijo. La UI lo necesita para arrancar el efecto
+ *   justo en el radio en el que estaba el anillo: un acierto dentro de la ventana
+ *   todavía no ha llegado del todo, y un fallo por pulsar antes lo coge más lejos.
+ * @param combo aciertos seguidos que lleva el jugador **después** de este evento:
+ *   sube con cada acierto y vuelve a `0` con cualquier fallo. Es lo que la UI
+ *   cuenta como combo.
  */
 data class RingFeedback(
     val ringId: Long,
     val outcome: RingOutcome,
-    val count: Int = 1
+    val count: Int = 1,
+    val ringProgress: Float = 1f,
+    val combo: Int = 0
 )
 
 /**
@@ -396,6 +436,8 @@ data class VoltorbFeedback(
  * @param rage el líder está por debajo del 25 %: oleadas más densas y rápidas.
  * @param rageRoundPlayed ya se jugó una ronda completa de furia; hasta entonces
  *   el líder no puede morir, para que la furia nunca se pueda saltar.
+ * @param rageSpeech el líder está dando su discurso de furia: el combate queda
+ *   **en pausa** (el bucle no avanza) hasta que el jugador lo cierra.
  * @param leadSpeciesId especie del Pokémon principal, para elegir su sprite.
  * @param leadName nombre visible del principal (placeholder si no hay arte).
  * @param leadType tipo del principal; decide el multiplicador y el color del
@@ -417,6 +459,8 @@ data class GymState(
     val rings: List<TimingRing> = emptyList(),
     val ringWindowMs: Long = 0L,
     val ringFeedback: RingFeedback? = null,
+    /** Aciertos seguidos del minijuego de anillos; cualquier fallo lo devuelve a 0. */
+    val ringCombo: Int = 0,
     val voltorbs: List<Voltorb> = emptyList(),
     val voltorbFeedback: VoltorbFeedback? = null,
     val posture: Int = 0,
@@ -426,6 +470,7 @@ data class GymState(
     val exposureRemainingMs: Long = 0L,
     val rage: Boolean = false,
     val rageRoundPlayed: Boolean = false,
+    val rageSpeech: Boolean = false,
     val leadSpeciesId: String? = null,
     val leadName: String? = null,
     val leadType: PokemonType? = null,
@@ -465,6 +510,19 @@ data class GymState(
 object GymCombat {
 
     /**
+     * Cuánto varía la caída de cada roca respecto de la duración del gimnasio.
+     * Es lo que rompe la fila: dos rocas de la misma ráfaga no bajan en línea.
+     */
+    private const val PROJECTILE_TRAVEL_JITTER = 0.2
+
+    /**
+     * Arranque adelantado máximo de una roca, como fracción de su propia caída:
+     * nace algo más abajo, así la ráfaga no aparece alineada en el borde. Se
+     * mantiene bajo para que la roca no "aparezca" de golpe a media caída.
+     */
+    private const val PROJECTILE_HEAD_START = 0.1
+
+    /**
      * ¿El líder está en furia? Debe quedar **estrictamente** por debajo del 25 %
      * de su vida máxima: al 25 % exacto todavía no entra.
      */
@@ -501,6 +559,9 @@ object GymCombat {
         return state.copy(
             leaderHp = threshold,
             rage = true,
+            // El combate se detiene para el discurso del líder: la furia se
+            // presenta antes de que caiga la primera oleada.
+            rageSpeech = true,
             phase = GymPhase.ATTACKING,
             posture = 0,
             exposureRemainingMs = 0L,
@@ -545,6 +606,22 @@ object GymCombat {
     }
 
     /**
+     * Fallo del jugador: **resta postura**.
+     *
+     * Un clic fallado deshace parte del trabajo de los aciertos, que es lo que
+     * impide llenar la barra a base de toques a ciegas. Se aplica en cada
+     * mecánica cuando el toque no acierta: la roca que no estaba, el anillo que
+     * no llegó o el Voltorb apagado. Nunca baja de cero y no actúa fuera de
+     * [GymPhase.ATTACKING] (durante la ventana expuesta la barra ya corre por
+     * tiempo).
+     */
+    fun failPosture(state: GymState, hits: Int = 1): GymState {
+        if (state.phase != GymPhase.ATTACKING) return state
+        if (hits <= 0 || state.posture <= 0) return state
+        return state.copy(posture = (state.posture - hits).coerceAtLeast(0))
+    }
+
+    /**
      * Destruye el proyectil tocado (o le resta un toque si le quedaban varios).
      *
      * Romper rocas **es un acierto**: suma postura. Si el proyectil ya no existe
@@ -564,6 +641,43 @@ object GymCombat {
             state.projectiles.filterNot { it.id == projectileId }
         }
         return addPosture(state.copy(projectiles = projectiles))
+    }
+
+    /**
+     * Ráfaga de rocas: una por columna distinta, sin filas.
+     *
+     * Antes todas las rocas de una ráfaga compartían duración y arranque, así que
+     * bajaban alineadas como una fila. Ahora cada una lleva su propia caída: la
+     * duración varía ±[PROJECTILE_TRAVEL_JITTER] y arranca algo más abajo
+     * ([PROJECTILE_HEAD_START] de su recorrido), de modo que la ráfaga se abre en
+     * cuanto aparece.
+     */
+    fun spawnSalvo(
+        firstId: Long,
+        columns: Int,
+        maxPerSpawn: Int,
+        travelMs: Long,
+        nowMs: Long,
+        random: Random
+    ): List<Projectile> {
+        if (columns <= 0 || maxPerSpawn <= 0) return emptyList()
+
+        val salvoSize = random.nextInt(1, maxPerSpawn + 1).coerceAtMost(columns)
+        val chosen = (0 until columns).shuffled(random).take(salvoSize)
+
+        return chosen.mapIndexed { index, column ->
+            val travel = (travelMs * random.nextDouble(
+                1.0 - PROJECTILE_TRAVEL_JITTER,
+                1.0 + PROJECTILE_TRAVEL_JITTER
+            )).toLong().coerceAtLeast(1L)
+            val headStart = (travel * random.nextDouble(0.0, PROJECTILE_HEAD_START)).toLong()
+            Projectile(
+                id = firstId + index,
+                column = column,
+                spawnedAtMs = nowMs - headStart,
+                travelMs = travel
+            )
+        }
     }
 
     /**
@@ -593,6 +707,36 @@ object GymCombat {
     /** Anillos que ya pasaron su ventana de acierto sin resolverse. */
     fun expiredRings(state: GymState, nowMs: Long): List<TimingRing> =
         state.rings.filter { it.hasExpired(nowMs, state.ringWindowMs) }
+
+    /**
+     * Resuelve [rings]: los saca de la lista, mueve el **combo** y publica el
+     * feedback que pinta la UI.
+     *
+     * Es el único sitio que toca [GymState.ringCombo] a propósito: acertar suma
+     * uno y fallar lo deja en cero, venga el fallo de una pulsación fuera de
+     * ventana o de anillos que caducaron solos. Tenerlo aquí evita que un camino
+     * nuevo se olvide de cortar la racha.
+     *
+     * @param hit `true` si la jugada acertó.
+     * @param rings anillos que se cobran en este evento; suele ser uno, pero
+     *   varios pueden caducar en el mismo tick.
+     */
+    fun resolveRings(state: GymState, rings: List<TimingRing>, hit: Boolean, nowMs: Long): GymState {
+        if (rings.isEmpty()) return state
+        val ids = rings.map { it.id }.toSet()
+        val combo = if (hit) state.ringCombo + 1 else 0
+        return state.copy(
+            rings = state.rings.filterNot { it.id in ids },
+            ringCombo = combo,
+            ringFeedback = RingFeedback(
+                ringId = rings.maxOf { it.id },
+                outcome = if (hit) RingOutcome.HIT else RingOutcome.MISS,
+                count = rings.size,
+                ringProgress = rings.maxOf { it.progressAt(nowMs) },
+                combo = combo
+            )
+        )
+    }
 
     // --- cuadrícula de Voltorb (Lt. Surge) ---------------------------------
 

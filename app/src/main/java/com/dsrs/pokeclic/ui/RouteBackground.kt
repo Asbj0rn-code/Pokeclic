@@ -1,10 +1,14 @@
 /**
- * Fondo de ruta animado: repite [R.drawable.background_ruta] en bucle vertical y
- * lo desplaza **hacia abajo** un paso seco por clic. No hay inercia: al dejar de
- * pulsar la Pokéball el fondo se detiene en el acto, sin deslizamiento residual.
+ * Fondo de ruta animado: repite [R.drawable.background_ruta] en bucle y lo
+ * desplaza un paso seco por clic. No hay inercia: al dejar de pulsar la Pokéball
+ * el fondo se detiene en el acto, sin deslizamiento residual.
  *
- * Encima del avance vertical, el fondo sigue una **trayectoria** de tramos
- * ([RouteLeg]): unos suben recto y otros se corren a un lado, de modo que el
+ * El eje de avance depende de la trayectoria ([RouteScrollAxis]): en vertical el
+ * fondo baja por la pantalla, como en las rutas de siempre; en horizontal se corre
+ * de lado y el entrenador camina de izquierda a derecha.
+ *
+ * Encima de ese avance, el fondo sigue una **trayectoria** de tramos
+ * ([RouteLeg]): unos avanzan recto y otros se corren a un lado, de modo que el
  * entrenador del centro parece recorrer un camino que no es una línea recta. La
  * trayectoria se puede cambiar por localización pasando otra
  * [RouteBackgroundMotion].
@@ -54,9 +58,10 @@ import kotlin.math.floor
  *
  * @param clicks cuántos clics dura el tramo. Es la unidad en la que se percibe el
  *   recorrido al jugar, y la única que hay que tocar al ajustar la animación.
- * @param direction eje y sentido del tramo: [Direction.BACK] avanza recto (el
- *   fondo sube y al entrenador se le ve de espaldas); [Direction.RIGHT] y
- *   [Direction.LEFT] lo corren de lado sin avanzar en vertical.
+ * @param direction eje y sentido del tramo: [Direction.BACK] avanza recto (en un
+ *   fondo vertical el fondo sube y al entrenador se le ve de espaldas); en un
+ *   fondo horizontal es caminar a la derecha. [Direction.RIGHT] y [Direction.LEFT]
+ *   son los laterales, siempre en el marco del eje.
  *
  * Cada tramo mueve **un solo eje** y avanza **lo mismo por clic** en cualquiera
  * de los dos ([RouteScrollDefaults.TILES_PER_CLICK] baldosas), así que cuatro
@@ -73,17 +78,32 @@ internal data class RouteLeg(
     val distance: Float
         get() = clicks * RouteScrollDefaults.TILES_PER_CLICK
 
-    /** `true` si el tramo se corre de lado (y por tanto no avanza hacia arriba). */
+    /** `true` si el tramo se corre de lado (y por tanto no avanza recto). */
     val isLateral: Boolean
         get() = direction != Direction.BACK
 
-    /** +1 derecha, −1 izquierda, 0 recto. */
+    /** +1 RIGHT, −1 LEFT, 0 recto. */
     val sideSign: Float
         get() = when (direction) {
             Direction.RIGHT -> 1f
             Direction.LEFT -> -1f
             else -> 0f
         }
+}
+
+/**
+ * Eje por el que avanza el fondo.
+ *
+ * [VERTICAL] es el de las rutas de siempre: los tramos rectos suben al entrenador
+ * por la pantalla y los laterales lo corren a izquierda o derecha.
+ *
+ * [HORIZONTAL] es el mismo marco girado 90° a la derecha: el tramo recto camina
+ * de izquierda a derecha, el lateral [Direction.LEFT] sube por la pantalla y el
+ * [Direction.RIGHT] baja. El arte se mueve siempre al revés que el entrenador.
+ */
+internal enum class RouteScrollAxis {
+    VERTICAL,
+    HORIZONTAL
 }
 
 /**
@@ -104,10 +124,15 @@ internal data class RouteLeg(
  * [RouteScrollDefaults.TILES_PER_CLICK] baldosas en cualquiera de los dos, así que
  * no hay magnitudes que ajustar por tramo.
  *
- * @param legs tramos en orden; se repiten indefinidamente.
+ * @param legs tramos en orden; se repiten indefinidamente. Se escriben siempre en
+ *   el marco del eje: `BACK` es avanzar y `LEFT`/`RIGHT` son los laterales. En un
+ *   fondo [RouteScrollAxis.HORIZONTAL] ese marco está girado 90°, así que `BACK`
+ *   camina a la derecha y los laterales suben o bajan.
+ * @param axis eje por el que avanza el fondo.
  */
 internal class RouteBackgroundMotion(
-    val legs: List<RouteLeg>
+    val legs: List<RouteLeg>,
+    val axis: RouteScrollAxis = RouteScrollAxis.VERTICAL
 ) {
     init {
         require(legs.isNotEmpty()) { "La trayectoria necesita al menos un tramo" }
@@ -130,13 +155,16 @@ internal class RouteBackgroundMotion(
 
     /**
      * Corrimiento lateral tras [travelled] baldosas de recorrido, en **alturas de
-     * baldosa**: positivo = el personaje se ha corrido a la derecha. **Sin tope**:
-     * si un ciclo deja más clics a un lado que al otro, el valor crece vuelta tras
-     * vuelta.
+     * baldosa**: positivo = el personaje se ha corrido hacia su `RIGHT`. **Sin
+     * tope**: si un ciclo deja más clics a un lado que al otro, el valor crece
+     * vuelta tras vuelta.
+     *
+     * En un fondo vertical es un corrimiento a derecha o izquierda por la
+     * pantalla; en uno horizontal, subir (`LEFT`) o bajar (`RIGHT`).
      *
      * Permanece **constante** durante los tramos rectos (no hay movimiento
      * diagonal) y dentro de los laterales avanza **lineal**, a la misma velocidad
-     * que el vertical: un clic de lado recorre lo mismo que un clic recto.
+     * que el recto: un clic de lado recorre lo mismo que un clic recto.
      */
     fun lateralDistanceAt(travelled: Double): Float {
         if (travelled <= 0.0) return 0f
@@ -156,30 +184,50 @@ internal class RouteBackgroundMotion(
 
     /**
      * Dirección en la que debe animarse el entrenador en el clic [step] (1 = el
-     * primero). Es la del tramo por el que pasa ese paso.
+     * primero). Es la del tramo por el que pasa ese paso, leída en el marco del
+     * eje: en vertical el tramo ya es la dirección del sprite; en horizontal el
+     * marco está girado 90° (ver [RouteScrollAxis]).
      *
      * Se muestrea el **centro** del paso para que un clic que arranca justo en el
      * borde entre dos tramos no herede la dirección del anterior.
      */
     fun directionForStep(step: Long): Direction {
         if (step <= 0L) return Direction.FRONT
+        val leg = legForStep(step)
+        return when (axis) {
+            RouteScrollAxis.VERTICAL -> leg.direction
+            // El marco horizontal es el vertical girado 90° a la derecha: el
+            // avance recto se ve como caminar a la derecha, el lateral LEFT como
+            // subir y el RIGHT como bajar.
+            RouteScrollAxis.HORIZONTAL -> when (leg.direction) {
+                Direction.BACK -> Direction.RIGHT
+                Direction.RIGHT -> Direction.FRONT
+                Direction.LEFT -> Direction.BACK
+                Direction.FRONT -> Direction.FRONT
+            }
+        }
+    }
+
+    /** Tramo por el que pasa el clic [step] (1 = el primero). */
+    private fun legForStep(step: Long): RouteLeg {
         val cycle = cycleDistance.toDouble()
         var cursor = wrapped(
             (step - 0.5) * RouteScrollDefaults.TILES_PER_CLICK.toDouble(),
             cycle
         )
         for (leg in legs) {
-            if (cursor < leg.distance) return leg.direction
+            if (cursor < leg.distance) return leg
             cursor -= leg.distance
         }
-        return legs.last().direction
+        return legs.last()
     }
 
     /**
-     * Baldosas que el fondo **ha bajado** tras [travelled] baldosas de recorrido.
+     * Baldosas de **avance recto** tras [travelled] baldosas de recorrido: lo que
+     * el fondo baja en vertical o se corre de lado en horizontal.
      *
-     * Solo avanza en los tramos rectos: mientras dura un tramo lateral el valor
-     * se queda clavado y la imagen se desliza de lado sin bajar ni un píxel.
+     * Solo avanza en los tramos rectos: mientras dura un tramo lateral el valor se
+     * queda clavado y la imagen se mueve solo en el otro eje.
      */
     fun verticalDistanceAt(travelled: Double): Double {
         if (travelled <= 0.0) return 0.0
@@ -202,6 +250,65 @@ internal class RouteBackgroundMotion(
         var remainder = value % cycle
         if (remainder < 0.0) remainder += cycle
         return remainder
+    }
+}
+
+/**
+ * Desplazamiento que el recorrido produce en el dibujo, en las unidades que usa
+ * el renderer.
+ *
+ * @property verticalPhase fase vertical normalizada en `[0f, 1f)`: cuánto ha
+ *   bajado el arte, en alturas de baldosa. En un fondo horizontal la mueven los
+ *   tramos laterales (subir o bajar por la pantalla).
+ * @property lateral corrimiento horizontal en alturas de baldosa, con el signo de
+ *   [RouteBackgroundMotion.lateralDistanceAt]: positivo = el personaje avanzó a
+ *   la derecha, así que la imagen se ve corrida a la izquierda.
+ */
+internal data class RouteScrollShift(
+    val verticalPhase: Float,
+    val lateral: Float
+)
+
+/**
+ * Traduce el recorrido [position] (en baldosas) al desplazamiento del dibujo.
+ *
+ * En un fondo **vertical** el avance de los tramos rectos baja la imagen y los
+ * laterales la corren de lado. En uno **horizontal** el marco está girado 90°: el
+ * avance recto corre la imagen de lado (el entrenador camina a la derecha) y los
+ * laterales la suben o la bajan, a la misma velocidad de siempre.
+ *
+ * @param position recorrido acumulado, en baldosas (alturas de cámara).
+ * @param artHeight alto del drawable en px. La cámara se mide en alturas de arte,
+ *   no en alturas del PNG, así que la escala depende de este dato.
+ */
+internal fun routeScrollShiftAt(
+    motion: RouteBackgroundMotion,
+    position: Double,
+    artHeight: Int
+): RouteScrollShift {
+    val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / artHeight
+    return when (motion.axis) {
+        RouteScrollAxis.VERTICAL -> {
+            val vertical = motion.verticalDistanceAt(position) * cameraPerArt
+            var phase = RouteScrollDefaults.DIRECTION * vertical
+            phase -= floor(phase)
+            RouteScrollShift(
+                verticalPhase = phase.toFloat(),
+                lateral = motion.lateralDistanceAt(position)
+            )
+        }
+        // Marco girado 90°: el recto corre la imagen de lado y los laterales la
+        // suben o la bajan. Un tramo RIGHT baja al entrenador, así que el arte
+        // sube (fase positiva); uno LEFT lo sube y el arte baja.
+        RouteScrollAxis.HORIZONTAL -> {
+            val vertical = motion.lateralDistanceAt(position) * cameraPerArt
+            var phase = vertical
+            phase -= floor(phase)
+            RouteScrollShift(
+                verticalPhase = phase.toFloat(),
+                lateral = motion.verticalDistanceAt(position).toFloat()
+            )
+        }
     }
 }
 
@@ -400,7 +507,10 @@ internal object RouteScrollDefaults {
 
     /**
      * Dirección del desplazamiento vertical: `-1f` = el fondo baja por la
-     * pantalla (el personaje sube), `1f` = al revés.
+     * pantalla (el personaje sube), `1f` = al revés. Solo afecta a los fondos
+     * verticales: en los horizontales el signo sale de
+     * [RouteBackgroundMotion.lateralDistanceAt] (positivo = el personaje avanza a
+     * la derecha, así que la imagen se corre a la izquierda).
      */
     const val DIRECTION = -1f
 
@@ -551,7 +661,8 @@ internal fun RouteScrollingBackground(
     // Fase vertical normalizada, 0f..1f sobre el alto de **una cámara**. Se
     // guarda normalizada y no en px acumulados para que la precisión del float no
     // se degrade en sesiones larguísimas. Cada frame se recalcula desde la
-    // trayectoria: mientras dura un tramo lateral se queda congelada.
+    // trayectoria: en un fondo vertical se congela durante los tramos laterales;
+    // en uno horizontal son los laterales los que la mueven.
     val phaseV = remember { mutableFloatStateOf(0f) }
 
     // Corrimiento lateral vigente, en **alturas de baldosa** (la misma unidad que
@@ -571,9 +682,6 @@ internal fun RouteScrollingBackground(
         // (otra pestaña, otra zona) no se repiten los clics anteriores.
         val walker = RouteClickWalker(initialSteps = pulses)
         var lastPosition = -1.0
-        // Altura de cámara expresada en alturas de arte: 1920 px de cámara son
-        // 1920/artHeight alturas del drawable.
-        val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / artHeight
 
         while (isActive) {
             withFrameNanos { now ->
@@ -581,19 +689,14 @@ internal fun RouteScrollingBackground(
                 if (position == lastPosition) return@withFrameNanos
                 lastPosition = position
 
-                // Ambas coordenadas se leen de la trayectoria en el punto ya
+                // Las dos coordenadas salen de la trayectoria en el punto ya
                 // recorrido. Así el movimiento de cada tramo cae en **un solo
                 // eje**: en los laterales el vertical se queda clavado y viceversa.
-                //
-                // `DIRECTION` solo orienta el vertical; la fase puede quedar
-                // negativa y `floor` la vuelve a [0f, 1f) sin salto visible (el
-                // tile se repite con período exacto).
-                val vertical = motion.verticalDistanceAt(position) * cameraPerArt
-                var nextV = RouteScrollDefaults.DIRECTION * vertical
-                nextV -= floor(nextV)
-                phaseV.floatValue = nextV.toFloat()
-
-                lateral.floatValue = motion.lateralDistanceAt(position)
+                // Qué eje es el de avance lo decide `motion.axis`: en un fondo
+                // horizontal el que se mueve es el lateral.
+                val shift = routeScrollShiftAt(motion, position, artHeight)
+                phaseV.floatValue = shift.verticalPhase
+                lateral.floatValue = shift.lateral
             }
         }
     }

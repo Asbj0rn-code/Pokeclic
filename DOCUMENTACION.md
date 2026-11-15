@@ -134,7 +134,7 @@ Pokeclic/
 │       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y pesca
 │       │   │   └── ui/                          # ── VIEW (plano, 9 archivos) ──
 │       │   │       ├── AppRoot.kt               # Shell: Scaffold, pestañas, overlays y previews
-│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle vertical movido por la Pokéball
+│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle (vertical u horizontal) movido por la Pokéball
 │       │   │       ├── MainScreen.kt            # Pantalla principal + GameHud
 │       │   │       ├── PokemonBottomMenu.kt     # Barra, Pokéball, hendidura y controles
 │       │   │       ├── GymOverlay.kt            # Escena del gimnasio, HUD y sprites del combate
@@ -149,7 +149,7 @@ Pokeclic/
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
 │       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
-│       │       └── drawable-nodpi/              # background_ruta.png y background_bosque_verde.png: pixel art sin reescalado por densidad
+│       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde, Ciudad Verde y Ruta 3): pixel art sin reescalado por densidad
 │       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
 ├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
@@ -431,7 +431,7 @@ ajusta sobre esa caja, no sobre la pantalla completa.
 En la pantalla Home de las zonas con fauna (`GameUiState.hasWilds`) y sin escena
 de gimnasio/pesca ni intro abierta, `AppRoot` compone
 `RouteScrollingBackground` (`ui/RouteBackground.kt`) **detrás** del contenido:
-el arte de la zona se repite en vertical y se desplaza con las pulsaciones de la
+el arte de la zona se repite en bucle y se desplaza con las pulsaciones de la
 Pokéball. En ese estado el `Scaffold` usa `containerColor = Color.Transparent`,
 así el arte se ve también en el hueco de la barra.
 
@@ -439,11 +439,22 @@ Cada zona saca su **arte** y su **trayectoria** del catálogo `RouteBackgrounds`
 (`ui/RouteBackgrounds.kt`), indexado por `Zone.id`: la **misma** instancia de
 `ZoneBackground.motion` mueve el dibujo y decide la dirección del entrenador, así
 que no pueden desincronizarse. Las zonas sin entrada propia usan
-`RouteBackgrounds.DEFAULT`. Hoy tiene arte propio **Bosque Verde**
-(`background_bosque_verde.png`, 1152×1920), que además arranca por el final del
-dibujo (`startAnchor = 0,5`: el entrenador empieza pisando su borde inferior y
-camina hacia arriba) y con la imagen corrida a la derecha (`startOffset = -0,08`,
-8 % del ancho de pantalla); el resto sigue con el de ruta y arranca por el
+`RouteBackgrounds.DEFAULT`. Tienen arte propio **Pueblo Paleta**
+(`background_pallet_town.png`, 2176×3072, `startAnchor = 0,6`), **Bosque Verde**
+(`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
+corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla),
+**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`),
+**Ciudad Plateada** (`background_ciudad_plateada.png`, 4608×3840, `startAnchor = 0,5`),
+**Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal) y
+**Ciudad Celeste** (`background_ciudad_celeste.png`, 4608×3840, fondo horizontal
+que arranca en su **borde izquierdo** con `startOffset = -2` —el arte mide cuatro
+pantallas de ancho— y deja su borde inferior un 15 % de pantalla por debajo del
+borde inferior con `startAnchor = 1,15`).
+Las cuatro verticales arrancan por el final de su dibujo: el entrenador empieza
+pisando su borde inferior y camina hacia arriba. La Ruta 3 arranca **pegada al
+marco izquierdo** de su arte (`startOffset = -0,5`) y **sobre su eje central
+horizontal** (`startAnchor = 0,057`, que deja el borde inferior del arte detrás del
+HUD); camina de izquierda a derecha. El resto sigue con el de ruta y arranca por el
 principio, centrado.
 
 Bosque Verde también tiene **trayectoria propia**, y se escribe solo con clics y
@@ -453,12 +464,59 @@ laterales: un clic de lado recorre lo mismo que un clic recto. Como los dos
 sentidos suman 9 clics, el zigzag vuelve solo a la línea central en cada vuelta y
 no se aleja más de 0,16 alturas de baldosa.
 
+Ciudad Verde también tiene **trayectoria propia**: 4 recto · 1 derecha · 13
+recto · 7 izquierda · 13 recto · 6 derecha · 10 recto. Los rectos suman 40 clics,
+una vuelta exacta al arte de 3072 px, y los laterales están balanceados (7 a cada
+lado), así que el personaje vuelve a la línea central en cada vuelta.
+
+Ciudad Plateada tiene **trayectoria propia**: 8 recto · 23 izquierda · 12 recto ·
+40 derecha · 12 recto · 15 izquierda · 8 recto · 2 izquierda · 10 recto. Su arte
+mide 3840 px de alto (dos altos de cámara), así que una vuelta completa al dibujo
+pide **50 clics rectos** (3840 × 25 / 1920); los rectos suman exactamente 50 y los
+laterales están balanceados (40 a cada lado). El ciclo completo dura 130 clics: el
+fondo recorre la ciudad de lado (del lado del Mart al del gimnasio) y vuelve a la
+línea central. Mientras los rectos sumen múltiplos de 50 y los dos sentidos
+laterales sumen lo mismo, la trayectoria se puede reescribir tramo a tramo.
+Además el arte es **cuatro veces más ancho** que la cámara (4608 px), así que la
+pantalla enseña solo su franja central: qué parte de la ciudad se ve depende del
+corrimiento lateral acumulado.
+
+La Ruta 3 es la primera zona **horizontal** (`RouteScrollAxis.HORIZONTAL`): el
+marco está girado 90° a la derecha, así que la trayectoria se escribe igual que en
+las verticales. Su bucle dura **dos vueltas**: la primera sube (0 → +7 → 0) y la
+segunda baja (0 → -3 → 0). Cierra porque el superciclo suma 30 clics rectos (dos
+anchos del arte: 30 × 76,8 px = 2304 px) y los laterales están balanceados (10
+hacia arriba y 10 hacia abajo). Si una de las dos sumas deja de cuadrar, cada ciclo
+empieza en otro píxel o a otra altura.
+
+Ciudad Celeste es el fondo horizontal con el arte más grande del catálogo
+(4608×3840: cuatro anchos de cámara por dos altos). Su trayectoria es **14 recto ·
+16 derecha · 15 recto · 18 izquierda · 18 recto · 2 derecha · 13 recto**: cruza la
+ciudad, cambia de calle, vuelve a la avenida, baja a la de abajo y regresa. El
+bucle cierra porque los rectos suman **60 clics**, una vuelta exacta al ancho del
+arte (4608 / 76,8 = 60), y los laterales están balanceados (18 hacia un lado y 18
+hacia el otro). El ciclo completo dura 96 clics y el personaje vuelve a la línea
+central en cada vuelta. Al retocarla rige la misma cuenta que en las otras
+horizontales: los rectos, en múltiplos de 60, y los dos sentidos laterales sumando
+lo mismo. Un clic de desbalance son 0,04 alturas de baldosa por vuelta, que no se
+corrigen solas: el personaje se va quedando cada vez más corrido.
+
+En un fondo horizontal, cada tramo se lee así (el arte siempre va al revés que el
+entrenador):
+
+| Tramo | Entrenador | Sprite | Arte |
+|---|---|---|---|
+| `BACK` (recto) | camina a la derecha | mira a la derecha | se corre a la izquierda |
+| `LEFT` (lateral) | sube por la pantalla | mira hacia arriba | baja |
+| `RIGHT` (lateral) | baja por la pantalla | mira hacia abajo | sube |
+
 | Aspecto | Decisión |
 |---|---|
-| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia |
+| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia. La fase es **por zona** (`remember(state.zoneId)`): al cambiar de zona el contador vuelve a cero y su trayectoria arranca por el primer clic |
 | Frenado | No hay inercia: el paso se consume en `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) y el fondo se para en seco al soltar |
-| Dirección | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla |
-| Trayectoria | Tramos `RouteLeg` de **un solo eje**: los rectos avanzan en vertical y los laterales corren el fondo sin bajarlo. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
+| Eje de avance | `RouteBackgroundMotion.axis`: `VERTICAL` (por defecto) sube al entrenador por la pantalla y los laterales lo corren a izquierda o derecha. `HORIZONTAL` es el mismo marco girado 90° a la derecha: el recto camina a la derecha, `LEFT` sube y `RIGHT` baja |
+| Dirección vertical | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla. Solo afecta al avance recto de los fondos verticales; los laterales y el fondo horizontal sacan el signo de `lateralDistanceAt` |
+| Trayectoria | Tramos `RouteLeg` de **un solo eje**, escritos en el marco del eje: recto = avanzar, laterales = correrse. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
 | Ejes infinitos | El vertical repite el arte en bucle y el lateral lo repite **como loseta**: al borde derecho de una columna le sigue el borde izquierdo del arte, sin reflejarlo. Así **ningún eje tiene tope ni tiene que volver a cero**: un ciclo con más clics a un lado deja al personaje cada vez más corrido, igual que uno recto lo deja cada vez más arriba |
 | Punto de partida vertical | `ZoneBackground.startAnchor`: fracción de la pantalla donde cae el **borde inferior del arte** al entrar en la zona (`0,5` = el centro, que es donde está el entrenador). `null` arranca por el principio del arte. Solo mueve el punto de vista, no la trayectoria |
 | Punto de partida lateral | `ZoneBackground.startOffset`: posición lateral del personaje al entrar, en anchos de pantalla y con el signo de `lateralDistanceAt` (positivo = personaje a la derecha, imagen a la izquierda) |
@@ -479,7 +537,9 @@ de UI: no toca el ViewModel ni el save.
    suave en horizontal; el arte viejo de ruta necesitó `seamCutRow` en vertical).
 2. Añade la entrada a `RouteBackgrounds.byZone` con el `Zone.id` del catálogo:
    arte + una lista de `RouteLeg(clicks, direction)`. Alternar recto con laterales
-   es lo que hace que el entrenador cambie de orientación.
+   es lo que hace que el entrenador cambie de orientación. Para un fondo
+   **horizontal**, pasa `axis = RouteScrollAxis.HORIZONTAL`: se escribe igual, pero
+   el marco está girado 90° (recto = derecha, `LEFT` = arriba, `RIGHT` = abajo).
 3. Opcional: `startAnchor` (por dónde arranca el arte en vertical) y `startOffset`
    (corrimiento lateral inicial, en anchos de pantalla).
 
@@ -488,9 +548,11 @@ fondo con `forZone(state.zoneId)` y le pasa el resultado a
 `RouteScrollingBackground`. Una zona sin entrada usa `DEFAULT`.
 
 `RouteBackgroundsTest` lo comprueba en **cada** zona: que el arte exista, que el
-fondo avance en vertical, que alterne recto y lateral, que cada tramo recorra
-`clics × 1/25` baldosa y que el id de la entrada sea una zona real (un id mal
-escrito caería en `DEFAULT` sin avisar).
+fondo avance por su eje, que haya al menos un tramo recto y que las verticales
+alternen además laterales, que cada tramo recorra `clics × 1/25` baldosa y que el
+id de la entrada sea una zona real (un id mal escrito caería en `DEFAULT` sin
+avisar). `RouteScrollShiftTest` comprueba la traducción del recorrido al dibujo:
+qué eje se mueve y con qué fase.
 
 ### Capas de hierba alta sobre el trainer
 
@@ -860,13 +922,33 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `left0-3.png` | Frames "left" (toque izquierda) |
 | `back0-3.png` | Frames "back" (toque arriba) |
 | `profesor_oak.png` | Retrato de la introducción |
+| `brock.png` | Retrato de Brock para el discurso de entrada al gimnasio |
+| `brock_surprised.png` | Brock sorprendido, mientras escucha lo del Team Rocket |
+| `brock_angry.png` | Brock enfadado, en el discurso de furia a mitad de combate |
+| `brock_happy.png` | Brock sonriente, en la despedida al ganar el gimnasio |
+| `medalla_roca.png` | Medalla Roca, que Brock entrega al perder |
+| `misty_happy.png`, `misty_happy2.png` | Misty de siempre, boca abierta y cerrada: se alternan mientras habla |
+| `misty_surprised.png` | Misty sorprendida, mientras escucha lo del Team Rocket |
+| `misty_smiling.png` | Misty con media sonrisa, al negarse a regalar la medalla |
+| `misty_angry.png` | Misty enfadada, en el discurso de furia a mitad de combate |
+| `misty_sad.png` | Misty apenada, al perder el combate |
+| `medalla_cascada.png` | Medalla Cascada, que Misty entrega al perder |
 | `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados de la intro |
 | `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principal visto de espaldas en el gimnasio |
 | `golem.gif` | Enemigo de Brock |
 | `rock.png` | Proyectil del gimnasio |
-| `rock_gym.jpg` | Fondo del gimnasio |
+| `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
+| `water_gym.png` | Fondo del gimnasio de agua (`drawable-nodpi`, 1536×2304 pixel art) |
+| `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
+| `hydro_burst.png` | Acierto del anillo de Misty (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
+| `hydro_implode.png` | Fallo del anillo de Misty (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
+| `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
+| `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
+| `background_ciudad_plateada.png` | Fondo animado de Ciudad Plateada (`drawable-nodpi`, 4608×3840 pixel art) |
+| `background_ruta3.png` | Fondo animado de Ruta 3, en bucle horizontal (`drawable-nodpi`, 1152×1920 pixel art) |
+| `background_ciudad_celeste.png` | Fondo animado de Ciudad Celeste, en bucle horizontal (`drawable-nodpi`, 4608×3840 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
@@ -876,17 +958,18 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
    solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `tallGrassButton.png` →
    `tall_grass_button.png`). Si es pixel art que no debe reescalarse por densidad,
-   va en `res/drawable-nodpi/` (así viven `background_ruta.png` y
-   `background_bosque_verde.png`).
+   va en `res/drawable-nodpi/` (así viven los fondos `background_*.png`).
 2. Añade su `contentDescription` en `strings.xml` si aporta información.
 3. Añade el composable en la pantalla correspondiente.
 4. Declara tamaño y posición en el `object` de configuración de esa pantalla.
 
 > **Aviso de tamaño:** `tall_grass_button.png` ocupa 1500×1500 px (394 KB) pero
 > se muestra a 80 dp. Conviene reducirla a unas 300×300 px o pasarla a WebP.
-> `rock_gym.jpg` pesa ~3,4 MB y es el recurso más grande del APK; es el candidato
-> prioritario a compresión. `tall_grass_full.png` y `tall_grass_mid.png` son de
-> 750×750 px y se muestran a 120 dp, así que también admiten reducción.
+> `tall_grass_full.png` y `tall_grass_mid.png` son de 750×750 px y se muestran a
+> 120 dp, así que también admiten reducción. Los fondos de gimnasio (`rock_gym.png`,
+> `water_gym.png`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
+> densidad no los reescale; roca y agua pasaron de varios MB en JPG a ~40 KB y
+> ~29 KB en PNG.
 
 ### Strings (`res/values/strings.xml`)
 
@@ -1176,6 +1259,20 @@ pestaña nueva no siempre cabrá sin reordenar el menú.
 3. En `AppRoot`, dibújalo tras el `Scaffold` cuando el flag sea `true`.
 4. Añade un botón en el `MenuBar` que llame a `onOpen...`.
 
+### Añadir un paso al tutorial
+
+1. Añade la fase y su acción al enum correspondiente en `model/Tutorial.kt`
+   (o reutiliza las existentes) y su transición en `advance()`.
+2. Declárala en `allowedInteractions` (qué control responde) y en
+   `isMessageVisible` (si arranca con el mensaje abierto).
+3. Añade el texto del mensaje en `strings.xml` (`tutorial_*`) y mapea la fase
+   en `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
+4. Cablea la detección en `AppRoot`/`MainViewModel` si el paso reacciona a una
+   interacción que aún no alimenta la máquina (ver §22).
+5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
+   persiste con `enum.name`; renombrar una fase rompe los guardados
+   existentes a menos que se añada antes un mapeo de compatibilidad.
+
 ### Añadir una nueva dirección de animación
 
 1. Añade el valor al `enum class Direction`.
@@ -1230,13 +1327,17 @@ clave por campo:
 | `coins` | `coins` | `Long` |
 | `seen` | `seenSpecies` | IDs separados por comas |
 | `rewarded` | `rewardedSpecies` | IDs separados por comas |
+| `caught` | `caughtSpecies` | IDs separados por comas |
 | `medals` | `medals` | IDs separados por comas |
 | `starter` | `starterSpeciesId` | Texto o vacío |
 | `starter_bond` | `starterBond` | `Int` |
 | `owned` | `ownedSpecies` | IDs separados por comas |
 | `lead` | `leadSpeciesId` | Texto o vacío |
+| `gym_cleared_run` | `gymClearedRun` | IDs separados por comas |
 | `zone_index` | `zoneIndex` | `Int` |
 | `zone_clicks` | `zoneClicks` | `Long` |
+| `tutorial_phase` | `tutorialPhase` | Nombre del enum (`PENDING`…`COMPLETED`) |
+| `tutorial_message_closed` | `tutorialMessageClosed` | `Boolean` |
 
 Limitaciones que condicionan la migración:
 
@@ -1368,11 +1469,13 @@ simple, monedas, principal y reset. El diseño completo vive en
 
 ### Estado (`GameUiState`)
 
-Cuatro grupos:
+Cinco grupos:
 
 - **meta permanente**: `coins`, `seenSpecies`, `rewardedSpecies`, `medals`,
   `starterSpeciesId`, `starterBond`, `playerName`.
 - **run**: `ownedSpecies`, `leadSpeciesId`, `zoneIndex`, `zoneClicks`.
+- **tutorial**: `tutorialPhase` (fase de la máquina de `model/Tutorial.kt`,
+  persistida) y `tutorialMessageClosed` (momento del paso, persistido).
 - **transitorio/UI**: `isTallGrass`, `walkProgress`, `encounter`, `gym`,
   `trainer` y la navegación (`contentTab`, `isOptionsOpen`, `isLeadOpen`).
 - **derivados**: nombre de zona, `clickPower`, `maxHp`, `isGymReady`,
@@ -1396,6 +1499,10 @@ El archivo de preferencias mantiene el nombre histórico
 - **Especie nueva**: añade una entrada a `SpeciesCatalog` en `Catalogs.kt`.
 - **Zona nueva**: añade una entrada a `ZoneCatalog.zones` (el orden es la
   posición en el mapa).
+- **Apariciones futuras**: las especies de las ubicaciones que aún no son
+  jugables están planificadas en
+  [`docs/apariciones-planificadas.md`](docs/apariciones-planificadas.md); las
+  listas activas viven solo en `ZoneCatalog`.
 - **Gimnasio nuevo**: añade una entrada a `GymCatalog` y referencia su `id` en la
   zona (`gymId`).
 - **Ajustar números**: `ENCOUNTER_SECONDS`, `WALK_ACTIVITY_WINDOW_MS`,
@@ -1490,6 +1597,40 @@ Es una función **pura** para poder testearla en la JVM.
 Una zona con `gymId` **termina** en ese gimnasio: al alcanzar su umbral el
 progreso se capa y **no se avanza** hasta ganar la medalla.
 
+#### Entrada al gimnasio
+
+Pulsar «Gimnasio» no abre el panel directamente: primero se cierra una
+**cortinilla** con las dos mitades de la Pokéball (`pokeball_splash_top` baja
+desde arriba, `pokeball_splash_bottom` sube desde abajo), se queda cerrada
+**1 segundo** y se abre deslizándose. La cortinilla se cierra **sobre la pantalla
+de juego** y el cambio de escena ocurre con la Pokéball ya cerrada: el fondo del
+gimnasio solo se dibuja a partir de ahí, así que al abrirse se descubre el
+gimnasio y nunca se ve aparecer un escenario vacío antes de tiempo. Detrás queda
+la escena **sin sprites ni barras** (`gym == null`, así que `AppRoot` solo pinta el
+fondo).
+
+Al abrirse aparece el **retrato del líder** sobre el escenario y su discurso, con
+el mismo sistema que la intro de Oak: caja blanca con borde negro, máquina de
+escribir y toque para completar la línea y luego avanzar (`introTap`). El retrato
+va **por línea**: Brock sigue con su cara de siempre mientras escucha los primeros
+«...» y cambia a `brock_surprised` justo en «Espera... ¿me estás diciendo que el
+Team Rocket...?», manteniéndola hasta el estallido; después recupera su cara de
+siempre para la medalla y el reto.
+El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock y Misty
+tienen el suyo y Lt. Surge, que aún no tiene retrato ni guion, conserva el panel de
+bienvenida genérico. Una línea puede declarar un **segundo retrato**
+(`GymLeaderLine.altPortraitRes`): mientras la máquina de escribir avanza, los dos
+se alternan cada 140 ms, que es como Misty mueve la boca entre `misty_happy` y
+`misty_happy2` sin dibujos extra. El tamaño del retrato lo frenan tres topes
+(`leaderPortraitSize`): fracción del ancho, ancho máximo y fracción del alto. Cada
+arte lo frena uno distinto —Brock es vertical (400×750) y manda el alto; Misty es
+más cuadrada (512×686) y manda el ancho—, así que subir el ancho no agranda a
+Brock. La capa extra (`overlay`, la medalla) se compone **la última**: va por
+delante del retrato y también de la caja de diálogo, y no come toques porque no
+declara ninguno. La última línea ofrece «Ver tutorial» / «Omitir», que llevan a
+`TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por entrada
+(un reintento tras perder va directo al cartel).
+
 El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
 pantalla completa: durante el combate **desaparece el bottom menu** (barra y
 Pokéball). La escena es vertical, con el enemigo arriba-centro y el principal
@@ -1501,9 +1642,10 @@ en el panel de derrota):
 1. **Fase de ataque** (`GymPhase.ATTACKING`): el líder ataca con su mecánica
    (rocas, anillos o Voltorb según el gimnasio). Cada **acierto** del jugador
    —romper una roca, acertar un anillo, apagar un Voltorb— suma un punto a la
-   barra de **postura** (`posture` / `postureHits`). Un **fallo** resta HP al
-   jugador (`projectileDamage`, `ringMissDamage`, `voltorbExplosionDamage`,
-   `voltorbShockDamage`) y **no suma postura**. La barra ya no baja por tiempo.
+   barra de **postura** (`posture` / `postureHits`). Un **clic fallado** resta un
+   punto (`GymCombat.failPosture`, nunca por debajo de cero) y un **fallo** además
+   resta HP al jugador (`projectileDamage`, `ringMissDamage`,
+   `voltorbExplosionDamage`, `voltorbShockDamage`). La barra ya no baja por tiempo.
 2. **Fase expuesta** (`GymPhase.EXPOSED`): al llenarse la postura, ésta se
    **rompe**: el líder deja de atacar (se vacían rocas, anillos y Voltorb) y se
    abre una ventana que sigue funcionando **por tiempo** (`exposureDurationMs`,
@@ -1520,6 +1662,14 @@ en el panel de derrota):
    completa de furia. Al romper la postura durante esa ronda se marca
    `rageRoundPlayed`; solo entonces el líder puede morir. No hay forma de
    saltársela con daño alto.
+   Ese cruce abre además el **discurso de furia** (`GymState.rageSpeech`): el
+   combate se **detiene** del todo —el bucle del ViewModel no avanza— y la escena
+   se sustituye por la cara de furia del líder con dos líneas de diálogo, la
+   segunda en mayúsculas y con el retrato bamboleándose (el grito a su Pokémon).
+   Las caras y las frases son por gimnasio (`rageScriptFor`: Brock le grita a su
+   Golem, Misty a su Starmie); un líder sin furia propia conserva las de Brock.
+   Al cerrarlo se apaga el flag y la siguiente vuelta del bucle ya dispara la
+   oleada de furia.
 4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
    lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
    cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
@@ -1527,16 +1677,24 @@ en el panel de derrota):
 5. **Ganas** al vaciar la barra del líder; **pierdes** al quedarte sin HP y desde
    el panel de derrota puedes **reintentar** sin coste o **rendirte** (reinicia
    el combate).
-6. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
+6. **Victoria** (`GymOutcome.WON`): el combate no se cierra de golpe. El bucle se
+   detiene y el Pokémon del líder **se hunde y se apaga** (`VICTORY_FADE_MS`,
+   `VICTORY_ENEMY_SINK`); después llega la **despedida** (`ui/GymVictory.kt`): la
+   cara de cada línea, la medalla apareciendo en el centro cuando la entrega y,
+   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Cada guion declara
+   su medalla, su descripción y sus caras (`victoryScriptFor`); Misty pasa de
+   `misty_sad` a `misty_happy` y entrega la `medalla_cascada`. Los gimnasios sin
+   despedida propia se cierran en cuanto termina el desvanecimiento.
+7. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
    sale del overlay; en el reset las **medallas persisten**, así que los
    gimnasios ya ganados se **saltan**.
 
 El sprite del enemigo se mapea por `gymId` (Brock → `golem.gif`) y el del jugador
 por `leadSpeciesId` (los tres starters tienen back). Para cualquier principal sin
 arte se dibuja un **placeholder por tipo** (disco del color del tipo + nombre), de
-modo que el combate sigue siendo jugable. La animación de ataque es un sustituto
-intercambiable: un *lunge* del sprite y un destello del color del principal en el
-punto tocado.
+modo que el combate sigue siendo jugable. La animación de ataque es un *lunge*
+del sprite, y cada roca rota estalla con su propio efecto
+(`ui/RockShatterFx.kt`).
 
 La vida máxima es fija (`BASE_MAX_HP = 5`). Los gimnasios escalan (vida del líder,
 aciertos de postura, duración de la ventana, cadencia/velocidad y número de
@@ -1570,9 +1728,17 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `model/Combat.kt` | `Gym`, `GymState`, fases, `Projectile`, `GymCombat` y `typeDamageMultiplier()` |
 | `model/GameData.kt` | `Zone`, `advanceZone()` y el resto de entidades |
 | `model/Catalogs.kt` | `GymCatalog` (Brock) y sprites |
+| `model/Tutorial.kt` | máquina de estados del tutorial explicativo (fases, acciones, guards, ver §22) |
 | `ui/Intro.kt` | introducción del Profesor Oak (nombre + starter, ver §20) |
 | `ui/Overlays.kt` | selector de principal |
 | `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
+| `ui/TutorialOverlay.kt` | capa de diálogos del tutorial explicativo (ver §22) |
+| `ui/RockShatterFx.kt` | estallido de roca al romper un proyectil (reproducción del sprite sheet) |
+| `ui/GymSceneLayouts.kt` | composición por gimnasio: tamaño y ancla de los sprites del líder y del jugador |
+| `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
+| `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
+| `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
+| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato (con boca que alterna), máquina de escribir, avance y capa superior para la medalla |
 
 ### Estado nuevo (`GameUiState`)
 
@@ -1590,6 +1756,11 @@ roca o el anillo más cercano, o la celda de Voltorb).
   `exposureDurationMs`, `columns`, `spawnIntervalMs`, `projectilesPerSpawn`,
   `projectileTravelMs`, `projectileDamage`, la pareja `rage*` y `coinReward`.
   Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
+  Registra su composición en `GymSceneLayouts` (tamaño y ancla de los sprites del
+  líder y del jugador): cada arte coloca la plataforma a otra altura y, sin
+  entrada, el gimnasio usa `DEFAULT`. Los fondos pixel-art 2:3 (Brock, Misty)
+  comparten la escala de sprite en `PixelArtSprites`: un cambio ahí mueve los dos
+  gimnasios a la vez, y lo que se ajusta por arte es solo el ancla.
 - **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
   (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
 - **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
@@ -1597,6 +1768,38 @@ roca o el anillo más cercano, o la celda de Voltorb).
   ataques y furia por gimnasio en `GymCatalog`.
 - **Ajustar el starter**: `SpeciesCatalog.starters` y
   `STARTER_BOND_CLICK_BONUS` en `MainViewModel`.
+- **Retocar el estallido de roca**: el arte vive en pixelfx
+  (`src/fx/impacts/rock-shatter.js`). Se edita allí, se reexporta con
+  `node tools/render.mjs impacts/rock-shatter --sheet` y se copia
+  `rock-shatter.png` a `drawable-nodpi/rock_shatter.png`. `RockShatterFxTest`
+  comprueba que el sheet real coincide con la rejilla declarada en
+  `RockShatterFx` (5 columnas, 13 frames de 64×80, 24 fps).
+- **Retocar los efectos del anillo de Misty**: los dos artes viven en pixelfx
+  (`src/fx/water/hydro-burst.js` y `src/fx/water/hydro-implode.js`, con el helper
+  `wetRing`/`wetArc` en `src/fx/water/_lib.js`). Se editan allí, se reexportan con
+  `node tools/render.mjs water/hydro-burst water/hydro-implode --sheet` y se copian
+  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. Las dos hojas van con
+  la rampa de agua a propósito: el aro que se cierra y el estallido siguen siendo
+  agua. El verde del acierto y el rojo del fallo los lleva el **círculo fijo**
+  alrededor del Pokémon (`tinted(...)` y `RING_TINT_MS` en `GymOverlay`).
+  `WaterRingFxTest`
+  comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
+  6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
+  del lienzo ni deja píxeles al terminar.
+- **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` es el
+  `ui/combo-counter` de pixelfx portado a Compose; todo se calcula desde los
+  segundos transcurridos (`BANNER_HIT_S`, `BANNER_BEAT_S`, `BANNER_OUT_S`,
+  `BANNER_LIFE_S`), sin animaciones propias ni estado acumulado. Encadena líneas
+  de velocidad, golpe con picos y anillo, chispas, dos estelas, el pulso del
+  latido, el brillo que barre las letras y la salida con motas. La barra de tiempo
+  del original se deja fuera: el cartel dura 1,2 s y no informa de nada. Las
+  letras no usan la tipografía del sistema: `PixelFont` es la fuente
+  5×7 de pixelfx (`src/core/font.js`, la "big") portada a Kotlin, dibujada con
+  rectángulos, contorno oscuro de una celda y tres tramos de color. El tamaño de
+  celda es el `cell = 4.dp` del cartel; ahí se agranda o achica. El combo vive en
+  `GymState.ringCombo` y viaja en `RingFeedback.combo`: sube con cada acierto y
+  cualquier fallo lo devuelve a 0. Con combo ≥ 2 el cartel usa
+  `gym_ring_combo` (`¡Combo ×N!`).
 - **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
   ataque (hoy hay *lunge* + destello) y proyectiles que aguantan varios toques
   (`Projectile.hitsRemaining` ya existe; el umbral de furia es
@@ -1664,7 +1867,10 @@ El nombre es **meta permanente** y se muestra en el HUD («Entrenador: …»). S
 persiste junto al starter en una sola operación:
 
 - `MainViewModel.onFinishIntro(playerName, starterSpeciesId)` fija `playerName`,
-  `starterSpeciesId`, `starterBond = 0` y `leadSpeciesId` en un único `mutate`.
+  `starterSpeciesId`, `starterBond = 0` y `leadSpeciesId` en un único `mutate`,
+  y alimenta la máquina del tutorial (`OAK_FINISHED`): al cerrar la última fase
+  **ya no se entra directo al juego**, sino que se ofrece el tutorial explicativo
+  (ver §22). Tras un reset la oferta reaparece sin repetir la introducción.
 - `GameSnapshot.playerName` se guarda bajo la clave `player_name` en
   SharedPreferences.
 - Nada se persiste hasta terminar la intro: si se cierra a medias, vuelve a
@@ -2207,3 +2413,132 @@ Riesgos principales:
 - [ ] Los efectos, si existen, se resuelven sin `when` por especie.
 - [ ] `assembleDebug`, `testDebugUnitTest` y `lintDebug` pasan.
 - [ ] Las partidas existentes siguen abriendo con `kanto_clicker`.
+
+---
+
+## 22. Tutorial explicativo
+
+Tercera rebanada de onboarding: un **recorrido guiado** que enseña el menú, el
+mapa y la Pokédex. Se ofrece tras la introducción de Oak (primera partida) o
+después de un reset (sin repetir a Oak); con un borrado total vuelve a aparecer
+el flujo completo desde la intro.
+
+### Flujo
+
+```text
+Intro de Oak → ¿Oferta? → ¿Confirmar?
+  ├─ Omitir ─────────────► juego normal (la oferta reaparece tras un reset)
+  └─ Empezar → desplegar Pokéball → abrir Mapa → volver
+              → abrir Pokédex → volver → despedida
+              → aviso de experiencia → primer avance → COMPLETED
+```
+
+- **Oferta**: tras cerrar la despedida de Oak se pregunta «¿es tu primera vez
+  aquí?» con botones Sí/No.
+- **Doble confirmación**: responder *Sí* lleva a una segunda pregunta
+  «Empezar tutorial / Omitir». Solo *Empezar* inicia el recorrido; *Omitir*
+  juega con normalidad.
+- **Recorrido obligatorio**: una vez empezado, no se puede abandonar; se
+  completa con el primer avance real de zona.
+- **Dos momentos por paso**: cada paso arranca con su mensaje explicativo
+  visible (todo bloqueado); al tocar la caja el mensaje se cierra y **solo**
+  la interacción del paso responde. La acción real de juego es lo que
+  completa el paso: cerrar el mensaje no lo salta.
+
+### Máquina de estados (`model/Tutorial.kt`)
+
+Pura y sin Android: 14 fases (`TutorialPhase`), 14 acciones
+(`TutorialAction`) y una función `advance()` que descarta cualquier acción
+que no aplique (no-op) — los finales (`SKIPPED`, `COMPLETED`) absorben todo.
+
+| Fase | Momento | Acción que la completa |
+|---|---|---|
+| `PENDING` | Antes de terminar Oak | `OAK_FINISHED` → `OFFER` |
+| `OFFER` | Pregunta «primera vez?» | `ACCEPT_OFFER` / `DECLINE_OFFER` |
+| `CONFIRM` | Doble confirmación | `BEGIN_TUTORIAL` / `SKIP_TUTORIAL` |
+| `DEPLOY_POKEBALL` | Paso 1: desplegar | `POKEBALL_EXPANDED` |
+| `OPEN_MAP` | Paso 2: instrucción | `MAP_OPENED` |
+| `RETURN_MAP` | Paso 3: volver del mapa | `MAP_CLOSED` |
+| `OPEN_POKEDEX` | Paso 4: instrucción | `POKEDEX_OPENED` |
+| `RETURN_POKEDEX` | Paso 5: volver de la Dex | `POKEDEX_CLOSED` |
+| `FAREWELL` | Despedida | `FAREWELL_DISMISSED` |
+| `EXP_WAIT` | Jugar hasta llenar la barra | `EXP_BAR_FILLED` (derivado) |
+| `EXP_NOTICE` | Aviso de avance | `EXP_NOTICE_DISMISSED` |
+| `ADVANCE_WAIT` | Primer avance real | `ADVANCE_ZONE_EXECUTED` |
+| `SKIPPED` / `COMPLETED` | Finales (juego libre) | absorben todo |
+
+Predicados puros que comparten UI y ViewModel:
+
+- `allowedInteractions`: qué control responde en cada fase (en los pasos
+  guiados, solo el del paso).
+- `isMessageVisible`: si el mensaje del paso está en pantalla.
+- `isFreePlay`: fases sin restricción (`EXP_WAIT`, esperas y finales, y
+  también `PENDING` — su aislamiento lo hacen las capas visuales: la intro es
+  opaca y el menú no se compone porque `menuHidden` incluye `needsStarter`).
+- `tutorialInteractionAllowed` (regla principal): mientras **cualquier**
+  mensaje esté visible, nada del juego responde; con el mensaje cerrado, en
+  pasos guiados solo responde la interacción del paso, y en el resto, juego
+  libre total.
+
+### Integración en el ViewModel y la UI
+
+- `MainViewModel`: cada evento de juego real consulta el guard
+  (`tutorialAllows(...)`) y alimenta la máquina con su acción. Los guards
+  cubren **toda** la operación: bloqueado, el método devuelve el estado
+  intacto (no navega ni cierra nada). Puertas adicionales:
+  `onTutorialAction` (respuestas y cierres de mensaje) y
+  `onTutorialMessageTap` (avanza/cierra la caja de diálogo).
+- `AppRoot.kt`: dibuja la capa (`TutorialOverlay`), oculta el menú en las
+  capas modales (`tutorialHidesMenu`), inmoviliza la Pokéball
+  (`tutorialPokeBallEnabled`), los destinos de la hoja
+  (`tutorialDexDestinationsEnabled`) y el clic de juego
+  (`tutorialPokeBallClickEnabled`), y bloquea el botón Atrás con
+  `BackHandler` mientras el tutorial lo exija.
+- `derive()` normaliza dos transiciones dependientes del juego: `PENDING` +
+  starter → `OFFER` (oferta tras la intro o tras un reset) y `EXP_WAIT` +
+  barra llena → `EXP_NOTICE`.
+
+### Persistencia
+
+- `GameSnapshot.tutorialPhase` (clave `tutorial_phase`, **nombre del enum**)
+  y `GameSnapshot.tutorialMessageClosed` (clave `tutorial_message_closed`).
+- Guardados antiguos sin la clave: `GameStateStore` resuelve `COMPLETED` si
+  ya hay starter (jugador anterior a la función, no se le ofrece) y
+  `PENDING` si no.
+- Limitación conocida: al reabrir la app a mitad de un diálogo paginado se
+  recupera la fase y el momento (mensaje abierto o cerrado), pero la página
+  concreta del diálogo vuelve al inicio del mensaje.
+
+### Archivos
+
+| Archivo | Rol |
+|---|---|
+| `model/Tutorial.kt` | máquina de estados: fases, acciones, transiciones y predicados |
+| `ui/TutorialOverlay.kt` | diálogos paginados estilo Oak (sin retrato), scrim y `modalBlocking` |
+| `ui/AppRoot.kt` | composición de la capa, scrims modales y bloqueo del menú/Atrás |
+| `viewmodel/MainViewModel.kt` | guards sobre los eventos reales y eventos del tutorial |
+
+### Cómo ajustarlo
+
+| Quiero… | Cambio |
+|---|---|
+| Cambiar los textos | `strings.xml`, claves `tutorial_*` |
+| Cambiar la velocidad de la máquina de escribir | `TYPE_CHAR_MS` en `TutorialOverlay.kt` |
+| Cambiar el scrim de las preguntas | `QuestionScrim` en `TutorialOverlay.kt` |
+
+Los tutoriales de gimnasio (`GymIntro`, `GymOverlay`, §19) son un mecanismo
+independiente y no comparten máquina con este recorrido.
+
+### Cómo extenderlo
+
+1. Añade la fase y su acción a los enums de `model/Tutorial.kt` y su
+   transición en `advance()`.
+2. Declárala en `allowedInteractions` y en `isMessageVisible`.
+3. Añade su texto en `strings.xml` (`tutorial_*`) y mapea la fase en
+   `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
+4. Si el paso reacciona a una interacción que aún no alimenta la máquina,
+   añade la detección en su método de `MainViewModel` y los helpers que
+   falten en `AppRoot` (ver §13).
+5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
+   persiste con `enum.name`; renombrar una fase rompe los guardados
+   existentes salvo que se añada antes un mapeo de compatibilidad.

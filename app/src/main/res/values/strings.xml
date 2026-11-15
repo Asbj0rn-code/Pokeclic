@@ -29,16 +29,17 @@
     <string name="hud_zone_power">Potencia: %d</string>
     <string name="action_reset">Reset</string>
 
-    <!-- Minijuego de pesca -->
+    <!-- Minijuego de captura -->
     <string name="catch_title">¡Ha aparecido %1$s!</string>
-    <string name="catch_type">Tipo: %s</string>
-    <string name="fishing_hint">Mantén pulsado en la pantalla para subir la barra. Si el progreso se vacía, ¡%1$s escapará!</string>
-    <string name="fishing_captured">¡Genial! ¡%1$s fue capturado!</string>
-    <string name="fishing_escaped">¡Oh, no! ¡%1$s se escapó!</string>
-    <string name="fishing_continue">Continuar</string>
+    <string name="catching_hint">Mantén pulsado para subir la Pokébola y atrapar a %1$s. ¡Si la captura se vacía, escapará!</string>
+    <string name="catching_captured">¡Genial! ¡%1$s fue capturado!</string>
+    <string name="catching_escaped">¡Oh, no! ¡%1$s se escapó!</string>
+    <string name="catching_continue">Continuar</string>
+    <string name="catching_gauge">CAPTURA</string>
+    <string name="catching_dex">N.º %1$03d</string>
+    <string name="catching_wild">SALVAJE</string>
 
     <!-- Starter y principal -->
-    <string name="starter_type">Tipo: %s</string>
     <string name="lead_title">Pokémon principal</string>
     <string name="lead_hint">Elige quién te representa en los gimnasios</string>
     <string name="lead_change">Cambiar principal</string>
@@ -46,14 +47,9 @@
 
     <!-- Gimnasio -->
     <string name="gym_title">Gimnasio de %1$s</string>
-    <string name="gym_type">Líder de tipo %s</string>
-    <string name="gym_leader_hp">Líder: %1$d / %2$d</string>
-    <string name="gym_hp">Vida: %1$d / %2$d</string>
-    <string name="gym_projectile_hint">Rompe las rocas para llenar la postura del líder</string>
-    <string name="gym_enemy_hint">¡Postura rota! Tócalo para atacar</string>
-    <string name="gym_posture">Postura · %1$d / %2$d</string>
+    <string name="gym_hp_label">PS</string>
+    <string name="gym_hp_pair">%1$d/%2$d</string>
     <string name="gym_rage">¡Enfurecido!</string>
-    <string name="gym_exposed">¡Expuesto!</string>
     <string name="gym_lost">¡Te han debilitado!</string>
     <string name="gym_retry">Reintentar</string>
     <string name="gym_leave">Rendirse</string>
@@ -65,7 +61,7 @@
     <string name="gym_intro_skip">Omitir</string>
     <string name="gym_tutorial_title">Cómo funciona el combate</string>
     <string name="gym_tutorial_step1_title">Aguanta y acierta</string>
-    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance. Cada acierto llena su barra de postura; un impacto te daña y no suma.</string>
+    <string name="gym_tutorial_step1_text">El líder lanza rocas que caen por columnas: toca cada roca para romperla antes de que te alcance. Cada acierto llena su barra de postura; un clic fallado resta y un impacto te daña.</string>
     <string name="gym_tutorial_step2_title">Rompe su postura</string>
     <string name="gym_tutorial_step2_text">Cuando la barra de postura se llena, el líder queda expuesto unos segundos: tócalo para restarle vida con ventaja de tipo. Esa ventana funciona por tiempo.</string>
     <string name="gym_tutorial_step3_title">Ojo con la furia</string>
@@ -75,9 +71,50 @@
     <string name="gym_tutorial_repeat">Repetir tutorial</string>
     <string name="gym_countdown">¡Que comience el combate!</string>
 
+    <!-- Discurso del líder antes del combate (uno por gimnasio) -->
+    <string name="gym_leader_desc">%1$s, líder del gimnasio</string>
+    <string name="gym_leader_line_welcome">¡Hola! Soy Brock, el líder de este gimnasio. ¡Bienvenido!</string>
+    <string name="gym_leader_line_quiet">La verdad es que últimamente no viene nadie a retarme... No sé qué estará pasando.</string>
+    <string name="gym_leader_line_listen">...</string>
+    <string name="gym_leader_line_rocket_hint">Espera... ¿me estás diciendo que el Team Rocket está detrás de todo esto?</string>
+    <string name="gym_leader_line_rocket">¿¡Cómo!? ¿¡Que el Team Rocket ha hecho qué!?</string>
+    <string name="gym_leader_line_badge">Conque necesitas la medalla para salvarlos... Lo entiendo, pero no puedo dártela así como así.</string>
+    <string name="gym_leader_line_duel">Si de verdad la quieres, tendrás que vencerme en combate.</string>
+    <string name="gym_leader_line_tutorial">¿Quieres que te explique cómo funciona el desafío antes de empezar?</string>
+
+    <!-- Discurso de furia, a mitad del combate -->
+    <string name="gym_rage_speech_warning">¡Esto todavía no ha acabado! ¡Prepárate, que ahora va en serio!</string>
+    <string name="gym_rage_speech_shout">¡NO TE RINDAS, GOLEM! ¡HAZ TU ÚLTIMO ESFUERZO!</string>
+
+    <!-- Despedida del líder al ganar -->
+    <string name="gym_victory_line_almost">No lo he conseguido... ¡por muy poco!</string>
+    <string name="gym_victory_line_enjoyed">Aunque he perdido, hacía mucho que no disfrutaba tanto de un combate.</string>
+    <string name="gym_victory_line_badge">Toma, aquí tienes la Medalla Roca. Te la has ganado.</string>
+    <string name="gym_victory_line_farewell">Ha sido un placer. Espero de verdad que puedas detener al Team Rocket.</string>
+    <string name="gym_victory_badge_desc">Medalla Roca</string>
+
+    <!-- Misty: discurso de entrada -->
+    <string name="gym_leader_line_misty_welcome">¡Hola! Soy Misty, la líder del gimnasio de Ciudad Celeste.</string>
+    <string name="gym_leader_line_misty_bored">La verdad es que últimamente no viene nadie a retarme... y ya empiezo a aburrirme.</string>
+    <string name="gym_leader_line_misty_rocket">Espera... ¿el Team Rocket? ¿Eso es lo que ha estado pasando todo este tiempo?</string>
+    <string name="gym_leader_line_misty_badge">Conque necesitas la Medalla Cascada... No pienso regalártela.</string>
+    <string name="gym_leader_line_misty_duel">Si de verdad la quieres, tendrás que vencerme en combate.</string>
+    <string name="gym_leader_line_misty_tutorial">¿Quieres que te explique cómo funciona el desafío antes de empezar?</string>
+
+    <!-- Misty: furia -->
+    <string name="gym_rage_speech_misty_warning">¡Esto todavía no ha acabado! ¡No pienso dejarte ganar tan fácilmente!</string>
+    <string name="gym_rage_speech_misty_shout">¡AGUANTA, STARMIE! ¡DALE TODO LO QUE TIENES!</string>
+
+    <!-- Misty: despedida -->
+    <string name="gym_victory_line_misty_almost">He perdido... y justo cuando por fin alguien venía a retarme.</string>
+    <string name="gym_victory_line_misty_enjoyed">No me lo puedo creer. Pero hacía muchísimo que no disfrutaba tanto de un combate.</string>
+    <string name="gym_victory_line_misty_badge">¡Enhorabuena! Toma, aquí tienes la Medalla Cascada. Te la has ganado.</string>
+    <string name="gym_victory_line_misty_farewell">Ahora ve y acaba con el Team Rocket. Cuento contigo.</string>
+    <string name="gym_victory_badge_cascada_desc">Medalla Cascada</string>
+
     <!-- Minijuego de anillos (Misty) -->
-    <string name="gym_ring_hint">Acierta el anillo justo a tiempo para llenar la postura</string>
     <string name="gym_ring_hit">¡Acierto!</string>
+    <string name="gym_ring_combo">¡Combo ×%d!</string>
     <string name="gym_ring_miss">¡Fallo!</string>
     <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
     <string name="gym_ring_tutorial_step1_title">Acierta el círculo</string>
@@ -88,7 +125,6 @@
     <string name="gym_ring_tutorial_step3_text">Cada acierto llena la barra de postura del líder. Al completarse quedará expuesto unos segundos y podrás tocar a su Pokémon varias veces para hacerle daño. Bajo un cuarto de vida se enfurece y los círculos van más rápido.</string>
 
     <!-- Minijuego de Voltorb (Lt. Surge) -->
-    <string name="gym_voltorb_hint">Apaga el Voltorb a tiempo para llenar la postura</string>
     <string name="gym_voltorb_tutorial_step1_title">Una cuadrícula de Voltorb</string>
     <string name="gym_voltorb_tutorial_step1_text">Cuatro filas y cuatro columnas de Voltorb esperan. Se encienden sin parar y sin tope: si no los apagas rápido se te van a juntar varios cargados a la vez.</string>
     <string name="gym_voltorb_tutorial_step2_title">Apágalo a tiempo</string>
@@ -108,6 +144,26 @@
     <string name="options_debug_plateada">Ir a Ciudad Plateada (test)</string>
     <string name="options_debug_celeste">Ir a Ciudad Celeste (test)</string>
     <string name="options_debug_carmin">Ir a Ciudad Carmín (test)</string>
+    <string name="options_pokedex_test">Pokédex (TEST)</string>
+
+    <!-- Pokédex (TEST) -->
+    <string name="dex_title">Pokédex</string>
+    <string name="dex_close">Volver</string>
+    <plurals name="dex_stat_seen">
+        <item quantity="one">Avistado</item>
+        <item quantity="other">Avistados</item>
+    </plurals>
+    <plurals name="dex_stat_caught">
+        <item quantity="one">Capturado</item>
+        <item quantity="other">Capturados</item>
+    </plurals>
+    <string name="dex_caught_desc">En posesión</string>
+    <string name="dex_registered">Registrado</string>
+    <string name="dex_registered_desc">Registrado, capturado en una partida anterior</string>
+    <string name="dex_seen_desc">Avistado, no poseído actualmente</string>
+    <string name="dex_error_title">Pokédex no disponible</string>
+    <string name="dex_error_body">No se pudo cargar el catálogo de especies. El resto del juego sigue funcionando.</string>
+
     <string name="wipe_confirm_title">¿Borrar partida?</string>
     <string name="wipe_confirm_text">Se perderá todo el progreso guardado para siempre. Esta acción no se puede deshacer.</string>
     <string name="wipe_confirm_accept">Borrar</string>
@@ -116,12 +172,42 @@
     <!-- Introducción (Profesor Oak) -->
     <string name="intro_oak_desc">Profesor Oak</string>
     <string name="intro_line_welcome">¡Hola! Soy el Profesor Oak.</string>
-    <string name="intro_line_world">¡Bienvenido al mundo Pokémon!</string>
-    <string name="intro_line_creatures">Este mundo está habitado por unas criaturas llamadas Pokémon.</string>
     <string name="intro_ask_name">Antes de empezar, dime… ¿cómo te llamas?</string>
     <string name="intro_greet">¡Encantado, %1$s! Estoy seguro de que seremos grandes amigos.</string>
-    <string name="intro_ask_starter">Ahora elige tu primer compañero Pokémon.</string>
+    <string name="intro_line_danger">Aunque no hay nada que me gustaría más que hablar contigo acerca de los Pokémon. Kanto está en peligro y necesito tu ayuda.</string>
+    <string name="intro_line_rocket_power">El Team Rocket ha conseguido canalizar el poder de Palkia y Dialga.</string>
+    <string name="intro_line_loop">Con ese poder han sumido toda la región en un bucle espacio-temporal.</string>
+    <string name="intro_line_trapped">Nadie puede salir de su ciudad: los caminos se repiten una y otra vez.</string>
+    <string name="intro_line_pokedex">Por eso he desarrollado este dispositivo: una Pokédex especial.</string>
+    <string name="intro_line_charge">Cuando se carga por completo, su portador puede salir del bucle.</string>
+    <string name="intro_line_needs">Para hacerse más efectiva, necesita acumular registros de Pokémon y medallas.</string>
+    <string name="intro_line_green">Ya le he dado la otra Pokédex a mi nieto, Green.</string>
+    <string name="intro_line_green_impulsive">No es que no me fíe de él, pero su carácter impulsivo puede desviarle del objetivo.</string>
+    <string name="intro_line_green_risk">Si se obsesiona con los combates Pokémon, se olvidará de completar los registros y frenar al Team Rocket.</string>
+    <string name="intro_line_ask_help">Por eso te necesito a ti. ¿Me ayudarás a frenarlo?</string>
+    <string name="intro_ask_starter">Toma la otra Pokédex. Elige también a tu primer compañero Pokémon.</string>
+    <string name="intro_starter_brief_bulbasaur">Bulbasaur lleva un bulbo en la espalda desde que nace y crece con él. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_charmander">Charmander tiene una llama en la cola que arde según su ánimo. Es valiente y algo terco. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_squirtle">Squirtle se protege con un caparazón duro y dispara agua con gran puntería. ¿Será este tu Pokémon?</string>
+    <string name="intro_starter_brief_default">¿Será este tu Pokémon?</string>
     <string name="intro_goodbye">¡%1$s será tu compañero! ¡Que comience la aventura!</string>
     <string name="intro_name_label">Tu nombre</string>
     <string name="intro_accept">Aceptar</string>
+    <string name="intro_confirm_name">¿%1$s, dices? ¿Es ese tu nombre?</string>
+    <string name="intro_confirm_yes">Sí</string>
+    <string name="intro_confirm_no">No</string>
+
+    <!-- Tutorial explicativo -->
+    <string name="tutorial_player_fallback">entrenador</string>
+    <string name="tutorial_offer_body">¡Hola, %1$s!\n\nDime, ¿es tu primera vez aquí?</string>
+    <string name="tutorial_confirm_body">¿Estás seguro? Tu cara me resulta familiar…</string>
+    <string name="tutorial_confirm_begin">Empezar tutorial</string>
+    <string name="tutorial_confirm_skip">Omitir</string>
+    <string name="tutorial_deploy_body">En la parte inferior tienes un menú con distintas opciones: Mapa, Pokédex y un botón con forma de Pokéball que te acompañará durante toda tu aventura…\n\nAdelante, prueba a deslizar el botón hacia arriba.</string>
+    <string name="tutorial_open_map_body">¡Bien, has conseguido desplegar el botón!\n\nAl pulsarlo ganarás experiencia.\n\nEsta experiencia te servirá para poder avanzar por toda la región.\n\n¿Ves la barra situada en la parte superior de la pantalla? Cuando hayas recogido la suficiente experiencia podrás avanzar a la siguiente zona.\n\nVamos a probar la funcionalidad de los demás botones del menú…\n\nAdelante, pulsa en el botón del Mapa.</string>
+    <string name="tutorial_return_map_body">¡Estás en el mapa de la región de Kanto!\n\nKanto es una región extensa en la que encontrarás muchas aventuras y muchos compañeros que te acompañarán en tu camino.\n\nSiéntete libre de recorrer cada rincón y disfrutar de cada experiencia.\n\nPara volver a la pantalla principal, simplemente toca el botón de la Pokéball.</string>
+    <string name="tutorial_open_pokedex_body">Ya sabes cómo funciona el mapa, ahora vamos a abrir la Pokédex.\n\n¿Cómo? ¿No sabes lo que es una Pokédex? Haber empezado por ahí…</string>
+    <string name="tutorial_return_pokedex_body">¡Esta es tu Pokédex!\n\nEs una enciclopedia que registra a todas las especies que avistes o captures a lo largo de tu aventura.\n\nTu misión es completarla con todas las especies de la región.\n\nEsto te resultará útil para poder pararles los pies al Team Rocket… ¡Dependemos de ti, %1$s!\n\nPulsa en el botón de la Pokéball para volver a la pantalla principal.</string>
+    <string name="tutorial_farewell_body">Bien, ya sabes lo esencial para poder avanzar en tu aventura.\n\nAdelante, diviértete, ¡te estaré esperando en la siguiente ruta!</string>
+    <string name="tutorial_exp_notice_body">¡Bien! ¡Has llenado tu barra de experiencia!\n\nEso significa que puedes continuar tu aventura.\n\nPulsa en el botón de avanzar que ha salido en la parte superior.</string>
 </resources>

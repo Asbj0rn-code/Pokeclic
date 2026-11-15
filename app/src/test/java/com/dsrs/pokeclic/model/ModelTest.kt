@@ -45,6 +45,127 @@ class ModelTest {
         assertEquals(1f, typeDamageMultiplier(null, PokemonType.ROCK))
     }
 
+    // --- tabla de tipos completa (15 × 15) ----------------------------------
+
+    /**
+     * Orden de filas (atacante) y columnas (defensor) de la matriz aprobada.
+     * La expectativa de los tests es **independiente** de producción: no se
+     * deriva de `strongAgainst`, `weakAgainst` ni de `effectiveness()`.
+     */
+    private val typeOrder = listOf(
+        PokemonType.NORMAL,
+        PokemonType.FIRE,
+        PokemonType.WATER,
+        PokemonType.GRASS,
+        PokemonType.ELECTRIC,
+        PokemonType.ROCK,
+        PokemonType.FLYING,
+        PokemonType.POISON,
+        PokemonType.BUG,
+        PokemonType.GROUND,
+        PokemonType.FIGHTING,
+        PokemonType.PSYCHIC,
+        PokemonType.ICE,
+        PokemonType.GHOST,
+        PokemonType.DRAGON
+    )
+
+    /**
+     * Matriz completa en formato compacto: una fila por atacante y una columna
+     * por defensor, en el orden de [typeOrder]. `2` = ×2, `h` = ×0,5
+     * (incluidas las inmunidades del juego original) y `1` = ×1.
+     */
+    private val expectedChart = listOf(
+        "11111h1111111h1", // NORMAL
+        "1hh21h11211121h", // FIRE
+        "12hh1211121111h", // WATER
+        "1h2h12hhh21111h", // GRASS
+        "112hh1211h1111h", // ELECTRIC
+        "121111212hh1211", // ROCK
+        "1112hh112121111", // FLYING
+        "11121h1h1h111h1", // POISON
+        "1h1211hh11h21h1", // BUG
+        "121h22h2h111111", // GROUND
+        "211112hhh11h2h1", // FIGHTING
+        "11111112112h111", // PSYCHIC
+        "1hh211211211h12", // ICE
+        "h11111111112121", // GHOST
+        "111111111111112", // DRAGON
+    )
+
+    /** El enum expone exactamente los 15 tipos de la tabla aprobada. */
+    @Test
+    fun typeChart_hasTheFifteenApprovedTypes() {
+        assertEquals(15, PokemonType.entries.size)
+        assertEquals(typeOrder.toSet(), PokemonType.entries.toSet())
+    }
+
+    /**
+     * Los 225 enfrentamientos deben coincidir con la matriz aprobada. Un
+     * multiplicador válido (0,5 / 1 / 2) colocado en una celda equivocada
+     * también hace fallar este test: no basta con comprobar el rango.
+     */
+    @Test
+    fun typeChart_matchesTheApproved225CellMatrix() {
+        assertEquals(typeOrder.size, expectedChart.size)
+
+        typeOrder.forEachIndexed { rowIndex, attacker ->
+            val row = expectedChart[rowIndex]
+            assertEquals(
+                "La fila de $attacker debe tener una celda por defensor",
+                typeOrder.size,
+                row.length
+            )
+            typeOrder.forEachIndexed { columnIndex, defender ->
+                val expected = when (row[columnIndex]) {
+                    '2' -> 2f
+                    '1' -> 1f
+                    'h' -> 0.5f
+                    else -> error(
+                        "Celda inesperada '${row[columnIndex]}' en $attacker → $defender"
+                    )
+                }
+                assertEquals(
+                    "$attacker → $defender",
+                    expected,
+                    attacker.effectiveness(defender),
+                    0f
+                )
+            }
+        }
+    }
+
+    /**
+     * Contrastes que la matriz ya cubre, aislados para que se lean: relaciones
+     * que no se deducen por simetría, inmunidades convertidas a ×0,5 y tipos
+     * nuevos.
+     */
+    @Test
+    fun typeChart_keepsTheNonSymmetricAndImmunityRelations() {
+        // Agua → Eléctrico es neutro aunque Eléctrico → Agua sea ×2.
+        assertEquals(1f, PokemonType.WATER.effectiveness(PokemonType.ELECTRIC))
+        assertEquals(2f, PokemonType.ELECTRIC.effectiveness(PokemonType.WATER))
+        // Roca no es débil contra Agua ni contra Planta.
+        assertEquals(1f, PokemonType.ROCK.effectiveness(PokemonType.WATER))
+        assertEquals(1f, PokemonType.ROCK.effectiveness(PokemonType.GRASS))
+        // Dragón → Agua es neutro.
+        assertEquals(1f, PokemonType.DRAGON.effectiveness(PokemonType.WATER))
+        // Planta → Eléctrico es neutro; Planta → Planta es poco eficaz.
+        assertEquals(1f, PokemonType.GRASS.effectiveness(PokemonType.ELECTRIC))
+        assertEquals(0.5f, PokemonType.GRASS.effectiveness(PokemonType.GRASS))
+        // Inmunidades del juego original, representadas como ×0,5.
+        assertEquals(0.5f, PokemonType.NORMAL.effectiveness(PokemonType.GHOST))
+        assertEquals(0.5f, PokemonType.FIGHTING.effectiveness(PokemonType.GHOST))
+        assertEquals(0.5f, PokemonType.GHOST.effectiveness(PokemonType.NORMAL))
+        assertEquals(0.5f, PokemonType.ELECTRIC.effectiveness(PokemonType.GROUND))
+        assertEquals(0.5f, PokemonType.GROUND.effectiveness(PokemonType.FLYING))
+        // Tipos nuevos: Fantasma y Dragón.
+        assertEquals(2f, PokemonType.GHOST.effectiveness(PokemonType.PSYCHIC))
+        assertEquals(2f, PokemonType.GHOST.effectiveness(PokemonType.GHOST))
+        assertEquals(2f, PokemonType.ICE.effectiveness(PokemonType.DRAGON))
+        assertEquals(2f, PokemonType.DRAGON.effectiveness(PokemonType.DRAGON))
+    }
+
     @Test
     fun projectileProgressGoesFromZeroToOne() {
         val projectile = Projectile(id = 1L, column = 0, spawnedAtMs = 1_000L, travelMs = 2_000L)
@@ -131,6 +252,71 @@ class ModelTest {
             projectiles = listOf(Projectile(1L, 0, 0L, 1_000L))
         )
         assertEquals(state, GymCombat.breakProjectile(state, 1L))
+    }
+
+    @Test
+    fun salvo_keepsTheColumnsAndJittersEachRock() {
+        val random = Random(3)
+        repeat(50) {
+            val salvo = GymCombat.spawnSalvo(
+                firstId = 100L,
+                columns = 5,
+                maxPerSpawn = 3,
+                travelMs = 1_800L,
+                nowMs = 10_000L,
+                random = random
+            )
+            assertTrue("ráfaga vacía", salvo.size in 1..3)
+            assertEquals(
+                "ids consecutivos",
+                (100L until 100L + salvo.size).toList(),
+                salvo.map { it.id }
+            )
+            assertEquals("dos rocas en la misma columna", salvo.size, salvo.map { it.column }.distinct().size)
+            assertTrue(salvo.all { it.column in 0 until 5 })
+            // ±20 % de la duración del gimnasio.
+            assertTrue("caída fuera de jitter", salvo.all { it.travelMs in 1_440L..2_160L })
+            // Arranca por debajo del borde: como mucho, un 10 % de su recorrido.
+            assertTrue(
+                "arranque fuera de rango",
+                salvo.all { it.spawnedAtMs in 9_784L..10_000L }
+            )
+        }
+    }
+
+    @Test
+    fun salvo_doesNotFallInRows() {
+        val random = Random(7)
+        val salvos = (0 until 40).map {
+            GymCombat.spawnSalvo(0L, 5, 5, 1_800L, 10_000L, random)
+        }
+        val pairs = salvos.filter { it.size >= 2 }
+        assertTrue("hace falta alguna ráfaga de dos o más", pairs.isNotEmpty())
+        assertTrue(
+            "todas las rocas de una ráfaga caen igual",
+            pairs.any { salvo -> salvo.map { rock -> rock.travelMs to rock.spawnedAtMs }.distinct().size > 1 }
+        )
+    }
+
+    @Test
+    fun salvo_isDeterministicForTheSameSeed() {
+        fun salvo() = GymCombat.spawnSalvo(0L, 5, 4, 1_800L, 10_000L, Random(11))
+        assertEquals(salvo(), salvo())
+    }
+
+    @Test
+    fun failedClickDrainsPostureWithoutGoingBelowZero() {
+        assertEquals(1, GymCombat.failPosture(combatState(posture = 2)).posture)
+        assertEquals(0, GymCombat.failPosture(combatState(posture = 1)).posture)
+        // La barra nunca se pone negativa.
+        assertEquals(0, GymCombat.failPosture(combatState(posture = 0)).posture)
+    }
+
+    @Test
+    fun failedClickDoesNothingWhileExposed() {
+        // En la ventana expuesta la barra ya corre por tiempo: un fallo no la toca.
+        val state = combatState(posture = 3).copy(phase = GymPhase.EXPOSED)
+        assertEquals(state, GymCombat.failPosture(state))
     }
 
     @Test
@@ -227,6 +413,7 @@ class ModelTest {
         assertNotNull(gated)
         assertEquals(14, gated!!.leaderHp)
         assertTrue(gated.rage)
+        assertTrue("la furia debe abrir su discurso", gated.rageSpeech)
         assertFalse(gated.rageRoundPlayed)
         assertEquals(GymPhase.ATTACKING, gated.phase)
         assertEquals(0, gated.posture)
@@ -475,22 +662,22 @@ class ModelTest {
         assertEquals(emptyList<Voltorb>(), exposed.voltorbs)
     }
 
-    // --- Minijuego de pesca ---------------------------------------------------
+    // --- Minijuego de captura ---------------------------------------------------
 
     /**
      * Configuración de laboratorio: suavizado enorme (para que el sprite apenas
      * se mueva en un tick corto) y sin dardos, así los tests de barra y
      * progreso son deterministas.
      */
-    private fun testConfig() = FishingConfig(smoothingSeconds = 10f, dartChancePerSecond = 0f)
+    private fun testConfig() = CatchingConfig(smoothingSeconds = 10f, dartChancePerSecond = 0f)
 
-    private fun fishingState(
-        config: FishingConfig = testConfig(),
+    private fun catchingState(
+        config: CatchingConfig = testConfig(),
         barPos: Float = 0.5f,
         spritePos: Float = 0.5f,
         progress: Float = 0f,
         elapsed: Float = 0f
-    ) = FishingState(
+    ) = CatchingState(
         config = config,
         barPos = barPos,
         barVel = 0f,
@@ -502,95 +689,95 @@ class ModelTest {
 
     @Test
     fun barFallsGroundsWhenReleased() {
-        val next = FishingGame.step(fishingState(barPos = 0.6f), held = false, dt = 0.5f, random = Random(0))
-        assertEquals(FishingDefaults.BAR_SIZE / 2f, next.barPos)
+        val next = CatchingGame.step(catchingState(barPos = 0.6f), held = false, dt = 0.5f, random = Random(0))
+        assertEquals(CatchingDefaults.BAR_SIZE / 2f, next.barPos)
         assertEquals(0f, next.barVel)
     }
 
     @Test
     fun barTopsOutWhenHeld() {
-        val next = FishingGame.step(fishingState(barPos = 0.5f), held = true, dt = 0.5f, random = Random(0))
-        assertEquals(1f - FishingDefaults.BAR_SIZE / 2f, next.barPos)
+        val next = CatchingGame.step(catchingState(barPos = 0.5f), held = true, dt = 0.5f, random = Random(0))
+        assertEquals(1f - CatchingDefaults.BAR_SIZE / 2f, next.barPos)
         assertEquals(0f, next.barVel)
     }
 
     @Test
     fun barSpeedIsCapped() {
-        val next = FishingGame.step(fishingState(barPos = FishingDefaults.BAR_SIZE / 2f), held = true, dt = 0.5f, random = Random(0))
-        assertEquals(FishingDefaults.MAX_BAR_SPEED, next.barVel)
+        val next = CatchingGame.step(catchingState(barPos = CatchingDefaults.BAR_SIZE / 2f), held = true, dt = 0.5f, random = Random(0))
+        assertEquals(CatchingDefaults.MAX_BAR_SPEED, next.barVel)
     }
 
     @Test
     fun progressFillsWhileOverlapping() {
-        val next = FishingGame.step(fishingState(), held = true, dt = 0.05f, random = Random(0))
-        assertEquals(FishingDefaults.FILL_RATE * 0.05f, next.progress)
+        val next = CatchingGame.step(catchingState(), held = true, dt = 0.05f, random = Random(0))
+        assertEquals(CatchingDefaults.FILL_RATE * 0.05f, next.progress)
     }
 
     @Test
     fun progressDrainsWithoutOverlap() {
-        val state = fishingState(barPos = 0.89f, spritePos = 0.2f, progress = 0.2f)
-        val next = FishingGame.step(state, held = true, dt = 0.05f, random = Random(0))
+        val state = catchingState(barPos = 0.89f, spritePos = 0.2f, progress = 0.2f)
+        val next = CatchingGame.step(state, held = true, dt = 0.05f, random = Random(0))
         assertEquals(0.19f, next.progress)
     }
 
     @Test
     fun progressNeverDrainsBelowZero() {
-        val next = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f), held = true, dt = 0.05f, random = Random(0))
+        val next = CatchingGame.step(catchingState(barPos = 0.89f, spritePos = 0.2f), held = true, dt = 0.05f, random = Random(0))
         assertEquals(0f, next.progress)
-        assertEquals(FishingPhase.PLAYING, next.phase)
+        assertEquals(CatchingPhase.PLAYING, next.phase)
     }
 
     @Test
     fun escapeOnlyHappensAfterGrace() {
-        val early = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0f), held = true, dt = 0.9f, random = Random(0))
-        assertEquals(FishingPhase.PLAYING, early.phase)
+        val early = CatchingGame.step(catchingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0f), held = true, dt = 0.9f, random = Random(0))
+        assertEquals(CatchingPhase.PLAYING, early.phase)
 
-        val late = FishingGame.step(fishingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0.9f), held = true, dt = 0.2f, random = Random(0))
-        assertEquals(FishingPhase.ESCAPED, late.phase)
+        val late = CatchingGame.step(catchingState(barPos = 0.89f, spritePos = 0.2f, elapsed = 0.9f), held = true, dt = 0.2f, random = Random(0))
+        assertEquals(CatchingPhase.ESCAPED, late.phase)
     }
 
     @Test
     fun captureWhenProgressReachesOne() {
-        val next = FishingGame.step(fishingState(progress = 0.98f), held = true, dt = 0.1f, random = Random(0))
-        assertEquals(FishingPhase.CAPTURED, next.phase)
+        val next = CatchingGame.step(catchingState(progress = 0.98f), held = true, dt = 0.1f, random = Random(0))
+        assertEquals(CatchingPhase.CAPTURED, next.phase)
         assertEquals(1f, next.progress)
     }
 
     @Test
     fun finishedGameIsFrozen() {
-        val state = fishingState().copy(phase = FishingPhase.CAPTURED)
-        assertEquals(state, FishingGame.step(state, held = true, dt = 0.5f, random = Random(0)))
+        val state = catchingState().copy(phase = CatchingPhase.CAPTURED)
+        assertEquals(state, CatchingGame.step(state, held = true, dt = 0.5f, random = Random(0)))
     }
 
     @Test
     fun configMapsDifficultyAcrossItsRange() {
-        val easy = FishingDefaults.configFor(0f)
-        assertEquals(FishingDefaults.SMOOTHING_EASY, easy.smoothingSeconds)
-        assertEquals(FishingDefaults.DART_EASY, easy.dartChancePerSecond)
+        val easy = CatchingDefaults.configFor(0f)
+        assertEquals(CatchingDefaults.SMOOTHING_EASY, easy.smoothingSeconds)
+        assertEquals(CatchingDefaults.DART_EASY, easy.dartChancePerSecond)
 
-        val hard = FishingDefaults.configFor(1f)
-        assertEquals(FishingDefaults.SMOOTHING_HARD, hard.smoothingSeconds)
-        assertEquals(FishingDefaults.DART_HARD, hard.dartChancePerSecond)
+        val hard = CatchingDefaults.configFor(1f)
+        assertEquals(CatchingDefaults.SMOOTHING_HARD, hard.smoothingSeconds)
+        assertEquals(CatchingDefaults.DART_HARD, hard.dartChancePerSecond)
     }
 
     @Test
     fun configClampsOutOfRangeDifficulty() {
-        val below = FishingDefaults.configFor(-5f)
-        assertEquals(FishingDefaults.SMOOTHING_EASY, below.smoothingSeconds)
-        val above = FishingDefaults.configFor(9f)
-        assertEquals(FishingDefaults.DART_HARD, above.dartChancePerSecond)
+        val below = CatchingDefaults.configFor(-5f)
+        assertEquals(CatchingDefaults.SMOOTHING_EASY, below.smoothingSeconds)
+        val above = CatchingDefaults.configFor(9f)
+        assertEquals(CatchingDefaults.DART_HARD, above.dartChancePerSecond)
     }
 
     @Test
-    fun initialFishingStateIsNeutral() {
-        val state = FishingGame.initialState(FishingDefaults.configFor(0.15f), Random(42))
+    fun initialCatchingStateStartsCentered() {
+        val state = CatchingGame.initialState(CatchingDefaults.configFor(0.15f))
         assertEquals(0.5f, state.barPos)
         assertEquals(0f, state.barVel)
+        assertEquals(0.5f, state.spritePos)
+        assertEquals(0.5f, state.spriteTarget)
         assertEquals(0f, state.progress)
         assertEquals(0f, state.elapsed)
-        assertEquals(FishingPhase.PLAYING, state.phase)
-        assertTrue(state.spritePos >= FishingDefaults.SPRITE_MARGIN)
-        assertTrue(state.spritePos <= 1f - FishingDefaults.SPRITE_MARGIN)
+        assertEquals(CatchingPhase.PLAYING, state.phase)
     }
 
     private fun combatState(

@@ -41,6 +41,7 @@ import com.dsrs.pokeclic.model.selectAt
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
@@ -191,6 +192,7 @@ private fun LeadRow(option: LeadOption, selected: Boolean, onClick: () -> Unit) 
  *   vivía en el HUD se retiró aquí al compactarlo.
  * @param onOpenLead abre el selector de Pokémon principal: también provenía
  *   del HUD antes de la remodelación compacta.
+ * @param onOpenPokedex abre la pantalla de Pokédex (TEST).
  * @param onWipeGame borra toda la partida (provisional: fila de test que vive
  *   aquí de momento, ver `MainViewModel.onWipeGame`).
  * @param onDebugJumpToZone salta a una zona concreta (provisional: fila de test,
@@ -202,6 +204,7 @@ fun OptionsSheet(
     onDismiss: () -> Unit,
     onReset: () -> Unit,
     onOpenLead: () -> Unit,
+    onOpenPokedex: () -> Unit = {},
     onWipeGame: () -> Unit,
     onDebugJumpToZone: (String) -> Unit
 ) {
@@ -217,6 +220,7 @@ fun OptionsSheet(
         OptionsContent(
             onReset = onReset,
             onOpenLead = onOpenLead,
+            onOpenPokedex = onOpenPokedex,
             onWipeGame = onWipeGame,
             onDebugJumpToZone = onDebugJumpToZone
         )
@@ -284,6 +288,7 @@ private val DEBUG_ZONE_JUMPS: List<DebugZoneJump> = listOf(
 fun OptionsContent(
     onReset: () -> Unit = {},
     onOpenLead: () -> Unit = {},
+    onOpenPokedex: () -> Unit = {},
     onWipeGame: () -> Unit = {},
     onDebugJumpToZone: (String) -> Unit = {}
 ) {
@@ -325,6 +330,14 @@ fun OptionsContent(
             headlineContent = { Text(stringResource(R.string.action_reset)) },
             leadingContent = { Icon(Icons.Filled.Refresh, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().clickable(onClick = onReset)
+        )
+
+        // Pokédex (TEST): fila de prueba con la pantalla propia de la dex; el
+        // ViewModel ya cierra la hoja y valida que no haya un minijuego en curso.
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.options_pokedex_test)) },
+            leadingContent = { Icon(Icons.Filled.Book, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenPokedex)
         )
 
         ListItem(
@@ -455,9 +468,18 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  *   baja detrás del menú). No la mide el propio mapa: la cede el `Scaffold` vía
  *   `AppRoot`, así que la medición es derivada y no hay dimensiones fijas de
  *   dispositivo.
+ * @param frameOverlay capa visual opcional (carcasa del mapa, issue #57) que se
+ *   compone **sobre el mapa y bajo sus controles flotantes** (indicador de
+ *   zonas y botones), de modo que el marco la tapa por los bordes sin ocultar
+ *   ningún control. No lleva manejo de toques: los gestos destinados al mapa
+ *   la atraviesan y el comportamiento del mapa queda intacto.
  */
 @Composable
-fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
+fun MapScreen(
+    modifier: Modifier = Modifier,
+    bottomReserved: Dp = 0.dp,
+    frameOverlay: (@Composable () -> Unit)? = null
+) {
     val mapPainter = painterResource(id = R.drawable.mapa_kanto)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -642,6 +664,12 @@ fun MapScreen(modifier: Modifier = Modifier, bottomReserved: Dp = 0.dp) {
                         translationY = offset.y
                     }
             )
+
+            // Carcasa visual (issue #57): se compone sobre el mapa y bajo el
+            // indicador y los botones de abajo, que quedan por encima y siguen
+            // visibles y operativos. Sin manejo de toques: el marco no
+            // intercepta los gestos destinados al mapa.
+            frameOverlay?.invoke()
 
             // Indicador de zona(s): fijo en la esquina superior derecha del
             // área visible, sin seguir al mapa, con márgenes de zona segura.

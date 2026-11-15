@@ -1,0 +1,206 @@
+/**
+ * Catálogo de la **Pokédex**: las 151 especies de la primera generación, con
+ * número de Pokédex, nombre visible y **un único tipo para mostrar**.
+ *
+ * Es un catálogo de **solo lectura y de presentación**: decide qué se muestra
+ * en la pantalla de Pokédex, no cómo se juega. La fuente de verdad del juego
+ * sigue siendo `SpeciesCatalog` (captura, recompensas, tipos de combate).
+ *
+ * **Tipo de Pokédex como texto** (decisión de alcance): `typeName` es el nombre
+ * del tipo tal como lo aporta el catálogo adaptado
+ * (`assets/pokedex_catalogo.json`) y se conserva como texto para que la pantalla
+ * no dependa del enum de combate. Los dos catálogos describen las mismas
+ * especies con el mismo tipo; `PokedexParserTest` los cruza y avisa si divergen.
+ * El color de presentación sigue siendo decoración de UI, no una regla de juego.
+ *
+ * Nada aquí depende de Android: idéntico tratamiento que el resto de `model/`.
+ */
+package com.dsrs.pokeclic.model
+
+/** Estado de una especie en la Pokédex del jugador. */
+enum class DexStatus {
+    /** Nunca avistada ni obtenida: solo se muestra el número. */
+    UNKNOWN,
+
+    /** Avistada y sin atrapar: número, nombre, imagen y Pokéball sin color. */
+    SEEN,
+
+    /**
+     * Capturada en una run anterior y no poseída ahora (sobre todo tras un
+     * reset): número, nombre, imagen y Pokéball "registrada".
+     */
+    REGISTERED,
+
+    /** Atrapada y en posesión actual: número, nombre, imagen y Pokéball a color. */
+    CAUGHT
+}
+
+/**
+ * Una especie de la Pokédex.
+ *
+ * @param speciesId clave estable e inmutable, coincide con los IDs con los que
+ *   se guardan las partidas (`bulbasaur`, `pidgey`…). NO es el número de
+ *   Pokédex: esa diferencia es deliberada.
+ * @param dexNumber número de Pokédex (1..151), clave de ordenación y de
+ *   presentación.
+ * @param name nombre visible.
+ * @param typeName nombre del tipo para mostrar, único por especie (decisión
+ *   deliberada de la primera generación simplificada).
+ */
+data class PokedexSpecies(
+    val speciesId: String,
+    val dexNumber: Int,
+    val name: String,
+    val typeName: String
+)
+
+/**
+ * Una fila de la Pokédex ya resuelta para la UI: catálogo + estado del
+ * jugador. La especies desconocidas llevan `name`/`typeName` en `null` para
+ * que la presentación no pueda filtrar información identificativa (ni si
+ *quiera vía accesibilidad).
+ */
+data class PokedexRow(
+    val dexNumber: Int,
+    val speciesId: String,
+    val name: String?,
+    val typeName: String?,
+    val status: DexStatus
+)
+
+/**
+ * Estado de una fila de la Pokédex, derivado de la **posesión en la partida
+ * actual** y del historial permanente. El orden de las ramas es la prioridad:
+ *
+ * - **CAUGHT**: especie poseída **ahora** (`ownedSpecies`) o el inicial
+ *   elegido (`starterSpeciesId`). Lo poseído siempre gana.
+ * - **REGISTERED**: capturada alguna vez (`caughtSpecies`) pero no poseída en
+ *   esta run. Es el estado que sobrevive al reset: el jugador ya la atrapó.
+ * - **SEEN**: conocida solo por avistamiento (`seenSpecies`).
+ * - **UNKNOWN**: nunca conocida.
+ *
+ * `caughtSpecies ⊆ seenSpecies` se mantiene por construcción (todo camino que
+ * registra una captura registra también el avistamiento), así que REGISTERED
+ * se evalúa antes que SEEN sin ambigüedad.
+ */
+fun dexStatusFor(
+    speciesId: String,
+    ownedSpecies: Set<String>,
+    starterSpeciesId: String?,
+    seenSpecies: Set<String>,
+    caughtSpecies: Set<String>
+): DexStatus = when {
+    // Posesión en la partida actual: lo poseído siempre gana, y el inicial
+    // elegido es posesión por definición (sobrevive al reset).
+    speciesId in ownedSpecies || speciesId == starterSpeciesId -> DexStatus.CAUGHT
+    // Historia permanente: ya se capturó, aunque el reset la sacara de la run.
+    speciesId in caughtSpecies -> DexStatus.REGISTERED
+    // Solo avistada: conocida, nunca capturada.
+    speciesId in seenSpecies -> DexStatus.SEEN
+    else -> DexStatus.UNKNOWN
+}
+
+/**
+ * Catálogo completo y validado de la Pokédex.
+ *
+ * Invariantes (comprobadas al construir, para que un dato roto falle en
+ * tests o al arrancar, no en producción):
+ * - `dexNumber` consecutivos empezando en 1.
+ * - `speciesId` únicos y en formato de clave estable (`[a-z0-9_]+`).
+ * - `name` y `typeName` no vacíos.
+ * - exactamente un tipo por especie (no hay campo múltiple en el modelo).
+ */
+data class PokedexCatalog(val entries: List<PokedexSpecies>) {
+
+    init {
+        val ids = mutableSetOf<String>()
+        entries.forEachIndexed { index, species ->
+            require(species.dexNumber == index + 1) {
+                "El número de Pokédex debe ser consecutivo desde 1: " +
+                    "entrada ${index + 1} con dexNumber ${species.dexNumber}"
+            }
+            require(species.name.isNotBlank()) {
+                "La especie ${species.speciesId} no aporta nombre"
+            }
+            require(species.typeName.isNotBlank()) {
+                "La especie ${species.speciesId} no aporta tipo"
+            }
+            // `Set.add` devuelve false cuando ya está presente: por eso el
+            // `require` va directamente sobre su resultado (un `!ids.add`
+            // lanzaría al REGISTERAR ids nuevos, justo lo contrario).
+            require(ids.add(species.speciesId)) {
+                "speciesId duplicado en la Pokédex: ${species.speciesId}"
+            }
+            require(species.speciesId.matches(ID_PATTERN)) {
+                "speciesId con formato inválido: \"${species.speciesId}\""
+            }
+        }
+    }
+
+    fun bySpeciesId(id: String): PokedexSpecies? =
+        bySpeciesIdMap[id]
+
+    private val bySpeciesIdMap: Map<String, PokedexSpecies> by lazy {
+        entries.associateBy { it.speciesId }
+    }
+
+    /**
+     * Resuelve la fila de una especie para la listas de la UI. Una fila la
+     * pinta la UI, nunca el catálogo.
+     */
+    fun rowFor(
+        species: PokedexSpecies,
+        ownedSpecies: Set<String>,
+        starterSpeciesId: String?,
+        seenSpecies: Set<String>,
+        caughtSpecies: Set<String>
+    ): PokedexRow {
+        val status = dexStatusFor(
+            species.speciesId,
+            ownedSpecies,
+            starterSpeciesId,
+            seenSpecies,
+            caughtSpecies
+        )
+        return PokedexRow(
+            dexNumber = species.dexNumber,
+            speciesId = species.speciesId,
+            name = if (status == DexStatus.UNKNOWN) null else species.name,
+            typeName = if (status == DexStatus.UNKNOWN) null else species.typeName,
+            status = status
+        )
+    }
+
+    fun rowsFor(
+        ownedSpecies: Set<String>,
+        starterSpeciesId: String?,
+        seenSpecies: Set<String>,
+        caughtSpecies: Set<String>
+    ): List<PokedexRow> =
+        entries.map { rowFor(it, ownedSpecies, starterSpeciesId, seenSpecies, caughtSpecies) }
+
+    companion object {
+        private val ID_PATTERN = Regex("[a-z0-9_]+")
+
+        /** Catálogo vacío: la pantalla muestra el error de carga. */
+        val EMPTY: PokedexCatalog = PokedexCatalog(emptyList())
+    }
+}
+
+/**
+ * Resultado de la carga del catálogo: si [loadFailed], [catalog] es vacío y
+ * la pantalla de Pokédex debe mostrar un mensaje de error sin bloquear el
+ * juego (decisión de alcance: el juego sigue funcionando).
+ */
+data class PokedexCatalogLoad(
+    val catalog: PokedexCatalog,
+    val loadFailed: Boolean
+) {
+    companion object {
+        /** Carga no disponible (por ejemplo, en previews o en tests sin asset). */
+        val FAILED: PokedexCatalogLoad = PokedexCatalogLoad(PokedexCatalog.EMPTY, true)
+
+        /** Sin catálogo pero sin error: valor por defecto de tests y previews. */
+        val EMPTY: PokedexCatalogLoad = PokedexCatalogLoad(PokedexCatalog.EMPTY, false)
+    }
+}

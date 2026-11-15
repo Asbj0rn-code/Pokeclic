@@ -1,8 +1,8 @@
 /**
  * Catálogo de fondos infinitos por zona.
  *
- * Cada zona puede tener su **arte**, sus **clics** y sus **direcciones**. Todo lo
- * que hace falta para añadir una zona nueva está en [RouteBackgrounds.byZone]:
+ * Cada zona puede tener su **arte**, su **eje** y sus **clics**. Todo lo que hace
+ * falta para añadir una zona nueva está en [RouteBackgrounds.byZone]:
  * mientras no tenga entrada propia usa [RouteBackgrounds.DEFAULT], así que ninguna
  * zona puede quedarse sin fondo ni romper la animación.
  *
@@ -35,6 +35,12 @@ import com.dsrs.pokeclic.model.Direction
  * @param startOffset posición lateral del personaje al entrar, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
  *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
+ *   No es una fracción del **arte**: un ancho de pantalla mueve la imagen un
+ *   ancho de pantalla, así que la fracción del arte que queda bajo el entrenador
+ *   depende de lo ancho que sea el dibujo. Con un arte de una pantalla, `-0,5`
+ *   lo deja en el 0 %; con uno de dos pantallas, `-0,5` lo deja en el 25 % y hace
+ *   falta `-1` para el 0 %. El valor se enrolla módulo el ancho del arte, de modo
+ *   que `-1` y `+1` son el mismo sitio.
  */
 internal data class ZoneBackground(
     @DrawableRes val imageRes: Int,
@@ -57,7 +63,9 @@ internal data class ZoneBackground(
  *    de ruta necesitó `seamCutRow` en vertical).
  * 2. **Trayectoria**: una lista de [RouteLeg] con **clics y dirección**. Alternar
  *    recto con laterales es lo que hace que el entrenador cambie de orientación;
- *    la dirección del sprite sale del tramo, no se configura aparte.
+ *    la dirección del sprite sale del tramo, no se configura aparte. Los tramos se
+ *    escriben en el marco del eje: con `axis = HORIZONTAL`, `BACK` camina a la
+ *    derecha, `LEFT` sube por la pantalla y `RIGHT` baja.
  * 3. **Arranque** (opcional): `startAnchor` para empezar por una parte concreta
  *    del arte y `startOffset` para correr la imagen de lado.
  * 4. Añadir la entrada a [byZone] con el `Zone.id` del catálogo de zonas. Con solo
@@ -87,9 +95,9 @@ internal data class ZoneBackground(
  * ## Lo que [RouteBackgroundsTest] comprueba en **cada** zona
  *
  * - el arte existe y la trayectoria tiene tramos,
- * - el fondo avanza en vertical (si no, nunca se mueve),
- * - hay al menos un tramo recto y uno lateral (si no, el entrenador no cambia de
- *   orientación),
+ * - el fondo avanza por su eje (si no, nunca se mueve),
+ * - hay al menos un tramo recto, y un fondo vertical alterna además laterales (si
+ *   no, el entrenador no cambia de orientación),
  * - cada tramo recorre exactamente `clics × TILES_PER_CLICK` en su eje.
  */
 internal object RouteBackgrounds {
@@ -159,6 +167,201 @@ internal object RouteBackgrounds {
             startAnchor = 0.5f,
             startOffset = -0.08f
         ),
+        // Ciudad Verde: arte propio y trayectoria propia, escrita tramo a tramo.
+        // Los rectos suman 40 clics (una vuelta exacta al arte de 3072 px) y los
+        // laterales están balanceados (7 a cada lado), así que el personaje vuelve
+        // a la línea central en cada vuelta.
+        //
+        // `startAnchor = 0.5f` deja el borde inferior del arte en el centro de la
+        // pantalla, que es donde está el entrenador: la zona arranca pisando el
+        // tramo bajo de la ciudad y camina hacia arriba por él.
+        "ciudad_verde" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_verde,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 4f),
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 13f),
+                    RouteLeg(clicks = 7f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 13f),
+                    RouteLeg(clicks = 6f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 10f),
+                )
+            ),
+            startAnchor = 0.5f
+        ),
+        // Ruta 3: la primera zona **horizontal**. El marco está girado 90° a la
+        // derecha, así que la trayectoria se escribe igual que en las verticales:
+        //   `BACK` (recto) camina a la derecha,
+        //   `LEFT` sube por la pantalla,
+        //   `RIGHT` baja por la pantalla.
+        // El arte se mueve siempre al revés que el entrenador, y cada tramo sigue
+        // moviendo un solo eje. Como en las demás zonas, alternar recto con
+        // laterales es lo que hace que cambie de orientación.
+        //
+        // El bucle dura **dos vueltas**: la primera sube (0 → +7 → 0) y la segunda
+        // baja (0 → -3 → 0). Lo que cierra es el superciclo completo, con dos sumas:
+        //   - los rectos suman 30 clics (dos anchos de arte: 30 × 76,8 = 2304 px),
+        //   - los `LEFT` y los `RIGHT` suman lo mismo (10 y 10 aquí), para volver a
+        //     la misma altura.
+        // Si una de las dos no cuadra, cada ciclo empieza en otro píxel o a otra
+        // altura. Lo comprueba `rutaTres_closesItsLoop`.
+        //
+        // `startOffset = -0,5f` deja al entrenador **pegado al marco izquierdo** del
+        // arte (0 % de su ancho): el signo es el de `lateralDistanceAt` (negativo =
+        // personaje a la izquierda, imagen corrida a la derecha). Con `-0,25f`
+        // arrancaría en el cuarto izquierdo y con `0f` en el centro.
+        "ruta3" to ZoneBackground(
+            imageRes = R.drawable.background_ruta3,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 3f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 7f, direction = Direction.RIGHT), // Hacia abajo
+                    RouteLeg(clicks = 3f),
+                    // Segunda vuelta
+                    RouteLeg(clicks = 2f),
+                    RouteLeg(clicks = 3f, direction = Direction.RIGHT), // Hacia abajo
+                    RouteLeg(clicks = 6f),
+                    RouteLeg(clicks = 2f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 5f),
+                    RouteLeg(clicks = 1f, direction = Direction.LEFT), // Hacia arriba
+                    RouteLeg(clicks = 2f)
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            startOffset = -0.5f,
+            // Deja el **eje central horizontal del arte** a la altura del
+            // entrenador: el borde inferior del arte cae al 5,7 % de la pantalla,
+            // detrás del HUD. Calibrado en 1080×2400; en una pantalla más baja el
+            // eje del arte cae por debajo del entrenador.
+            startAnchor = 0.057f
+        ),
+        // Ciudad Plateada: arte propio de 4608×3840, cuatro anchos de cámara por
+        // dos altos. Al ser vertical, lo que cierra el bucle es **la altura**:
+        //   3840 × CLICKS_PER_TILE / CAMERA_HEIGHT = 3840 × 25 / 1920 = 50 clics
+        //   rectos por vuelta al dibujo.
+        // Los tramos rectos de esta trayectoria suman 50 (una vuelta exacta al alto
+        // del arte) y los laterales están balanceados (40 a cada lado), así que el
+        // personaje vuelve a la línea central en cada vuelta. El ciclo completo
+        // dura 130 clics. Es un borrador de arranque: mientras los rectos sigan
+        // sumando múltiplos de 50 y los dos sentidos laterales sumen lo mismo, se
+        // puede reescribir tramo a tramo.
+        //
+        // El arte es **cuatro veces más ancho** que la cámara, así que la pantalla
+        // enseña solo la franja central (un cuarto del dibujo). Lo que se ve de la
+        // ciudad lo decide el corrimiento lateral que van dejando los tramos.
+        "ciudad_plateada" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_plateada,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 23f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 12f),
+                    RouteLeg(clicks = 40f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 12f),
+                    RouteLeg(clicks = 15f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 8f),
+                    RouteLeg(clicks = 2f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 10f)
+                )
+            ),
+            startAnchor = 0.5f
+        ),
+        // Monte Moon: segundo fondo **horizontal**, con arte más ancho que el de
+        // Ruta 3 (2304×1920 frente a 1152×1920). La cámara sigue enseñando 1152 px
+        // de ancho, así que por pantalla se ve la mitad del dibujo y el patrón se
+        // repite cada dos pantallas.
+        //
+        // El bucle cierra con la misma cuenta de siempre, pero cambia el número:
+        //   clics rectos por ancho de arte = ancho del arte / 76,8
+        //   Ruta 3 → 1152 / 76,8 = 15   ·   Mt.Moon → 2304 / 76,8 = 30
+        // Por eso los tramos rectos de esta zona tienen que sumar 30, 60, 90… clics
+        // (aquí suman 30) y los laterales compensarse (2 + 1 arriba, 3 abajo) para
+        // volver a la misma altura. Lo comprueba `mtMoon_closesItsLoop`.
+        //
+        // Para reajustar los pasos solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja.
+        "mt_moon" to ZoneBackground(
+            imageRes = R.drawable.background_mt_moon,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 3f),                              // recto
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),   // sube
+                    RouteLeg(clicks = 9f),                              // recto
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),  // baja
+                    RouteLeg(clicks = 1f),                              // recto
+                    RouteLeg(clicks = 3f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 8f),                              // recto
+                    RouteLeg(clicks = 2f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 9f),
+                    // Segunda vuelta
+                    RouteLeg(clicks = 3f),
+                    RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 9f),
+                    RouteLeg(clicks = 5f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 1f),
+                    RouteLeg(clicks = 1f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 7f),
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 10f)
+                    ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // -1 de ancho de pantalla pone el **marco izquierdo del arte** justo bajo
+            // el entrenador, con el principio del dibujo a su derecha y el final
+            // enlazando por detrás (el arte mide dos pantallas de ancho). El valor
+            // se enrolla módulo el ancho del arte, así que -1 y +1 dan lo mismo;
+            // -0,5 dejaría al entrenador en el 25% del dibujo y 0 en su centro.
+            startOffset = -1f,
+            // Misma calibración que Ruta 3: pone el eje central horizontal del arte a
+            // la altura del entrenador. El alto del arte es el mismo (1920 px).
+            startAnchor = 0.057f
+        ),
+        // Ciudad Celeste: tercer fondo **horizontal**, con el arte más grande del
+        // catálogo (4608×3840: cuatro anchos de cámara por dos altos). La cámara
+        // enseña 1152 px de ancho, así que por pantalla se ve un cuarto del dibujo
+        // y una vuelta completa tarda cuatro pantallas.
+        //
+        // La cuenta del bucle es la de siempre, con el ancho de este arte:
+        //   clics rectos por ancho de arte = 4608 / 76,8 = 60
+        // Los rectos de aquí suman 60 y los laterales se compensan (16 + 2 hacia
+        // abajo, 18 hacia arriba): el personaje vuelve a la misma altura en cada
+        // vuelta. Lo comprueba `horizontalZones_closeTheirLoopAgainstTheRealArtwork`.
+        //
+        // Para reajustar la trayectoria solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja. Si
+        // cambias los clics, deja los rectos en múltiplos de 60 y los dos sentidos
+        // laterales sumando lo mismo.
+        "ciudad_celeste" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_celeste,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 14f),                             // recto
+                    RouteLeg(clicks = 16f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 15f),                             // recto
+                    RouteLeg(clicks = 17f, direction = Direction.LEFT),
+                    RouteLeg(clicks = 23f),                             // recto
+                    RouteLeg(clicks = 1f, direction = Direction.RIGHT),
+                    RouteLeg(clicks = 8f),
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // El arte mide cuatro pantallas de ancho, así que poner al entrenador
+            // sobre su **marco izquierdo** pide dos pantallas enteras: -2f lo deja
+            // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro). La
+            // vuelta arranca en el borde izquierdo de la ciudad y la cruza entera.
+            startOffset = -2f,
+            // 1,15 deja el borde inferior del arte un 15 % de pantalla por debajo
+            // del borde inferior: sube el encuadre respecto a `1f` (que lo dejaba
+            // justo al pie) y se ve desde el borde del río hasta la calle de los
+            // edificios. El renderer enrolla el valor módulo el alto del arte, así
+            // que por encima de ~1,5 vuelve a empezar por arriba.
+            startAnchor = 1.15f
+        ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
         //     imageRes = R.drawable.background_ruta2,
@@ -173,8 +376,8 @@ internal object RouteBackgrounds {
      * `true` si [zoneId] tiene arte propio.
      *
      * Lo usa `AppRoot` para mostrar el fondo animado en zonas sin fauna: una
-     * ciudad con arte propio (Pueblo Paleta) también lo enseña, mientras que las
-     * que no tienen entrada siguen con el fondo liso de siempre.
+     * ciudad con arte propio (Pueblo Paleta, Ciudad Verde) también lo enseña,
+     * mientras que las que no tienen entrada siguen con el fondo liso de siempre.
      */
     fun hasOwnArtwork(zoneId: String): Boolean = zoneId in byZone
 

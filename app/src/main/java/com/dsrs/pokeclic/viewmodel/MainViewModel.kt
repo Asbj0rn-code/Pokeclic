@@ -6,10 +6,10 @@ import com.dsrs.pokeclic.data.GameStateStore
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.Encounter
-import com.dsrs.pokeclic.model.FishingDefaults
-import com.dsrs.pokeclic.model.FishingGame
-import com.dsrs.pokeclic.model.FishingPhase
-import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.CatchingDefaults
+import com.dsrs.pokeclic.model.CatchingGame
+import com.dsrs.pokeclic.model.CatchingPhase
+import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.Gym
 import com.dsrs.pokeclic.model.GymCombat
@@ -20,18 +20,24 @@ import com.dsrs.pokeclic.model.GymCatalog
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.LeadOption
-import com.dsrs.pokeclic.model.Projectile
-import com.dsrs.pokeclic.model.RingFeedback
-import com.dsrs.pokeclic.model.RingOutcome
+import com.dsrs.pokeclic.model.PokedexCatalogLoad
+import com.dsrs.pokeclic.model.PokedexProjector
 import com.dsrs.pokeclic.model.SpeciesCatalog
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.StarterOption
 import com.dsrs.pokeclic.model.TimingRing
+import com.dsrs.pokeclic.model.TutorialAction
+import com.dsrs.pokeclic.model.TutorialInteraction
+import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.Voltorb
 import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
+import com.dsrs.pokeclic.model.advance
 import com.dsrs.pokeclic.model.advanceZone
+import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isGymPending
+import com.dsrs.pokeclic.model.isGuidedStep
+import com.dsrs.pokeclic.model.tutorialInteractionAllowed
 import com.dsrs.pokeclic.model.isLateral
 import com.dsrs.pokeclic.model.startFrame
 import com.dsrs.pokeclic.model.typeDamageMultiplier
@@ -60,7 +66,7 @@ import kotlin.random.Random
  *   ganado dentro de la run actual (`gymClearedRun`).
  * - En hierba alta, los toques **no** cuentan para el avance: marcan actividad de
  *   caminar (temporizador que solo corre con toques recientes).
- * - Con un encuentro activo se juega el minijuego de pesca (`FishingGame`): la
+ * - Con un encuentro activo se juega el minijuego de captura (`CatchingGame`): la
  *   UI registra la pulsación en toda la pantalla y el ViewModel mueve barra y
  *   sprite en un bucle de ticks.
  * - Con un gimnasio activo, romper proyectiles deja al líder expuesto; solo
@@ -74,14 +80,25 @@ import kotlin.random.Random
  * @param zones catálogo ordenado de zonas (inyectable para tests).
  * @param random fuente de aleatoriedad (inyectable para tests).
  * @param nowMs reloj en ms (inyectable para tests: se congelan los combates).
+ * @param pokedexLoad catálogo de la Pokédex y resultado de su carga, resueltos
+ *   fuera (`MainActivity`). Un único objeto impide el par inconsistente
+ *   "catálogo no vacío + carga fallida".
  */
 class MainViewModel(
     private val sprites: SpriteRepository,
     private val store: GameStateStore,
     private val zones: List<Zone> = ZoneCatalog.zones,
     private val random: Random = Random.Default,
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L }
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val pokedexLoad: PokedexCatalogLoad = PokedexCatalogLoad.EMPTY
 ) : ViewModel() {
+
+    /**
+     * Proyección memoizada de la Pokédex (catálogo + historial → filas y
+     * contadores). Declarada ANTES de `_uiState`: su inicializador ya llama a
+     * `derive`.
+     */
+    private val pokedexProjector = PokedexProjector(pokedexLoad.catalog)
 
     private val _uiState = MutableStateFlow(derive(restoreState()))
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
@@ -98,11 +115,11 @@ class MainViewModel(
     /** Job del cartel de arranque del combate del gimnasio. */
     private var gymIntroJob: Job? = null
 
-    /** Job del bucle del minijuego de pesca. */
-    private var fishingJob: Job? = null
+    /** Job del bucle del minijuego de captura. */
+    private var catchingJob: Job? = null
 
-    /** ¿El jugador mantiene pulsado durante la partida de pesca? */
-    private var fishingHeld: Boolean = false
+    /** ¿El jugador mantiene pulsado durante la partida de captura? */
+    private var catchingHeld: Boolean = false
 
     /** Siguiente id de ataque (proyectil o anillo) del combate actual. */
     private var nextCombatId: Long = 0L
@@ -124,10 +141,15 @@ class MainViewModel(
      *   La Pokébola ya no elige dirección según el lado que se toca.
      *
      * Aplica el efecto del modo actual: caminar > avance de zona. Durante el
-     * minijuego de pesca la Pokébola no se dibuja (la escena ocupa toda la
+     * minijuego de captura la Pokébola no se dibuja (la escena ocupa toda la
      * pantalla), así que un toque que la alcanzara no cambia nada sustantivo.
      */
     fun onPokeBallTouch(direction: Direction) {
+        // Guard del tutorial (regla principal de QA): el clic de
+        // juego solo existe en juego libre. Con cualquier mensaje visible, en
+        // pasos guiados o en el aviso de avance, la Pokéball no genera
+        // experiencia ni movimiento.
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         val now = nowMs()
         // Un clic nuevo manda: si quedaba pendiente el segundo fotograma de un
         // lateral anterior, ya no aplica.
@@ -158,6 +180,12 @@ class MainViewModel(
                     lastWalkTapMs = now
                     animated
                 }
+                // Cueva: el clic mueve el fondo y suma a la barra, pero además
+                // deja actividad para que el encuentro pueda aparecer caminando.
+                state.alwaysWilds -> {
+                    lastWalkTapMs = now
+                    addZoneClicks(animated)
+                }
                 else -> addZoneClicks(animated)
             }
             derive(progressed)
@@ -175,9 +203,16 @@ class MainViewModel(
 
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
     fun onTallGrassToggle() = mutate { state ->
-        if (state.isTallGrass) {
-            cancelFishing()
-            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, fishing = null)
+        // Guard del tutorial (regla principal de QA): la hierba alta
+        // solo opera en juego libre; con un mensaje visible o un paso en curso,
+        // nada de la partida responde.
+        if (!state.tutorialPhase.isFreePlay) return@mutate state
+        // Las cuevas no tienen modo que alternar: los salvajes ya están activos.
+        if (state.alwaysWilds) {
+            state
+        } else if (state.isTallGrass) {
+            cancelCatching()
+            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, catching = null)
         } else {
             state.copy(isTallGrass = true)
         }
@@ -188,11 +223,20 @@ class MainViewModel(
      * starter y su vínculo) y vacía lo de la run (en posesión, principal,
      * gimnasios ganados en la run, zona y progreso). El principal vuelve al
      * starter.
+     *
+     * El tutorial vuelve a `PENDING`: como el reset conserva el
+     * starter, `derive` normaliza en el mismo gesto `PENDING` → `OFFER`, de
+     * modo que la pregunta se vuelve a ofrecer **sin repetir la introducción
+     * de Oak** (esa solo reaparece con el borrado total, `onWipeGame`).
      */
     fun onReset() {
+        // Guard del tutorial (regla principal de QA): el reset es
+        // una fila de la hoja de opciones y solo opera en juego libre — con un
+        // mensaje visible o un paso en curso queda bloqueado.
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         mutate { state ->
             state.copy(
                 ownedSpecies = emptySet(),
@@ -203,9 +247,11 @@ class MainViewModel(
                 isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
-                fishing = null,
+                catching = null,
                 gym = null,
-                gymIntro = null
+                gymIntro = null,
+                tutorialPhase = TutorialPhase.PENDING,
+                tutorialMessageClosed = false
             )
         }
     }
@@ -221,9 +267,12 @@ class MainViewModel(
      * "arrastre" el instante posterior al borrado.
      */
     fun onWipeGame() {
+        // Guard del tutorial: fila de test, solo en juego libre
+        // (ver `onReset`).
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         resetJob?.cancel()
         lateralFrameJob?.cancel()
         lastWalkTapMs = 0L
@@ -241,11 +290,14 @@ class MainViewModel(
      * su gimnasio dejaría de estar pendiente y `isGymReady` sería `false`.
      */
     fun onDebugJumpToZone(zoneId: String) {
+        // Guard del tutorial: fila de test, solo en juego libre
+        // (ver `onReset`).
+        if (!_uiState.value.tutorialPhase.isFreePlay) return
         val index = zones.indexOfFirst { it.id == zoneId }
         if (index < 0) return
         gymIntroJob?.cancel()
         gymJob?.cancel()
-        cancelFishing()
+        cancelCatching()
         lastWalkTapMs = 0L
         nextCombatId = 0L
         mutate { state ->
@@ -256,7 +308,7 @@ class MainViewModel(
                 isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
-                fishing = null,
+                catching = null,
                 gym = null,
                 gymIntro = null
             )
@@ -267,6 +319,16 @@ class MainViewModel(
      * Cierra la introducción de la primera partida: fija el nombre del entrenador
      * (permanente) y el starter elegido en una sola operación. Se llama una vez,
      * cuando el jugador ya pasó el diálogo del Profesor Oak.
+     *
+     * El starter entra también en el historial de la Pokédex: queda **capturado
+     * y avistado**. Es la captura inicial del jugador (decisión: se marca como
+     * capturado para que la dex arranque con su primer «atrapado»; los otros
+     * iniciales NO se marcan).
+     *
+     * Es también el disparador del tutorial: al terminar Oak la
+     * fase `PENDING` avanza a `OFFER` con la acción [TutorialAction.OAK_FINISHED],
+     * así que la pregunta «¿Quieres un tutorial?» aparece justo tras el
+     * «adiós» del Profesor Oak en toda partida nueva.
      */
     fun onFinishIntro(playerName: String, starterSpeciesId: String) {
         if (SpeciesCatalog.starters.none { it.id == starterSpeciesId }) return
@@ -277,45 +339,229 @@ class MainViewModel(
                 playerName = name,
                 starterSpeciesId = starterSpeciesId,
                 starterBond = 0,
-                leadSpeciesId = starterSpeciesId
-            )
+                leadSpeciesId = starterSpeciesId,
+                seenSpecies = it.seenSpecies + starterSpeciesId,
+                caughtSpecies = it.caughtSpecies + starterSpeciesId
+            ).withTutorial(TutorialAction.OAK_FINISHED)
         }
     }
 
     /** Equipa como principal una especie en posesión de esta run (o el starter). */
     fun onSelectLead(speciesId: String) = mutate { state ->
-        if (state.isLeadCandidate(speciesId)) state.copy(leadSpeciesId = speciesId) else state
+        // Guard del tutorial: equipar principal solo en juego libre.
+        if (!state.tutorialPhase.isFreePlay) {
+            state
+        } else if (state.isLeadCandidate(speciesId)) {
+            state.copy(leadSpeciesId = speciesId)
+        } else {
+            state
+        }
     }
 
     // --- Navegación --------------------------------------------------------
 
-    /** Cambia de pantalla y cierra la hoja de opciones si estaba abierta. */
-    fun onSelectTab(tab: AppTab) = _uiState.update {
-        it.copy(contentTab = tab, isOptionsOpen = false)
+    /**
+     * Cambia de pantalla y cierra la hoja de opciones si estaba abierta.
+     *
+     * Los cambios de pestaña alimentan el tutorial: abrir el mapa
+     * y volver a la aventura son dos de sus pasos. La máquina ignora toda
+     * acción fuera de fase y el guard solo admite el cambio que el paso
+     * espera; fuera de los pasos, navegación normal.
+     */
+    fun onSelectTab(tab: AppTab) = mutate { state ->
+        val allowed = when (tab) {
+            AppTab.Map -> state.tutorialAllows(TutorialInteraction.MENU_MAP)
+            AppTab.Home -> state.tutorialAllows(TutorialInteraction.POKEBALL_TAP)
+        }
+        if (allowed) {
+            state.copy(contentTab = tab, isOptionsOpen = false).withTutorial(
+                if (tab == AppTab.Map) TutorialAction.MAP_OPENED else TutorialAction.MAP_CLOSED
+            )
+        } else {
+            state
+        }
     }
 
-    fun onOpenOptions() = _uiState.update { it.copy(isOptionsOpen = true) }
+    /**
+     * Abre la hoja de opciones (botón Pokédex del menú). Durante los pasos
+     * guiados solo se admite en el paso de la Pokédex, que es el que recorre
+     * «hoja → fila Pokédex»; el resto del tiempo se abre como siempre.
+     */
+    fun onOpenOptions() = mutate {
+        if (it.tutorialAllows(TutorialInteraction.MENU_POKEDEX)) {
+            it.copy(isOptionsOpen = true)
+        } else {
+            it
+        }
+    }
 
     fun onCloseOptions() = _uiState.update { it.copy(isOptionsOpen = false) }
 
+    /**
+     * **Pokédex (TEST)**: abre la pantalla propia a pantalla completa y cierra
+     * la hoja de opciones que la invocó.
+     *
+     * El VM manda: además del cierre de la hoja, **bloquea** la apertura en
+     * estados incompatibles (sin starter, encuentro/captura, gimnasio o
+     * modales en curso): la capa de opciones ya no es el único camino y
+     * duplicar el guard aquí es lo que impide entrar con un minijuego abajo.
+     * `encounter` ya implica `catching` (el minijuego arranca con el encuentro
+     * y ambos se limpian juntos), así que no se comprueba por separado.
+     *
+     * La pantalla de Pokédex es una **rama de composición** de su propia
+     * pantalla a pantalla completa: se pausa el avance de caminar
+     * (`lastWalkTapMs = 0L`) y, al cerrarla, la Pokébola exige una pulsación
+     * nueva para reactivar el temporizador de caminar.
+     *
+     * Abrirla y cerrarla alimenta el tutorial: son su paso 3. La
+     * máquina ignora las acciones fuera de fase, así que no cambia nada para
+     * quien ya tiene el tutorial omitido o completado.
+     */
+    fun onOpenDex() {
+        val state = _uiState.value
+        // Guard del tutorial: la apertura solo se admite desde la
+        // fila de la hoja en su propio paso, o fuera de los pasos guiados.
+        if (!state.tutorialAllows(TutorialInteraction.POKEDEX_OPEN)) return
+        val blocked = state.needsStarter ||
+            state.isLeadOpen ||
+            state.encounter != null ||
+            state.gym != null ||
+            state.gymIntro != null
+        if (blocked) return
+        lastWalkTapMs = 0L
+        mutate {
+            it.copy(isOptionsOpen = false, isPokedexOpen = true)
+                .withTutorial(TutorialAction.POKEDEX_OPENED)
+        }
+    }
+
+    /**
+     * Cierra la Pokédex y vuelve al juego sin contenido en curso.
+     *
+     * El guard del tutorial cubre también el **botón Atrás** de la
+     * pantalla de Pokédex (`BackHandler` interno): el cierre solo puede cerrar
+     * el paso de regreso a la Dex, nunca saltarse un paso ni abrir uno.
+     */
+    fun onCloseDex() {
+        if (!_uiState.value.tutorialAllows(TutorialInteraction.POKEDEX_CLOSE)) return
+        lastWalkTapMs = 0L
+        mutate {
+            it.copy(isPokedexOpen = false).withTutorial(TutorialAction.POKEDEX_CLOSED)
+        }
+    }
+
     /** Abre el selector de Pokémon principal. */
-    fun onOpenLead() = _uiState.update { it.copy(isLeadOpen = true) }
+    fun onOpenLead() = mutate {
+        // Guard del tutorial: el selector solo opera en juego libre.
+        if (it.tutorialPhase.isFreePlay) it.copy(isLeadOpen = true) else it
+    }
 
     fun onCloseLead() = _uiState.update { it.copy(isLeadOpen = false) }
 
     /**
      * Al expandir la Pokéball se muestra la pantalla principal, que es donde
      * tiene sentido usar la pokéball de juego. Al contraerla no cambia nada.
+     *
+     * El **despliegue** es el paso 1 del tutorial: la notificación
+     * `expanded = true` llega ya existente desde el gesto del menú (arrastre
+     * hacia arriba superado el umbral), así que el paso no necesita ningún
+     * detector nuevo. El guard exige el mensaje del paso ya cerrado: cerrar el
+     * mensaje no completa el paso, pero es lo que habilita el despliegue como
+     * acción. La máquina ignora la acción fuera de fase.
      */
-    fun onPokeBallExpanded(expanded: Boolean) = _uiState.update {
-        if (expanded) it.copy(contentTab = AppTab.Home, isOptionsOpen = false) else it
+    fun onPokeBallExpanded(expanded: Boolean) = mutate { state ->
+        // Guard del tutorial a toda la operación: si el despliegue está
+        // bloqueado, el estado se devuelve intacto (sin cambiar de pestaña
+        // ni cerrar la hoja de opciones), igual que el resto de métodos con
+        // guard. En juego libre, `tutorialAllows(POKEBALL_DRAG)` es `true`
+        // y el despliegue alimenta el paso 1 (`DEPLOY_POKEBALL`).
+        if (!expanded || !state.tutorialAllows(TutorialInteraction.POKEBALL_DRAG)) {
+            state
+        } else {
+            state.copy(contentTab = AppTab.Home, isOptionsOpen = false)
+                .withTutorial(TutorialAction.POKEBALL_EXPANDED)
+        }
     }
+
+    // --- Tutorial general ----------------------------------------
+
+    /**
+     * Evento del tutorial: aplica una [TutorialAction] a la máquina de estados.
+     *
+     * Es la puerta de entrada para las respuestas iniciales (`ACCEPT_OFFER`,
+     * `DECLINE_OFFER`, `BEGIN_TUTORIAL`, `SKIP_TUTORIAL`) y para los cierres de
+     * mensaje (`FAREWELL_DISMISSED`, `EXP_NOTICE_DISMISSED`). Las acciones de
+     * juego ya se detectan en sus propios métodos. La máquina descarta
+     * cualquier acción que no aplique (no-op) y los finales absorben todo: una
+     * respuesta tardía no reabre un tutorial omitido o completado.
+     */
+    fun onTutorialAction(action: TutorialAction) = mutate { it.withTutorial(action) }
+
+    /**
+     * Pulsación sobre el mensaje del tutorial (la caja de diálogo, como en la
+     * introducción de Oak).
+     *
+     * Comportamiento por fase:
+     * - **Paso guiado con mensaje visible**: cierra el mensaje **sin completar
+     *   el paso**. La fase se mantiene y solo entonces se habilita la
+     *   interacción del paso; la acción real sigue siendo la que lo termina.
+     * - **FAREWELL / EXP_NOTICE**: dispara su transición específica
+     *   (`FAREWELL_DISMISSED` / `EXP_NOTICE_DISMISSED`), que conservan su
+     *   semántica de las fases anteriores.
+     * - **OFFER / CONFIRM**: no-op. Exigen una respuesta explícita en sus
+     *   botones; un toque en la caja no responde por el jugador.
+     * - Resto de fases (sin mensaje): no-op.
+     */
+    fun onTutorialMessageTap() = mutate { state ->
+        when {
+            state.tutorialPhase.isGuidedStep && !state.tutorialMessageClosed ->
+                state.copy(tutorialMessageClosed = true)
+            state.tutorialPhase == TutorialPhase.FAREWELL ->
+                state.withTutorial(TutorialAction.FAREWELL_DISMISSED)
+            state.tutorialPhase == TutorialPhase.EXP_NOTICE ->
+                state.withTutorial(TutorialAction.EXP_NOTICE_DISMISSED)
+            else -> state
+        }
+    }
+
+    /**
+     * Aplica una acción del tutorial al estado, si la máquina la admite.
+     * No-op en caso contrario, sin lanzar: misma regla de los guards.
+     *
+     * Toda transición de fase **reabre el mensaje**: el flag de mensaje
+     * cerrado vuelve a `false` para que el paso siguiente empiece por su
+     * explicación.
+     */
+    private fun GameUiState.withTutorial(action: TutorialAction): GameUiState {
+        val next = tutorialPhase.advance(action)
+        return if (next == tutorialPhase) {
+            this
+        } else {
+            copy(tutorialPhase = next, tutorialMessageClosed = false)
+        }
+    }
+
+    /**
+     * ¿Admite el tutorial esta interacción de juego **ahora mismo**?
+     *
+     * Regla principal de QA: mientras **cualquier** mensaje esté
+     * visible, nada del juego responde — la única interacción es el propio
+     * diálogo. Con el mensaje cerrado: en pasos guiados, solo la interacción
+     * del paso; en despedida cerrada, espera de experiencia, espera de avance
+     * y finales, juego libre total. La lógica vive en el modelo
+     * (`tutorialInteractionAllowed`) para que UI y ViewModel compartan la
+     * misma regla.
+     */
+    private fun GameUiState.tutorialAllows(interaction: TutorialInteraction): Boolean =
+        tutorialInteractionAllowed(tutorialPhase, tutorialMessageClosed, interaction)
 
     // --- Gimnasio (combate clicker) ----------------------------------------
 
     /** Empieza el intento de gimnasio de la zona actual, si está disponible. */
     fun onEnterGym() {
         val state = _uiState.value
+        // Guard del tutorial: el gimnasio solo opera en juego libre.
+        if (!state.tutorialPhase.isFreePlay) return
         // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
         // reintento explícito es onGymRetry, y salir es onLeaveGym), una capa de
         // intro abierta o un gimnasio no disponible.
@@ -404,7 +650,6 @@ class MainViewModel(
         val multiplier = typeDamageMultiplier(state.leadType, config.type)
         val damage = (state.clickPower * multiplier).roundToLong().coerceAtLeast(1L).toInt()
 
-        var won = false
         // Un solo `updateGym`: golpe, puerta de furia y victoria se deciden sobre
         // el estado más reciente.
         updateGym { current ->
@@ -415,17 +660,42 @@ class MainViewModel(
             val gated = GymCombat.gateFirstRage(current, newLeaderHp)
             when {
                 gated != null -> gated
-                newLeaderHp <= 0 -> {
-                    won = true
-                    current.copy(leaderHp = 0)
-                }
+                // El combate se queda en WON: la capa de victoria hunde al Pokémon
+                // del líder y muestra su despedida antes de cobrar la medalla
+                // (`onGymVictoryDone`).
+                newLeaderHp <= 0 -> current.copy(leaderHp = 0, outcome = GymOutcome.WON)
                 else -> current.copy(
                     leaderHp = newLeaderHp,
                     rage = GymCombat.isRaging(newLeaderHp, current.leaderMaxHp)
                 )
             }
         }
-        if (won) winGym(config)
+    }
+
+    /**
+     * Cierra la capa de victoria y cobra la medalla.
+     *
+     * La llama la UI cuando el líder termina su despedida (o directamente si el
+     * gimnasio aún no tiene guion propio), que es lo que separa la victoria del
+     * cierre real del combate.
+     */
+    fun onGymVictoryDone() {
+        val gym = _uiState.value.gym ?: return
+        if (gym.outcome != GymOutcome.WON) return
+        winGym(GymCatalog.require(gym.gymId))
+    }
+
+    /**
+     * Cierra el discurso de furia del líder y devuelve el combate a la acción.
+     *
+     * El bucle sigue corriendo durante el discurso, pero no avanza el combate
+     * mientras [GymState.rageSpeech] esté activo; al apagarlo, la siguiente
+     * vuelta retoma la mecánica con la furia ya en marcha.
+     */
+    fun onGymRageSpeechDone() {
+        updateGym { current ->
+            if (current.rageSpeech) current.copy(rageSpeech = false) else current
+        }
     }
 
     /**
@@ -450,16 +720,23 @@ class MainViewModel(
         updateGym { current ->
             val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
             val onBeat = GymCombat.isRingOnBeat(ring, current, now)
-            val resolved = current.copy(
-                rings = current.rings.filterNot { it.id == ring.id },
-                ringFeedback = RingFeedback(
-                    ringId = ring.id,
-                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
-                )
-            )
+            val resolved = GymCombat.resolveRings(current, listOf(ring), onBeat, now)
             if (onBeat) GymCombat.addPosture(resolved)
-            else applyRingMiss(resolved, config.ringMissDamage)
+            else applyRingMiss(GymCombat.failPosture(resolved), config.ringMissDamage)
         }
+    }
+
+    /**
+     * Clic fallado: el toque no acertó a ninguna roca.
+     *
+     * Resta postura, igual que un fallo de anillo o un Voltorb apagado, para que
+     * machacar la pantalla no llene la barra. En fase expuesta no hace nada.
+     */
+    fun onGymMiss() {
+        val gym = _uiState.value.gym ?: return
+        if (gym.outcome != GymOutcome.ACTIVE) return
+        if (gym.phase != GymPhase.ATTACKING) return
+        updateGym { current -> GymCombat.failPosture(current) }
     }
 
     /**
@@ -493,7 +770,11 @@ class MainViewModel(
             if (GymCombat.voltorbAt(current, cell) != null) {
                 GymCombat.defuseVoltorb(current, cell)
             } else {
-                val shocked = GymCombat.registerShock(current, cell, config.voltorbShockDamage)
+                val shocked = GymCombat.registerShock(
+                    GymCombat.failPosture(current),
+                    cell,
+                    config.voltorbShockDamage
+                )
                 if (shocked.playerHp <= 0) shocked.copy(outcome = GymOutcome.LOST) else shocked
             }
         }
@@ -509,7 +790,7 @@ class MainViewModel(
                     isTallGrass = false,
                     walkProgress = 0f,
                     encounter = null,
-                    fishing = null,
+                    catching = null,
                     gymIntro = null,
                     gym = GymState(
                         gymId = config.id,
@@ -557,6 +838,14 @@ class MainViewModel(
                 delay(GYM_TICK_MS)
                 val gym = _uiState.value.gym ?: break
                 if (gym.outcome != GymOutcome.ACTIVE) break
+
+                // Discurso de furia: el combate queda **congelado** hasta que el
+                // jugador lo cierra. La cadencia se reanuda desde ahora para no
+                // cobrar el tiempo pausado en una ráfaga imposible de parar.
+                if (gym.rageSpeech) {
+                    nextSpawnMs = nowMs() + spawnIntervalMs(config, gym)
+                    continue
+                }
 
                 if (wasExposed && gym.phase == GymPhase.ATTACKING) {
                     nextSpawnMs = nowMs() + COMBAT_FIRST_SPAWN_MS
@@ -649,20 +938,18 @@ class MainViewModel(
             val raging = GymCombat.isRaging(state)
             val perSpawn = if (raging) config.rageProjectilesPerSpawn else config.projectilesPerSpawn
             val travel = if (raging) config.rageProjectileTravelMs else config.projectileTravelMs
-            // La ráfaga no siempre es completa: entre 1 y `perSpawn` rocas, así no
-            // todas las filas son iguales.
-            val salvoSize = random.nextInt(1, perSpawn + 1)
-            val columns = (0 until config.columns)
-                .shuffled(random)
-                .take(salvoSize)
-            alive + columns.map { column ->
-                Projectile(
-                    id = nextCombatId++,
-                    column = column,
-                    spawnedAtMs = now,
-                    travelMs = travel
-                )
-            }
+            // La ráfaga no siempre es completa y cada roca cae a su aire: ni
+            // todas las columnas ni todas las filas son iguales.
+            val salvo = GymCombat.spawnSalvo(
+                firstId = nextCombatId,
+                columns = config.columns,
+                maxPerSpawn = perSpawn,
+                travelMs = travel,
+                nowMs = now,
+                random = random
+            )
+            nextCombatId += salvo.size
+            alive + salvo
         } else {
             alive
         }
@@ -691,15 +978,9 @@ class MainViewModel(
 
         val expired = GymCombat.expiredRings(next, now)
         if (expired.isNotEmpty()) {
-            val expiredIds = expired.map { it.id }.toSet()
-            next = next.copy(
-                rings = next.rings.filterNot { it.id in expiredIds },
-                ringFeedback = RingFeedback(
-                    ringId = expired.maxOf { it.id },
-                    outcome = RingOutcome.MISS,
-                    count = expired.size
-                )
-            )
+            // Varios pueden caducar en el mismo tick: los cobra todos de una vez y
+            // el combo cae a cero en el mismo sitio que un fallo pulsado.
+            next = GymCombat.resolveRings(next, expired, hit = false, nowMs = now)
             next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)
         }
 
@@ -782,11 +1063,11 @@ class MainViewModel(
         }
     }
 
-    // --- Pesca (Etapa 3) ---------------------------------------------------
+    // --- Captura (Etapa 3) ---------------------------------------------------
 
     /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
-    fun onFishingHold(held: Boolean) {
-        fishingHeld = held
+    fun onCatchingHold(held: Boolean) {
+        catchingHeld = held
     }
 
     /**
@@ -794,13 +1075,19 @@ class MainViewModel(
      * la especie (y las monedas, solo la primera vez); **escapado** no cambia
      * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
      * encuentro.
+     *
+     * El registro con captura aplica al **resultado final** del minijuego
+     * (fase CAPTURED), es decir, la especie que entra en posesión; el
+     * avistamiento ya se registró en
+     * `spawnEncounter`. Aquí se añade también al historial permanente de la
+     * Pokédex (`caughtSpecies`).
      */
-    fun onFishingResultContinue() {
-        val fishing = _uiState.value.fishing ?: return
-        if (fishing.phase == FishingPhase.PLAYING) return
-        cancelFishing()
+    fun onCatchingResultContinue() {
+        val catching = _uiState.value.catching ?: return
+        if (catching.phase == CatchingPhase.PLAYING) return
+        cancelCatching()
 
-        val captured = fishing.phase == FishingPhase.CAPTURED
+        val captured = catching.phase == CatchingPhase.CAPTURED
         mutate { state ->
             val encounter = state.encounter ?: return@mutate state.withoutEncounter()
             if (captured) {
@@ -813,7 +1100,9 @@ class MainViewModel(
                 state.copy(
                     ownedSpecies = state.ownedSpecies + encounter.speciesId,
                     rewardedSpecies = state.rewardedSpecies + encounter.speciesId,
-                    coins = state.coins + reward
+                    coins = state.coins + reward,
+                    caughtSpecies = state.caughtSpecies + encounter.speciesId,
+                    seenSpecies = state.seenSpecies + encounter.speciesId
                 ).withoutEncounter()
             } else {
                 state.withoutEncounter()
@@ -823,28 +1112,39 @@ class MainViewModel(
 
     /** Sale del encuentro y deja la hierba lista para el siguiente. */
     private fun GameUiState.withoutEncounter(): GameUiState =
-        copy(encounter = null, fishing = null, walkProgress = 0f)
+        copy(encounter = null, catching = null, walkProgress = 0f)
 
     /**
-     * Bucle del minijuego de pesca: avanza barra y sprite a 50 ms con la
+     * Bucle del minijuego de captura: avanza barra y sprite a 50 ms con la
      * pulsación registrada. Se detiene al terminar la partida (captura o huida);
-     * el panel de resultado espera el `onFishingResultContinue` del jugador.
+     * el panel de resultado espera el `onCatchingResultContinue` del jugador.
      */
-    private fun startFishingLoop() {
-        fishingJob?.cancel()
-        fishingHeld = false
-        fishingJob = viewModelScope.launch {
+    private fun startCatchingLoop() {
+        catchingJob?.cancel()
+        catchingHeld = false
+        catchingJob = viewModelScope.launch {
+            // La Pokébola se lanza y queda clavada en el centro antes de que el
+            // riel empiece a moverse: el estado se queda centrado durante el
+            // vuelo y la pausa de reacción.
+            delay(CatchingDefaults.THROW_MS + CatchingDefaults.REACTION_MS)
+            // `dt` sale del reloj real y no del tick nominal: así el movimiento
+            // no se ralentiza si un frame tarda más de lo previsto.
+            var lastTickMs = nowMs()
             while (isActive) {
-                delay(FISHING_TICK_MS)
+                delay(CATCHING_TICK_MS)
+                val now = nowMs()
+                val dt = ((now - lastTickMs) / 1000f).coerceIn(0f, MAX_CATCHING_DT_SECONDS)
+                lastTickMs = now
+                if (dt <= 0f) continue
                 var finished = false
-                updateFishing { current ->
-                    val next = FishingGame.step(
+                updateCatching { current ->
+                    val next = CatchingGame.step(
                         state = current,
-                        held = fishingHeld,
-                        dt = FISHING_TICK_MS / 1000f,
+                        held = catchingHeld,
+                        dt = dt,
                         random = random
                     )
-                    finished = next.phase != FishingPhase.PLAYING
+                    finished = next.phase != CatchingPhase.PLAYING
                     next
                 }
                 if (finished) break
@@ -853,18 +1153,18 @@ class MainViewModel(
     }
 
     /** Actualiza el minijuego (estado transitorio, no se persiste). */
-    private fun updateFishing(block: (FishingState) -> FishingState) {
+    private fun updateCatching(block: (CatchingState) -> CatchingState) {
         _uiState.update { state ->
-            val fishing = state.fishing ?: return@update state
-            derive(state.copy(fishing = block(fishing)))
+            val catching = state.catching ?: return@update state
+            derive(state.copy(catching = block(catching)))
         }
     }
 
-    /** Cancela el bucle de pesca y suelta la pulsación que quedara a medias. */
-    private fun cancelFishing() {
-        fishingJob?.cancel()
-        fishingJob = null
-        fishingHeld = false
+    /** Cancela el bucle de captura y suelta la pulsación que quedara a medias. */
+    private fun cancelCatching() {
+        catchingJob?.cancel()
+        catchingJob = null
+        catchingHeld = false
     }
 
     /**
@@ -884,23 +1184,35 @@ class MainViewModel(
      * y **fuera del modo captura**: la hierba alta se cierra y no se arrastra
      * ningún encuentro en curso; en caso contrario es un no-op. En la última
      * zona nunca sufre cambios.
+     *
+     * Un avance real cierra el tutorial: la acción
+     * [TutorialAction.ADVANCE_ZONE_EXECUTED] solo transforma el estado en la
+     * fase `ADVANCE_WAIT`, así que cualquier otro avance posterior (ya con el
+     * tutorial terminado u omitido) es invisible para la máquina.
      */
     fun onAdvanceZone() = mutate { state ->
-        if (state.canAdvanceZone) {
-            cancelFishing()
+        // Guard del tutorial (regla principal de QA): con el aviso
+        // de avance en pantalla (mensaje visible) el botón no surte efecto;
+        // cerrar el mensaje es lo que habilita el primer avance. Fuera de eso,
+        // el avance funciona como siempre.
+        if (!state.tutorialAllows(TutorialInteraction.ADVANCE_ZONE)) {
+            state
+        } else if (state.canAdvanceZone) {
+            cancelCatching()
             state.copy(
                 zoneIndex = state.zoneIndex + 1,
                 zoneClicks = 0L,
                 isTallGrass = false
             ).withoutEncounter()
+                .withTutorial(TutorialAction.ADVANCE_ZONE_EXECUTED)
         } else {
             state
         }
     }
 
     /**
-     * Revierte un salvaje a la zona actual y abre su partida de pesca: el
-     * encuentro muestra la especie y `GameUiState.fishing` guarda el estado del
+     * Revierte un salvaje a la zona actual y abre su partida de captura: el
+     * encuentro muestra la especie y `GameUiState.catching` guarda el estado del
      * minijuego con los parámetros según su dificultad de captura.
      *
      * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
@@ -911,20 +1223,21 @@ class MainViewModel(
         val zone = zoneAt(state.zoneIndex)
         if (zone.wildSpeciesIds.isEmpty()) return
         val species = SpeciesCatalog.require(zone.wildSpeciesIds.random(random))
-        val config = FishingDefaults.configFor(species.captureDifficulty)
+        val config = CatchingDefaults.configFor(species.captureDifficulty)
         mutate {
             it.copy(
                 encounter = Encounter(
                     speciesId = species.id,
                     speciesName = species.name,
-                    speciesType = species.type
+                    speciesType = species.type,
+                    speciesDexNumber = species.dexNumber
                 ),
-                fishing = FishingGame.initialState(config, random),
+                catching = CatchingGame.initialState(config),
                 walkProgress = 0f,
                 seenSpecies = it.seenSpecies + species.id
             )
         }
-        startFishingLoop()
+        startCatchingLoop()
     }
 
     // --- Bucles ------------------------------------------------------------
@@ -938,7 +1251,12 @@ class MainViewModel(
             while (isActive) {
                 delay(WALK_TICK_MS)
                 val state = _uiState.value
-                if (!state.isTallGrass || state.encounter != null || state.gym != null) continue
+                if ((!state.isTallGrass && !state.alwaysWilds) ||
+                    state.isPokedexOpen || state.encounter != null || state.gym != null ||
+                    // Guard del tutorial: fuera del juego libre no
+                    // hay encuentros (ni experiencia ni capturas).
+                    !state.tutorialPhase.isFreePlay
+                ) continue
                 if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
 
                 val next = state.walkProgress + WALK_TICK_MS / 1000f / ENCOUNTER_SECONDS
@@ -1001,11 +1319,22 @@ class MainViewModel(
         val saved = store.load() ?: return GameUiState(
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
         )
+        // Compatibilidad con guardados anteriores a `caughtSpecies`: la captura
+        // histórica se deduce de lo que ya era cierto (posesiones de la run,
+        // recompensas y el starter), y **toda especie deducida como capturada
+        // también queda avistada**. Para guardados nuevos, `caught ∪ seen`
+        // (la captura implica haber avistado) es idempotente.
+        val caughtDeduced = saved.caughtSpecies +
+            saved.ownedSpecies +
+            saved.rewardedSpecies +
+            setOfNotNull(saved.starterSpeciesId)
+        val seenRestored = saved.seenSpecies + caughtDeduced
         return GameUiState(
             playerName = saved.playerName,
             coins = saved.coins,
-            seenSpecies = saved.seenSpecies,
+            seenSpecies = seenRestored,
             rewardedSpecies = saved.rewardedSpecies,
+            caughtSpecies = caughtDeduced,
             medals = saved.medals,
             starterSpeciesId = saved.starterSpeciesId,
             starterBond = saved.starterBond,
@@ -1014,10 +1343,15 @@ class MainViewModel(
             gymClearedRun = saved.gymClearedRun,
             zoneIndex = saved.zoneIndex,
             zoneClicks = saved.zoneClicks,
+            // El progreso del tutorial llega ya resuelto por el store (con su
+            // compatibilidad de guardados antiguos): la reapertura conserva
+            // exactamente la fase guardada y el momento del paso (mensaje
+            // visible o ya cerrado).
+            tutorialPhase = saved.tutorialPhase,
+            tutorialMessageClosed = saved.tutorialMessageClosed,
             trainerFrameRes = sprites.frame(Direction.FRONT, 0)
         )
     }
-
     /** Actualiza el estado derivado y, salvo [persist] = false, lo persiste. */
     private fun mutate(persist: Boolean = true, block: (GameUiState) -> GameUiState) {
         val updated = _uiState.updateAndGet { derive(block(it)) }
@@ -1071,6 +1405,33 @@ class MainViewModel(
             state.zoneClicks >= zone.clickRequirement &&
             !gymPending
 
+        // Normalización del tutorial: dos transiciones que dependen
+        // del estado del juego y no de un control concreto, así que viven aquí
+        // y no en un evento de UI:
+        // - `PENDING` + starter: Oak ya terminó (partida recién cerrada tras la
+        //   intro o reset que conservó el starter) → se ofrece el tutorial sin
+        //   repetir la introducción.
+        // - `EXP_WAIT` + barra llena: el aviso de avance sustituye a la espera.
+        // El resto de fases se respeta tal cual: la reapcripción conserva
+        // exactamente lo guardado.
+        val tutorialPhase = when {
+            state.tutorialPhase == TutorialPhase.PENDING && starterId != null ->
+                TutorialPhase.OFFER
+            state.tutorialPhase == TutorialPhase.EXP_WAIT && canAdvanceZone ->
+                TutorialPhase.EXP_NOTICE
+            else -> state.tutorialPhase
+        }
+
+        // Pokédex: el proyector memoiza por firma (posesión de la run +
+        // historia permanente), así que el resto de ticks reutiliza las 151
+        // filas y sus contadores.
+        val dex = pokedexProjector.project(
+            ownedSpecies = state.ownedSpecies,
+            starterSpeciesId = state.starterSpeciesId,
+            seenSpecies = state.seenSpecies,
+            caughtSpecies = state.caughtSpecies
+        )
+
         return state.copy(
             zoneName = zone.name,
             zoneId = zone.id,
@@ -1082,12 +1443,19 @@ class MainViewModel(
             leadType = lead?.type,
             isGymReady = isGymReady,
             hasWilds = zone.wildSpeciesIds.isNotEmpty(),
+            alwaysWilds = zone.alwaysWilds,
             gymLeaderName = if (isGymReady) zone.gymId?.let { GymCatalog.byId(it)?.leaderName } else null,
+            gymId = if (isGymReady) zone.gymId else null,
             gymMechanic = gymMechanic,
             canAdvanceZone = canAdvanceZone,
             needsStarter = starterId == null,
             leadOptions = leadOptions,
-            starterOptions = starterOptions
+            starterOptions = starterOptions,
+            tutorialPhase = tutorialPhase,
+            dexEntries = dex.entries,
+            dexSeenCount = dex.seenCount,
+            dexCaughtCount = dex.caughtCount,
+            dexLoadFailed = pokedexLoad.loadFailed
         )
     }
 
@@ -1096,6 +1464,7 @@ class MainViewModel(
         coins = coins,
         seenSpecies = seenSpecies,
         rewardedSpecies = rewardedSpecies,
+        caughtSpecies = caughtSpecies,
         medals = medals,
         starterSpeciesId = starterSpeciesId,
         starterBond = starterBond,
@@ -1103,7 +1472,9 @@ class MainViewModel(
         leadSpeciesId = leadSpeciesId,
         gymClearedRun = gymClearedRun,
         zoneIndex = zoneIndex,
-        zoneClicks = zoneClicks
+        zoneClicks = zoneClicks,
+        tutorialPhase = tutorialPhase,
+        tutorialMessageClosed = tutorialMessageClosed
     )
 
     private fun zoneAt(index: Int): Zone = zones[index.coerceIn(0, zones.lastIndex)]
@@ -1125,8 +1496,14 @@ class MainViewModel(
         /** Segundos de caminar continuo necesarios para que aparezca un salvaje. */
         const val ENCOUNTER_SECONDS = 3f
 
-        /** Tick del bucle del minijuego de pesca. */
-        const val FISHING_TICK_MS = 50L
+        /**
+         * Tick del bucle del minijuego de captura. Apunta a 60 fps para que la
+         * barra y el sprite se muevan suave; el `dt` real corrige la deriva.
+         */
+        const val CATCHING_TICK_MS = 16L
+
+        /** Tope de `dt` por tick: un frame perdido no debe teletransportar nada. */
+        const val MAX_CATCHING_DT_SECONDS = 0.1f
 
         /** Cada especie en posesión suma este % a la potencia de clic. */
         const val PER_OWNED_SPECIES_BONUS = 0.05

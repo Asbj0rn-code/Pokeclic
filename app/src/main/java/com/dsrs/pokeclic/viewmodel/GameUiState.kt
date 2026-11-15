@@ -2,13 +2,15 @@ package com.dsrs.pokeclic.viewmodel
 
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
-import com.dsrs.pokeclic.model.FishingState
+import com.dsrs.pokeclic.model.CatchingState
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.LeadOption
+import com.dsrs.pokeclic.model.PokedexRow
 import com.dsrs.pokeclic.model.PokemonType
 import com.dsrs.pokeclic.model.StarterOption
+import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.TrainerState
 
 /**
@@ -22,10 +24,11 @@ import com.dsrs.pokeclic.model.TrainerState
  *
  * Grupos:
  * - **meta permanente**: [playerName], [coins], [seenSpecies], [rewardedSpecies],
- *   [medals], [starterSpeciesId], [starterBond].
+ *   [caughtSpecies], [medals], [starterSpeciesId], [starterBond].
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [gymClearedRun], [zoneIndex], [zoneClicks].
- * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [fishing],
+ * - **tutorial** (persistido a su manera, véase [tutorialPhase]).
+ * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [catching],
  *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
  */
@@ -35,6 +38,14 @@ data class GameUiState(
     val coins: Long = 0L,
     val seenSpecies: Set<String> = emptySet(),
     val rewardedSpecies: Set<String> = emptySet(),
+    /**
+     * Capturas históricas (meta permanente): especies alguna vez obtenidas.
+     * Sobrevive al reset y muere con el borrado total. Determina el estado
+     * **REGISTERED** de la Pokédex (capturada y no poseída); **CAUGHT** sigue
+     * marcándose por la posesión de la run actual (`ownedSpecies` o
+     * `starterSpeciesId`).
+     */
+    val caughtSpecies: Set<String> = emptySet(),
     val medals: Set<String> = emptySet(),
     val starterSpeciesId: String? = null,
     val starterBond: Int = 0,
@@ -52,13 +63,33 @@ data class GameUiState(
     val walkProgress: Float = 0f,
     val encounter: Encounter? = null,
 
-    // --- minijuego de pesca (activo con encounter, no se persiste) ---
-    val fishing: FishingState? = null,
+    // --- minijuego de captura (activo con encounter, no se persiste) ---
+    val catching: CatchingState? = null,
 
     // --- gimnasio ---
     val gym: GymState? = null,
     /** Capa de entrada al gimnasio (bienvenida/tutorial/cartel); no se persiste. */
     val gymIntro: GymIntroPhase? = null,
+
+    // --- tutorial general ---
+    /**
+     * Fase de la máquina de estados del tutorial (`model/Tutorial.kt`).
+     *
+     * **Persistida** vía `GameSnapshot.tutorialPhase`: a diferencia del
+     * gimnasio, su progreso sobrevive al cierre de la app (y se recupera
+     * exacto). Es la única fuente de verdad del tutorial; el ViewModel la
+     * avanza con las acciones reales del jugador y la normaliza en `derive()`
+     * (oferta tras Oak, aviso al llenarse la barra).
+     */
+    val tutorialPhase: TutorialPhase = TutorialPhase.PENDING,
+
+    /**
+     * Momento del paso guiado: `true` cuando el mensaje explicativo del paso
+     * ya se cerró con una pulsación (ver `TutorialPhase.isMessageVisible`).
+     * Solo entonces se habilita la interacción del paso; la fase no cambia y
+     * cada transición la reinicia a `false`. Persistido junto a la fase.
+     */
+    val tutorialMessageClosed: Boolean = false,
 
     // --- entrenador (visual) ---
     val trainer: TrainerState = TrainerState(),
@@ -68,6 +99,13 @@ data class GameUiState(
     val contentTab: AppTab = AppTab.Home,
     val isOptionsOpen: Boolean = false,
     val isLeadOpen: Boolean = false,
+    /**
+     * Pantalla propia de Pokédex a pantalla completa (TEST). No es un overlay:
+     * mientras esté abierta no se compone el escenario, el mapa, el HUD ni el
+     * menú inferior, y el avance de caminar queda en pausa (exige una
+     * pulsación nueva al volver).
+     */
+    val isPokedexOpen: Boolean = false,
 
     // --- derivados (los rellena el ViewModel) ---
     val zoneName: String = "",
@@ -82,6 +120,8 @@ data class GameUiState(
     val leadType: PokemonType? = null,
     val isGymReady: Boolean = false,
     val gymLeaderName: String? = null,
+    /** Id del gimnasio de la zona: elige el retrato y el discurso del líder. */
+    val gymId: String? = null,
     /** Mecánica del gimnasio de la zona, también con la capa de entrada abierta. */
     val gymMechanic: GymMechanic = GymMechanic.PROJECTILES,
     /**
@@ -91,9 +131,27 @@ data class GameUiState(
     val canAdvanceZone: Boolean = false,
     /** La zona tiene hierba alta con fauna; en ciudades la hierba no se ofrece. */
     val hasWilds: Boolean = true,
+    /**
+     * La zona es una cueva: tiene salvajes al avanzar **sin** modo hierba alta.
+     * El botón de hierba se oculta y no hay sprite bajo el entrenador.
+     */
+    val alwaysWilds: Boolean = false,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
-    val starterOptions: List<StarterOption> = emptyList()
+    val starterOptions: List<StarterOption> = emptyList(),
+
+    // --- Pokédex (derivados del catálogo + historial) ---
+    /** Filas 001..151 con el estado de cada especie, ya resuelto para la UI. */
+    val dexEntries: List<PokedexRow> = emptyList(),
+    /** Especies conocidas (avistadas, registradas o capturadas) del catálogo. */
+    val dexSeenCount: Int = 0,
+    /**
+     * Especies capturadas **alguna vez** (CAUGHT ∪ REGISTERED): el contador
+     * no baja al resetear la run.
+     */
+    val dexCaughtCount: Int = 0,
+    /** La carga del catálogo falló: la Pokédex muestra un error y permite volver. */
+    val dexLoadFailed: Boolean = false
 ) {
     /** Fracción 0f..1f de progreso en la zona actual, lista para la barra. */
     val zoneProgress: Float

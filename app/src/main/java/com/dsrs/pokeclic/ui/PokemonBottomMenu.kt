@@ -282,7 +282,22 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
  *
  * @param isMapSelected marca el botón izquierdo como la pantalla visible.
  * @param isPokedexSelected marca el botón derecho, es decir, con la hoja abierta.
- * @param isHomeSelected marca la Pokéball como la pantalla visible.
+ * @param isHomeSelected marca la Pokéball como la pantalla visible. La bola se
+ *   dibuja **siempre sólida**: qué pantalla está activa lo comunican las
+ *   vitrinas, no la opacidad de la bola.
+ * @param expansionEnabled `false` desactiva el gesto de expansión: la bola no
+ *   se estira ni crece y cualquier arrastre completado cuenta como un toque
+ *   (`onHomeClick`). Es el modo de pantallas donde la bola no tiene juego, como
+ *   la Pokédex.
+ * @param pokeBallEnabled `false` deja la Pokéball **completamente inerte**: el
+ *   gesto de la bola no se detecta (sin pulsaciones, sin arrastre, sin punch ni
+ *   asentamiento). Lo usa el tutorial mientras haya un mensaje
+ *   visible o en pasos donde la bola no es la interacción del paso; fuera de
+ *   él, el comportamiento es el de siempre (`true`).
+ * @param destinationsEnabled `false` deja los destinos del menú (Mapa y
+ *   Pokédex) **inertes**: sus clics no hacen nada (ni pliegan la bola). Lo usa
+ *   el tutorial para reservar el regreso de una pantalla a la Pokéball, que es
+ *   a su vez el botón Home; fuera de él, navegación normal (`true`).
  * @param initialProgress progreso inicial del gesto, de `0f` (reposo) a `1f`
  *   (completamente expandida). La app siempre usa `0f`; los `@Preview` lo
  *   cambió para poder ver el menú a medio caminho o expandido sin arrastrar.
@@ -293,6 +308,9 @@ fun PokemonBottomMenu(
     isMapSelected: Boolean = false,
     isPokedexSelected: Boolean = false,
     isHomeSelected: Boolean = false,
+    expansionEnabled: Boolean = true,
+    pokeBallEnabled: Boolean = true,
+    destinationsEnabled: Boolean = true,
     onMapClick: () -> Unit = {},
     onPokedexClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
@@ -400,14 +418,20 @@ fun PokemonBottomMenu(
                 progress = progress,
                 isMapSelected = isMapSelected,
                 isPokedexSelected = isPokedexSelected,
-                // Pulsar un destino del menú pliega la Pokéball si estaba expandida.
+                // Pulsar un destino del menú pliega la Pokéball si estaba
+                // expandida. Con los destinos inertes (tutorial), el clic no
+                // hace nada: ni pliega la bola ni navega.
                 onMapClick = {
-                    if (isExpanded.value) settleTo(false)
-                    onMapClick()
+                    if (destinationsEnabled) {
+                        if (isExpanded.value) settleTo(false)
+                        onMapClick()
+                    }
                 },
                 onPokedexClick = {
-                    if (isExpanded.value) settleTo(false)
-                    onPokedexClick()
+                    if (destinationsEnabled) {
+                        if (isExpanded.value) settleTo(false)
+                        onPokedexClick()
+                    }
                 }
             )
 
@@ -416,7 +440,8 @@ fun PokemonBottomMenu(
                 transform = transform,
                 sensitivityPx = sensitivityPx,
                 isExpanded = isExpanded,
-                selected = isHomeSelected,
+                expansionEnabled = expansionEnabled,
+                enabled = pokeBallEnabled,
                 onTap = { position ->
                     if (isExpanded.value) currentGameClick(position) else currentHomeClick()
                 },
@@ -576,6 +601,11 @@ private fun MenuIconItem(
  * de layout: por eso el `Scaffold` solo reserva [BottomMenuDefaults.CONTAINER_HEIGHT]
  * y la Pokéball expandida queda flotando sobre el contenido.
  *
+ * Con [expansionEnabled] en `false` el arrastre no mueve ni escala la bola: el
+ * progreso se queda en reposo y un arrastre completado se entrega como toque
+ * limpio, de modo que pantallas sin juego (la Pokédex) devuelvan a la aventura
+ * con cualquier gesto sobre la bola.
+ *
  * @param onTap invoked al soltar sin superar el *slop*, es decir, en un toque.
  * @param onDragFinished invoked al terminar el arrastre con el estado al que
  *   debe asentarse.
@@ -586,7 +616,8 @@ private fun MenuPokeBall(
     transform: PokeBallTransform,
     sensitivityPx: Float,
     isExpanded: MutableState<Boolean>,
-    selected: Boolean,
+    expansionEnabled: Boolean,
+    enabled: Boolean,
     onTap: (Offset) -> Unit,
     onDragFinished: (Boolean) -> Unit
 ) {
@@ -617,11 +648,15 @@ private fun MenuPokeBall(
                 // forma solo afecta al shadow y el contenido no se recorta.
                 shape = CircleShape
                 clip = false
-                // Fuera de la pantalla principal la Pokéball queda algo apagada,
-                // que es la única pista de qué pantalla está activa.
-                alpha = if (selected) 1f else 0.85f
             }
-            .pointerInput(Unit) {
+            // La clave incluye `expansionEnabled` y `enabled`: al alternarse en
+            // caliente, el bloque del gesto se cancela y relanza con la captura
+            // fresca. Con `Unit` el bloque seguiría corriendo con el valor que
+            // tenía al arrancar.
+            .pointerInput(expansionEnabled, enabled) {
+                // Bola inerte (tutorial): ni pulsaciones ni
+                // arrastres; el gesto no se detecta en absoluto.
+                if (!enabled) return@pointerInput
                 val touchSlop = viewConfiguration.touchSlop
 
                 awaitEachGesture {
@@ -651,10 +686,14 @@ private fun MenuPokeBall(
                         }
 
                         if (dragging) {
-                            // `previousY - position.y` es positivo al subir, que es
-                            // justo cuando el progreso debe crecer.
-                            val delta = (previousY - change.position.y) / sensitivityPx
-                            progress.floatValue = (progress.floatValue + delta).coerceIn(0f, 1f)
+                            if (expansionEnabled) {
+                                // `previousY - position.y` es positivo al subir, que es
+                                // justo cuando el progreso debe crecer.
+                                val delta = (previousY - change.position.y) / sensitivityPx
+                                progress.floatValue = (progress.floatValue + delta).coerceIn(0f, 1f)
+                            }
+                            // Consumido también sin expansión: el gesto no se filtra
+                            // al contenido de abajo.
                             change.consume()
                         }
 
@@ -665,15 +704,20 @@ private fun MenuPokeBall(
                         // Se canceló el gesto a medias: se vuelve al estado anterior.
                         cancelled -> onDragFinished(isExpanded.value)
                         // Arrastre completo: se decide el estado final por umbral,
-                        // tanto si estaba abajo como si estaba arriba.
+                        // tanto si estaba abajo como si estaba arriba. Sin expansión
+                        // el arrastre cuenta como toque y la bola vuelve sola.
                         dragging -> {
-                            val threshold = BottomMenuDefaults.SNAP_THRESHOLD
-                            val target = if (isExpanded.value) {
-                                progress.floatValue > 1f - threshold
+                            if (expansionEnabled) {
+                                val threshold = BottomMenuDefaults.SNAP_THRESHOLD
+                                val target = if (isExpanded.value) {
+                                    progress.floatValue > 1f - threshold
+                                } else {
+                                    progress.floatValue > threshold
+                                }
+                                onDragFinished(target)
                             } else {
-                                progress.floatValue > threshold
+                                onTap(down.position)
                             }
-                            onDragFinished(target)
                         }
                         // Toque limpio: comportamiento según el estado.
                         else -> {

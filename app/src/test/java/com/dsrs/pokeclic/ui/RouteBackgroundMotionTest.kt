@@ -224,6 +224,74 @@ class RouteBackgroundMotionTest {
     }
 
     @Test
+    fun horizontalMotion_treatsTheStraightLegsAsTheWayForward() {
+        // En un fondo horizontal el avance recto corre de lado: el entrenador
+        // camina a la derecha y no hay tramo lateral que lo desvíe.
+        val horizontal = RouteBackgroundMotion(
+            legs = listOf(RouteLeg(clicks = 15f)),
+            axis = RouteScrollAxis.HORIZONTAL
+        )
+
+        assertTrue(horizontal.verticalDistanceAt(horizontal.cycleDistance.toDouble()) > 0.0)
+        assertEquals(0f, horizontal.lateralDistanceAt(horizontal.cycleDistance.toDouble()), 1e-6f)
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(1))
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(150))
+    }
+
+    @Test
+    fun horizontalMotion_rotatesTheFrameForTheSideLegs() {
+        // El marco horizontal es el vertical girado 90°: recto = caminar a la
+        // derecha, LEFT = subir y RIGHT = bajar por la pantalla.
+        val horizontal = RouteBackgroundMotion(
+            legs = listOf(
+                RouteLeg(clicks = 10f),
+                RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+                RouteLeg(clicks = 5f),
+                RouteLeg(clicks = 5f, direction = Direction.LEFT)
+            ),
+            axis = RouteScrollAxis.HORIZONTAL
+        )
+
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(1))
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(10))
+        assertEquals(Direction.FRONT, horizontal.directionForStep(11))
+        assertEquals(Direction.FRONT, horizontal.directionForStep(15))
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(16))
+        assertEquals(Direction.BACK, horizontal.directionForStep(21))
+        assertEquals(Direction.BACK, horizontal.directionForStep(25))
+        assertEquals(Direction.RIGHT, horizontal.directionForStep(26))
+    }
+
+    @Test
+    fun horizontalMotion_sideLegsMoveTheCharacterUpAndDown() {
+        val horizontal = RouteBackgroundMotion(
+            legs = listOf(
+                RouteLeg(clicks = 10f),
+                RouteLeg(clicks = 5f, direction = Direction.RIGHT),
+                RouteLeg(clicks = 5f),
+                RouteLeg(clicks = 5f, direction = Direction.LEFT)
+            ),
+            axis = RouteScrollAxis.HORIZONTAL
+        )
+
+        // Los 5 clics RIGHT bajan al personaje y los 5 LEFT lo devuelven arriba:
+        // el zigzag cierra en el mismo punto en cada vuelta.
+        assertEquals(0f, horizontal.lateralDistanceAt(tiles(10f)), 1e-6f)
+        assertEquals(
+            horizontal.legs[1].distance,
+            horizontal.lateralDistanceAt(tiles(15f)),
+            1e-6f
+        )
+        assertEquals(0f, horizontal.lateralDistanceAt(tiles(25f)), 1e-6f)
+        // Y mientras se dobla, el avance recto no se mueve.
+        assertEquals(
+            horizontal.verticalDistanceAt(tiles(10f)),
+            horizontal.verticalDistanceAt(tiles(15f)),
+            1e-9
+        )
+    }
+
+    @Test
     fun defaultMotion_directionFollowsTheAxisOfEachStep() {
         val default = RouteScrollDefaults.MOTION
 

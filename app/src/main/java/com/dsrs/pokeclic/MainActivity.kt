@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.dsrs.pokeclic.data.PokedexCatalogLoader
 import com.dsrs.pokeclic.data.SharedPreferencesGameStateStore
 import com.dsrs.pokeclic.model.DefaultSpriteRepository
 import com.dsrs.pokeclic.ui.AppRoot
@@ -38,9 +39,14 @@ class MainActivity : AppCompatActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         viewModelFactory {
             initializer {
+                // Pokédex (TEST): el catálogo se carga **una sola vez** por proceso
+                // (el loader cachea el resultado y nunca lanza: ante un fallo,
+                // `loadFailed` avisa a la pantalla y el juego sigue funcionando).
+                val dexLoad = PokedexCatalogLoader.load(applicationContext)
                 MainViewModel(
                     sprites = DefaultSpriteRepository(),
-                    store = SharedPreferencesGameStateStore(applicationContext)
+                    store = SharedPreferencesGameStateStore(applicationContext),
+                    pokedexLoad = dexLoad
                 )
             }
         }
@@ -77,11 +83,14 @@ class MainActivity : AppCompatActivity() {
                         onAdvanceZone = mainViewModel::onAdvanceZone,
                         onGymRetry = mainViewModel::onGymRetry,
                         onGymProjectileHit = mainViewModel::onGymProjectileHit,
+                        onGymProjectileMiss = mainViewModel::onGymMiss,
                         onGymRingTap = mainViewModel::onGymRingTap,
                         onGymVoltorbTap = mainViewModel::onGymVoltorbTap,
                         onGymEnemyHit = mainViewModel::onGymEnemyHit,
-                        onFishingHold = mainViewModel::onFishingHold,
-                        onFishingResultContinue = mainViewModel::onFishingResultContinue,
+                        onGymRageSpeechDone = mainViewModel::onGymRageSpeechDone,
+                        onGymVictoryDone = mainViewModel::onGymVictoryDone,
+                        onCatchingHold = mainViewModel::onCatchingHold,
+                        onCatchingResultContinue = mainViewModel::onCatchingResultContinue,
                         onFinishIntro = mainViewModel::onFinishIntro,
                         onSelectLead = mainViewModel::onSelectLead,
                         onSelectTab = mainViewModel::onSelectTab,
@@ -89,7 +98,11 @@ class MainActivity : AppCompatActivity() {
                         onCloseOptions = mainViewModel::onCloseOptions,
                         onOpenLead = mainViewModel::onOpenLead,
                         onCloseLead = mainViewModel::onCloseLead,
-                        onPokeBallExpanded = mainViewModel::onPokeBallExpanded
+                        onOpenDex = mainViewModel::onOpenDex,
+                        onCloseDex = mainViewModel::onCloseDex,
+                        onPokeBallExpanded = mainViewModel::onPokeBallExpanded,
+                        onTutorialAction = mainViewModel::onTutorialAction,
+                        onTutorialMessageTap = mainViewModel::onTutorialMessageTap
                     )
 
                     if (showSplash) {
