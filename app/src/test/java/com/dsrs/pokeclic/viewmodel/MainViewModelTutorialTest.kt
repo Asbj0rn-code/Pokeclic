@@ -12,6 +12,7 @@ import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.SpriteRepository
 import com.dsrs.pokeclic.model.TutorialAction
 import com.dsrs.pokeclic.model.TutorialPhase
+import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isMessageVisible
 import com.dsrs.pokeclic.model.Zone
 import kotlin.random.Random
@@ -74,31 +75,31 @@ class MainViewModelTutorialTest {
     }
 
     /** ViewModel con la intro cerrada y la oferta del tutorial en pantalla. */
-    private fun vmEnOferta(): MainViewModel =
+    private fun vmAtOffer(): MainViewModel =
         viewModel().apply { onFinishIntro("Red", "charmander") }
 
     /** Desde la oferta, acepta y confirma el arranque del tutorial. */
-    private fun vmEnDespliegue(mensajeCerrado: Boolean = false): MainViewModel =
-        vmEnOferta().apply {
+    private fun vmAtDeployStep(messageClosed: Boolean = false): MainViewModel =
+        vmAtOffer().apply {
             onTutorialAction(TutorialAction.ACCEPT_OFFER)            // CONFIRM
             onTutorialAction(TutorialAction.BEGIN_TUTORIAL)          // DEPLOY_POKEBALL
-            if (mensajeCerrado) onTutorialMessageTap()
+            if (messageClosed) onTutorialMessageTap()
         }
 
     /** Paso de apertura del mapa (el despliegue ya se completó). */
-    private fun vmEnAperturaMapa(mensajeCerrado: Boolean = false): MainViewModel =
-        vmEnDespliegue(mensajeCerrado = true).apply {
+    private fun vmAtMapOpenStep(messageClosed: Boolean = false): MainViewModel =
+        vmAtDeployStep(messageClosed = true).apply {
             onPokeBallExpanded(true)                                 // OPEN_MAP
-            if (mensajeCerrado) onTutorialMessageTap()
+            if (messageClosed) onTutorialMessageTap()
         }
 
     /** Paso de apertura de la Pokédex (mapa ya recorrido de ida). */
-    private fun vmEnAperturaPokedex(mensajeCerrado: Boolean = false): MainViewModel =
-        vmEnAperturaMapa(mensajeCerrado = true).apply {
+    private fun vmAtDexOpenStep(messageClosed: Boolean = false): MainViewModel =
+        vmAtMapOpenStep(messageClosed = true).apply {
             onSelectTab(AppTab.Map)                                  // RETURN_MAP
             onTutorialMessageTap()
             onSelectTab(AppTab.Home)                                 // OPEN_POKEDEX
-            if (mensajeCerrado) onTutorialMessageTap()
+            if (messageClosed) onTutorialMessageTap()
         }
 
     /** Lleva el ViewModel hasta `FAREWELL` siguiendo el recorrido real de pasos. */
@@ -133,6 +134,28 @@ class MainViewModelTutorialTest {
     }
 
     @Test
+    fun pending_beforeOakFinishes_onlyTheIntroIsReachable() {
+        val vm = viewModel()   // PENDING, sin starter
+        val before = vm.uiState.value
+
+        // La intro de Oak es opaca y el menú no se compone (`menuHidden`
+        // incluye `needsStarter`), así que en la UI real ningún evento de
+        // juego puede llegar. Los eventos del tutorial que sí podrían llegar
+        // son no-op: la máquina solo responde a `OAK_FINISHED` desde `PENDING`.
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // tardío: PENDING absorbe
+        vm.onTutorialMessageTap()                          // sin mensaje: no-op
+
+        assertEquals(before, vm.uiState.value)
+
+        // Invariante frágil, documentada en el KDoc de `isFreePlay`: en
+        // `PENDING` los guards del ViewModel están abiertos y el aislamiento
+        // depende de las capas visuales (intro opaca + menú oculto por
+        // `needsStarter`). Cambiar `isFreePlay` o `menuHidden` exige revisar
+        // este contrato.
+        assertTrue(TutorialPhase.PENDING.isFreePlay)
+    }
+
+    @Test
     fun oakFinished_offersTheTutorialInANewGame() {
         val store = storeWith()
         val vm = viewModel(store = store)
@@ -148,7 +171,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun oakFinishedTwice_doesNotRestartTheOffer() {
-        val vm = vmEnOferta()
+        val vm = vmAtOffer()
 
         vm.onFinishIntro("Red", "charmander")
 
@@ -159,7 +182,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun declineOffer_skipsTheTutorialForGood() {
-        val vm = vmEnOferta()
+        val vm = vmAtOffer()
 
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)
 
@@ -173,7 +196,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun acceptOffer_confirmsAndBeginStartsTheFirstStep() {
-        val vm = vmEnOferta()
+        val vm = vmAtOffer()
 
         vm.onTutorialAction(TutorialAction.ACCEPT_OFFER)
         assertEquals(TutorialPhase.CONFIRM, vm.uiState.value.tutorialPhase)
@@ -184,7 +207,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun skipFromConfirm_alsoSkips() {
-        val vm = vmEnOferta().apply {
+        val vm = vmAtOffer().apply {
             onTutorialAction(TutorialAction.ACCEPT_OFFER)
         }
 
@@ -197,7 +220,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun pokeballDeployment_isDetectedThroughTheExistingEvent() {
-        val vm = vmEnDespliegue()   // mensaje del paso visible
+        val vm = vmAtDeployStep()   // mensaje del paso visible
 
         // Con el mensaje visible la acción del paso aún no cuenta.
         vm.onPokeBallExpanded(true)
@@ -221,7 +244,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun mapOpenAndReturn_advanceThroughTheRealNavigation() {
-        val vm = vmEnAperturaMapa()   // mensaje del paso visible
+        val vm = vmAtMapOpenStep()   // mensaje del paso visible
 
         vm.onTutorialMessageTap()   // cierra el mensaje del paso de mapa
         vm.onSelectTab(AppTab.Map)
@@ -234,7 +257,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun mapReturnBeforeOpeningMap_isIgnored() {
-        val vm = vmEnAperturaMapa(mensajeCerrado = true)
+        val vm = vmAtMapOpenStep(messageClosed = true)
 
         // Volver a casa sin haber abierto el mapa no avanza el paso.
         vm.onSelectTab(AppTab.Home)
@@ -243,7 +266,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun pokedexOpenAndClose_advanceThroughTheRealNavigation() {
-        val vm = vmEnAperturaPokedex()   // mensaje del paso visible
+        val vm = vmAtDexOpenStep()   // mensaje del paso visible
 
         vm.onTutorialMessageTap()   // cierra el mensaje del paso de la Pokédex
         vm.onOpenDex()
@@ -252,6 +275,74 @@ class MainViewModelTutorialTest {
         vm.onTutorialMessageTap()   // cierra el mensaje del regreso
         vm.onCloseDex()
         assertEquals(TutorialPhase.FAREWELL, vm.uiState.value.tutorialPhase)
+    }
+
+    // ───────────────── Guard completo del despliegue de la Pokéball ─────────────────
+
+    @Test
+    fun pokeballDeployment_whileBlocked_leavesTheStateUntouched() {
+        // El guard del despliegue cubre toda la operación: bloqueado, el
+        // estado se devuelve intacto (sin cambiar de pestaña ni cerrar la
+        // hoja de opciones), igual que el resto de métodos con guard.
+        listOf(
+            "OFFER" to vmAtOffer(),
+            "CONFIRM" to vmAtOffer().apply {
+                onTutorialAction(TutorialAction.ACCEPT_OFFER)          // CONFIRM
+            },
+            "FAREWELL" to vmUpToFarewell(),
+            "OPEN_MAP" to vmAtMapOpenStep(),
+            "OPEN_POKEDEX" to vmAtDexOpenStep(),
+            "RETURN_POKEDEX" to vmAtDexOpenStep(messageClosed = true)
+        ).forEach { (phase, vm) ->
+            val before = vm.uiState.value
+
+            vm.onPokeBallExpanded(true)
+            assertEquals("$phase: el bloqueado devuelve el estado intacto", before, vm.uiState.value)
+        }
+    }
+
+    @Test
+    fun pokeballDeployment_duringMapReturn_keepsTheMapTab() {
+        // Misma clase de regresión que la del regreso de la Pokédex
+        // (`7af231a`): con el mensaje cerrado, el despliegue bloqueado
+        // cambiaba de pestaña estando en el Mapa. El guard completo lo impide.
+        val vm = vmAtMapOpenStep(messageClosed = true).apply {
+            onSelectTab(AppTab.Map)                                // RETURN_MAP
+            onTutorialMessageTap()                                 // cierra el mensaje
+        }
+
+        assertEquals(TutorialPhase.RETURN_MAP, vm.uiState.value.tutorialPhase)
+        assertEquals(AppTab.Map, vm.uiState.value.contentTab)
+
+        vm.onPokeBallExpanded(true)
+        assertEquals(TutorialPhase.RETURN_MAP, vm.uiState.value.tutorialPhase)
+        assertEquals(AppTab.Map, vm.uiState.value.contentTab)
+    }
+
+    @Test
+    fun pokeballDeployment_duringDexStep_keepsTheOptionsSheetOpen() {
+        val vm = vmAtDexOpenStep(messageClosed = true).apply {
+            onOpenOptions()                                        // hoja de opciones abierta
+        }
+        assertTrue(vm.uiState.value.isOptionsOpen)
+
+        vm.onPokeBallExpanded(true)
+        assertTrue(vm.uiState.value.isOptionsOpen)
+        assertEquals(TutorialPhase.OPEN_POKEDEX, vm.uiState.value.tutorialPhase)
+    }
+
+    @Test
+    fun pokeballDeployment_inFreePlay_navigatesNormally() {
+        val vm = vmAtOffer().apply {
+            onTutorialAction(TutorialAction.DECLINE_OFFER)         // SKIPPED
+        }
+
+        vm.onSelectTab(AppTab.Map)                                 // navegación libre
+        assertEquals(AppTab.Map, vm.uiState.value.contentTab)
+
+        vm.onPokeBallExpanded(true)
+        assertEquals(AppTab.Home, vm.uiState.value.contentTab)
+        assertEquals(TutorialPhase.SKIPPED, vm.uiState.value.tutorialPhase)
     }
 
     // ───────────────── Espera de experiencia: jugabilidad normal ─────────────────
@@ -456,7 +547,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun guidedSteps_blockThePokeballGameClick() {
-        val vm = vmEnDespliegue()   // mensaje del paso visible
+        val vm = vmAtDeployStep()   // mensaje del paso visible
 
         tapZone(vm, 3)
 
@@ -502,7 +593,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun mapStep_blocksReturnBeforeOpeningAndTheMapButtonAfterwards() {
-        val vm = vmEnAperturaMapa()   // OPEN_MAP, mensaje visible
+        val vm = vmAtMapOpenStep()   // OPEN_MAP, mensaje visible
 
         // No se puede "volver" sin haber abierto el mapa (ni siquiera con el
         // mensaje ya cerrado).
@@ -573,7 +664,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun guidedSteps_blockTheTallGrassToggle() {
-        val vm = vmEnDespliegue()   // mensaje del paso visible
+        val vm = vmAtDeployStep()   // mensaje del paso visible
 
         vm.onTallGrassToggle()
         assertFalse(vm.uiState.value.isTallGrass)
@@ -624,7 +715,7 @@ class MainViewModelTutorialTest {
     fun visibleMessage_blocksAllGameplay_includingQuestionsAndNotice() {
         // Regla principal de QA: con cualquier mensaje visible, nada del juego
         // responde — ni Pokéball, ni hierba, ni opciones, ni avance, ni reset.
-        val offer = vmEnOferta()   // OFFER
+        val offer = vmAtOffer()   // OFFER
         tapZone(offer, 1)
         offer.onTallGrassToggle()
         offer.onOpenOptions()
@@ -658,7 +749,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun offerMessage_closesViaItsExplicitButtons() {
-        val vm = vmEnOferta()   // OFFER
+        val vm = vmAtOffer()   // OFFER
 
         // El toque no responde por el jugador; solo los botones.
         vm.onTutorialMessageTap()
@@ -734,7 +825,7 @@ class MainViewModelTutorialTest {
 
     @Test
     fun messageTap_onQuestions_requiresAnExplicitAnswer() {
-        val vm = vmEnOferta()   // OFFER
+        val vm = vmAtOffer()   // OFFER
 
         vm.onTutorialMessageTap()
         assertEquals(TutorialPhase.OFFER, vm.uiState.value.tutorialPhase)
@@ -895,7 +986,7 @@ class MainViewModelTutorialTest {
         // Pokédex (bloqueado en la UI por el shell): cerrar la dex es la
         // interacción del paso, pero la mitad de navegación a Mapa está
         // bloqueada — el regreso previsto es el toque de la Pokéball.
-        val vm = vmEnAperturaPokedex(mensajeCerrado = true).apply {
+        val vm = vmAtDexOpenStep(messageClosed = true).apply {
             onOpenDex()              // RETURN_POKEDEX, mensaje reabierto
             onTutorialMessageTap()   // cierra el mensaje del regreso
         }

@@ -9,7 +9,6 @@ package com.dsrs.pokeclic.ui
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn

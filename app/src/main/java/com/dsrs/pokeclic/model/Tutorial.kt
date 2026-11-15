@@ -195,6 +195,12 @@ fun TutorialPhase.advance(action: TutorialAction): TutorialPhase {
  * Interacciones de juego permitidas en este estado; el ViewModel ignora
  * (no-op) todo control fuera de él. Desde [TutorialPhase.EXP_WAIT] —y en los
  * finales— el conjunto es [TutorialInteraction.ALL].
+ *
+ * Nota: la entrada de `EXP_NOTICE` es defensiva y no es alcanzable vía
+ * [tutorialInteractionAllowed], porque esa función corta antes con
+ * `isMessageVisible` (el aviso de avance siempre tiene el mensaje visible).
+ * Se mantiene en la tabla para que cualquier consumidor futuro que la
+ * consulte directamente reciba un conjunto coherente con la fase.
  */
 val TutorialPhase.allowedInteractions: Set<TutorialInteraction>
     get() = when (this) {
@@ -209,20 +215,6 @@ val TutorialPhase.allowedInteractions: Set<TutorialInteraction>
         TutorialPhase.EXP_WAIT, TutorialPhase.EXP_NOTICE, TutorialPhase.ADVANCE_WAIT,
         TutorialPhase.SKIPPED, TutorialPhase.COMPLETED -> setOf(TutorialInteraction.ALL)
     }
-
-/** ¿El tutorial está en curso? `false` antes de ofrecerse y en los finales. */
-val TutorialPhase.isActive: Boolean
-    get() = this != TutorialPhase.PENDING &&
-        this != TutorialPhase.SKIPPED &&
-        this != TutorialPhase.COMPLETED
-
-/** ¿Este estado debe dibujar la capa de diálogo del tutorial? */
-val TutorialPhase.showsDialog: Boolean
-    get() = this != TutorialPhase.PENDING &&
-        this != TutorialPhase.EXP_WAIT &&
-        this != TutorialPhase.ADVANCE_WAIT &&
-        this != TutorialPhase.SKIPPED &&
-        this != TutorialPhase.COMPLETED
 
 /**
  * ¿Este estado es una capa **modal** (scrim + `modalBlocking` y menú oculto)?

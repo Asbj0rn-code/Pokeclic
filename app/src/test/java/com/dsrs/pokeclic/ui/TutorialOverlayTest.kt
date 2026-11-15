@@ -1,6 +1,6 @@
 /**
  * Pruebas JVM de los mapeos puros de la capa de diálogos del tutorial
- * (`TutorialOverlay.kt`): texto, emoción, preguntas y uso del nombre por fase.
+ * (`TutorialOverlay.kt`): texto por fase, preguntas y uso del nombre por fase.
  */
 package com.dsrs.pokeclic.ui
 
@@ -62,11 +62,6 @@ class TutorialOverlayTest {
             }
         }
     }
-
-    // ───────────────── Emoción de Oak ─────────────────
-
-    // (El retrato de Oak se retiró de todos los mensajes del tutorial: la capa
-    // ya no usa `OakMood` ni `tutorialMood`.)
 
     // ───────────────── Preguntas y nombre ─────────────────
 

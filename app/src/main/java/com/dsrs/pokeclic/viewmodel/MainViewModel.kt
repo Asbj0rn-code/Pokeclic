@@ -473,16 +473,17 @@ class MainViewModel(
      * mensaje no completa el paso, pero es lo que habilita el despliegue como
      * acción. La máquina ignora la acción fuera de fase.
      */
-    fun onPokeBallExpanded(expanded: Boolean) = mutate {
-        if (expanded) {
-            val next = it.copy(contentTab = AppTab.Home, isOptionsOpen = false)
-            if (next.tutorialAllows(TutorialInteraction.POKEBALL_DRAG)) {
-                next.withTutorial(TutorialAction.POKEBALL_EXPANDED)
-            } else {
-                next
-            }
+    fun onPokeBallExpanded(expanded: Boolean) = mutate { state ->
+        // Guard del tutorial a toda la operación: si el despliegue está
+        // bloqueado, el estado se devuelve intacto (sin cambiar de pestaña
+        // ni cerrar la hoja de opciones), igual que el resto de métodos con
+        // guard. En juego libre, `tutorialAllows(POKEBALL_DRAG)` es `true`
+        // y el despliegue alimenta el paso 1 (`DEPLOY_POKEBALL`).
+        if (!expanded || !state.tutorialAllows(TutorialInteraction.POKEBALL_DRAG)) {
+            state
         } else {
-            it
+            state.copy(contentTab = AppTab.Home, isOptionsOpen = false)
+                .withTutorial(TutorialAction.POKEBALL_EXPANDED)
         }
     }
 

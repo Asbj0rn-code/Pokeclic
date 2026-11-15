@@ -198,15 +198,13 @@ class TutorialTest {
     }
 
     @Test
-    fun finalPhases_areFlaggedAsFinalAndNotActive() {
+    fun finalPhases_areFlaggedAsFinal() {
         assertTrue(TutorialPhase.SKIPPED.isFinal)
         assertTrue(TutorialPhase.COMPLETED.isFinal)
-        assertFalse(TutorialPhase.SKIPPED.isActive)
-        assertFalse(TutorialPhase.COMPLETED.isActive)
     }
 
     @Test
-    fun intermediatePhases_areActiveAndNotFinal() {
+    fun intermediatePhases_areNotFinal() {
         listOf(
             TutorialPhase.PENDING,
             TutorialPhase.OFFER,
@@ -222,11 +220,7 @@ class TutorialTest {
             TutorialPhase.ADVANCE_WAIT
         ).forEach { phase ->
             assertFalse("$phase no es final", phase.isFinal)
-            if (phase != TutorialPhase.PENDING) {
-                assertTrue("$phase está en curso", phase.isActive)
-            }
         }
-        assertFalse(TutorialPhase.PENDING.isActive)
     }
 
     // ───────────────── Interacciones permitidas por estado ─────────────────
@@ -281,32 +275,6 @@ class TutorialTest {
     }
 
     // ───────────────── Presentación (capa de diálogo) ─────────────────
-
-    @Test
-    fun dialogIsShownInOfferConfirmStepsAndFarewell() {
-        listOf(
-            TutorialPhase.OFFER,
-            TutorialPhase.CONFIRM,
-            TutorialPhase.DEPLOY_POKEBALL,
-            TutorialPhase.OPEN_MAP,
-            TutorialPhase.RETURN_MAP,
-            TutorialPhase.OPEN_POKEDEX,
-            TutorialPhase.RETURN_POKEDEX,
-            TutorialPhase.FAREWELL,
-            TutorialPhase.EXP_NOTICE
-        ).forEach { phase ->
-            assertTrue("$phase debe mostrar diálogo", phase.showsDialog)
-        }
-        listOf(
-            TutorialPhase.PENDING,
-            TutorialPhase.EXP_WAIT,
-            TutorialPhase.ADVANCE_WAIT,
-            TutorialPhase.SKIPPED,
-            TutorialPhase.COMPLETED
-        ).forEach { phase ->
-            assertFalse("$phase no debe mostrar diálogo", phase.showsDialog)
-        }
-    }
 
     @Test
     fun onlyQuestionsAndFarewellAreModal() {
