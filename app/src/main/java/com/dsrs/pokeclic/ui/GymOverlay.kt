@@ -864,7 +864,7 @@ private fun RingResultBanner(
     seconds: Float,
     modifier: Modifier = Modifier
 ) {
-    val cell = 4.dp
+    val cell = BANNER_CELL
     val cells = PixelFont.widthOf(text)
 
     // Latido del pulso: las letras crecen un 12 % y destellan blanco en el pico.
@@ -876,21 +876,21 @@ private fun RingResultBanner(
     val moving = seconds < BANNER_HIT_S || seconds > BANNER_OUT_S + 0.06f
     val stretch = when {
         !moving -> 1f
-        seconds < BANNER_HIT_S -> 1.22f
-        else -> 1.12f
+        seconds < BANNER_HIT_S -> BANNER_STRETCH_IN
+        else -> BANNER_STRETCH_OUT
     }
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(150.dp)
+            .height(BANNER_HEIGHT)
     ) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val px = cell.toPx() * (1f + 0.12f * pulse)
+        val px = cell.toPx() * (1f + BANNER_PULSE_SCALE * pulse)
         val wordW = cells * px * stretch
         val wordH = PixelFont.HEIGHT * px
         val dx = bannerX(seconds).dp.toPx()
-        val frame = (seconds * 30f).toInt()
+        val frame = (seconds * BANNER_FPS).toInt()
 
         // 1. Líneas de velocidad: se relanzan cada fotograma, como una viñeta.
         val lineK = when {
@@ -902,11 +902,13 @@ private fun RingResultBanner(
         }
         if (lineK > 0.02f) {
             val outgoing = seconds >= BANNER_OUT_S
-            repeat(18) { index ->
-                if (hashNoise(frame * 31 + index, 3) > lineK) return@repeat
-                val y = (hashNoise(frame * 31 + index, 1) - 0.5f) * 60f
-                val half = 8f + hashNoise(frame * 31 + index, 2) * 25f
-                val x = (hashNoise(frame * 31 + index, 4) - 0.5f) * 190f
+            repeat(BANNER_SPEED_LINES) { index ->
+                // Cada fotograma relanza las líneas: mismo índice, semilla distinta.
+                val seed = frame * BANNER_FRAME_STRIDE + index
+                if (hashNoise(seed, 3) > lineK) return@repeat
+                val y = (hashNoise(seed, 1) - 0.5f) * 60f
+                val half = 8f + hashNoise(seed, 2) * 25f
+                val x = (hashNoise(seed, 4) - 0.5f) * 190f
                 val left = center.x + (x - half).dp.toPx()
                 val right = center.x + (x + half).dp.toPx()
                 val lineY = center.y + y.dp.toPx()
@@ -914,14 +916,14 @@ private fun RingResultBanner(
                     color = color.copy(alpha = 0.45f),
                     start = Offset(left, lineY),
                     end = Offset(right, lineY),
-                    strokeWidth = 1.5.dp.toPx()
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
                 )
                 // La punta que marca el sentido de la marcha va en blanco.
                 drawLine(
                     color = Color.White.copy(alpha = 0.6f),
                     start = Offset(if (outgoing) left else right - half * 0.35f, lineY),
                     end = Offset(if (outgoing) left + half * 0.35f else right, lineY),
-                    strokeWidth = 1.5.dp.toPx()
+                    strokeWidth = BANNER_LINE_STROKE.toPx()
                 )
             }
         }
@@ -1001,7 +1003,7 @@ private fun RingResultBanner(
             val body = if (flash) Color.White else color
             val top = if (flash) Color.White else lerp(color, Color.White, 0.55f)
             val bottom = if (flash) Color.White else lerp(color, Color.Black, 0.55f)
-            val sweep = seg(seconds, 0.55f, 0.80f)
+            val sweep = seg(seconds, BANNER_SHINE_FROM_S, BANNER_SHINE_TO_S)
             PixelFont.run {
                 drawText(
                     text = text,
@@ -1014,8 +1016,12 @@ private fun RingResultBanner(
                     stretchX = stretch,
                     top = top.copy(alpha = 1f - gone),
                     bottom = bottom.copy(alpha = 1f - gone),
-                    outline = Color(0xFF06111C).copy(alpha = 1f - gone),
-                    shine = if (sweep > 0f && sweep < 1f) -2f + (cells + 4) * sweep else null
+                    outline = RING_OUTLINE.copy(alpha = 1f - gone),
+                    shine = if (sweep > 0f && sweep < 1f) {
+                        -BANNER_SHINE_MARGIN + (cells + BANNER_SHINE_MARGIN * 2) * sweep
+                    } else {
+                        null
+                    }
                 )
             }
         }
@@ -1089,6 +1095,38 @@ private const val BANNER_OUT_S = 0.95f
 
 /** Vida total del cartel; pasado este tiempo el llamante deja de componerlo. */
 private const val BANNER_LIFE_S = 1.20f
+
+/** Ventana en la que el brillo barre las letras de izquierda a derecha. */
+private const val BANNER_SHINE_FROM_S = 0.55f
+private const val BANNER_SHINE_TO_S = 0.80f
+
+/** Celdas de margen por cada lado que recorre el brillo antes y después del texto. */
+private const val BANNER_SHINE_MARGIN = 2f
+
+/** Lado de una celda de la fuente: el mando de tamaño de todo el cartel. */
+private val BANNER_CELL = 4.dp
+
+/** Alto del lienzo del cartel; deja aire para las líneas de velocidad. */
+private val BANNER_HEIGHT = 150.dp
+
+/** Grosor de las líneas de velocidad. */
+private val BANNER_LINE_STROKE = 1.5.dp
+
+/** Fotogramas por segundo con los que se relanzan las líneas de velocidad. */
+private const val BANNER_FPS = 30f
+
+/** Líneas de velocidad que se intentan por fotograma. */
+private const val BANNER_SPEED_LINES = 18
+
+/** Desfase entre fotogramas: mismas líneas, colocadas de otra forma cada vez. */
+private const val BANNER_FRAME_STRIDE = 31
+
+/** Ensanche horizontal de las letras mientras vuelan: al entrar y al salir. */
+private const val BANNER_STRETCH_IN = 1.22f
+private const val BANNER_STRETCH_OUT = 1.12f
+
+/** Cuánto crecen las letras en el pico del latido. */
+private const val BANNER_PULSE_SCALE = 0.12f
 
 /** Interpolación lineal suelta, para no arrastrar otra dependencia. */
 private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t

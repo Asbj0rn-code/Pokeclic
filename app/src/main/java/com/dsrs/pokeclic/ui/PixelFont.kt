@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
+import kotlin.math.abs
 
 internal object PixelFont {
 
@@ -31,6 +32,9 @@ internal object PixelFont {
 
     /** Ancho reservado al espacio, en píxeles de fuente. */
     private const val SPACE = 3
+
+    /** Media anchura del barrido de brillo, en celdas. */
+    private const val SHINE_HALF_CELLS = 1.5f
 
     private val RAW = mapOf(
         'A' to ".###.|#...#|#...#|#####|#...#|#...#|#...#",
@@ -160,7 +164,7 @@ internal object PixelFont {
                     // Filas 0-2 arriba, 5-6 abajo, 3-4 el color base.
                     val band = if (y < 3) 0 else if (y < 5) 1 else 2
                     bands[band].addRect(rect)
-                    if (shine != null && kotlin.math.abs(cellX - shine) < 1.5f) shinePath.addRect(rect)
+                    if (shine != null && abs(cellX - shine) < SHINE_HALF_CELLS) shinePath.addRect(rect)
                 }
             }
             penX += glyph.width + GAP

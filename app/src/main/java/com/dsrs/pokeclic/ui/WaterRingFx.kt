@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
 
 /** Una de las dos hojas del resultado de un anillo. */
 internal enum class WaterRingSheet(
-    @DrawableRes val resId: Int,
+    @param:DrawableRes val resId: Int,
     val columns: Int,
     val frameCount: Int
 ) {

@@ -34,7 +34,6 @@ import com.dsrs.pokeclic.model.Zone
 import com.dsrs.pokeclic.model.ZoneCatalog
 import com.dsrs.pokeclic.model.advance
 import com.dsrs.pokeclic.model.advanceZone
-import com.dsrs.pokeclic.model.allowedInteractions
 import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isGymPending
 import com.dsrs.pokeclic.model.isGuidedStep
