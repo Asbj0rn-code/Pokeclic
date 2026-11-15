@@ -444,8 +444,12 @@ que no pueden desincronizarse. Las zonas sin entrada propia usan
 (`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
 corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla),
 **Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`),
-**Ciudad Plateada** (`background_ciudad_plateada.png`, 4608×3840, `startAnchor = 0,5`)
-y **Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal).
+**Ciudad Plateada** (`background_ciudad_plateada.png`, 4608×3840, `startAnchor = 0,5`),
+**Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal) y
+**Ciudad Celeste** (`background_ciudad_celeste.png`, 4608×3840, fondo horizontal
+que arranca en su **borde izquierdo** con `startOffset = -2` —el arte mide cuatro
+pantallas de ancho— y deja su borde inferior un 15 % de pantalla por debajo del
+borde inferior con `startAnchor = 1,15`).
 Las cuatro verticales arrancan por el final de su dibujo: el entrenador empieza
 pisando su borde inferior y camina hacia arriba. La Ruta 3 arranca **pegada al
 marco izquierdo** de su arte (`startOffset = -0,5`) y **sobre su eje central
@@ -484,6 +488,18 @@ segunda baja (0 → -3 → 0). Cierra porque el superciclo suma 30 clics rectos 
 anchos del arte: 30 × 76,8 px = 2304 px) y los laterales están balanceados (10
 hacia arriba y 10 hacia abajo). Si una de las dos sumas deja de cuadrar, cada ciclo
 empieza en otro píxel o a otra altura.
+
+Ciudad Celeste es el fondo horizontal con el arte más grande del catálogo
+(4608×3840: cuatro anchos de cámara por dos altos). Su trayectoria es **14 recto ·
+16 derecha · 15 recto · 18 izquierda · 18 recto · 2 derecha · 13 recto**: cruza la
+ciudad, cambia de calle, vuelve a la avenida, baja a la de abajo y regresa. El
+bucle cierra porque los rectos suman **60 clics**, una vuelta exacta al ancho del
+arte (4608 / 76,8 = 60), y los laterales están balanceados (18 hacia un lado y 18
+hacia el otro). El ciclo completo dura 96 clics y el personaje vuelve a la línea
+central en cada vuelta. Al retocarla rige la misma cuenta que en las otras
+horizontales: los rectos, en múltiplos de 60, y los dos sentidos laterales sumando
+lo mismo. Un clic de desbalance son 0,04 alturas de baldosa por vuelta, que no se
+corrigen solas: el personaje se va quedando cada vez más corrido.
 
 En un fondo horizontal, cada tramo se lee así (el arte siempre va al revés que el
 entrenador):
@@ -923,6 +939,7 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
 | `background_ciudad_plateada.png` | Fondo animado de Ciudad Plateada (`drawable-nodpi`, 4608×3840 pixel art) |
 | `background_ruta3.png` | Fondo animado de Ruta 3, en bucle horizontal (`drawable-nodpi`, 1152×1920 pixel art) |
+| `background_ciudad_celeste.png` | Fondo animado de Ciudad Celeste, en bucle horizontal (`drawable-nodpi`, 4608×3840 pixel art) |
 | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
 
 Nombres en minúsculas obligatorio (a-z, 0-9, `_`).

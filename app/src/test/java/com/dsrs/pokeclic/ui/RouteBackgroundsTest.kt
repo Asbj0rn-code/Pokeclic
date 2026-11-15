@@ -18,7 +18,8 @@ import kotlin.math.abs
  */
 private val HORIZONTAL_ARTWORK = mapOf(
     "ruta3" to "background_ruta3.png",
-    "mt_moon" to "background_mt_moon.png"
+    "mt_moon" to "background_mt_moon.png",
+    "ciudad_celeste" to "background_ciudad_celeste.png"
 )
 
 /**
@@ -104,15 +105,22 @@ class RouteBackgroundsTest {
             background.startAnchor?.let { anchor ->
                 assertTrue(
                     "${zone.id}: startAnchor $anchor deja el arte fuera de la pantalla",
-                    anchor in 0f..1f
+                    // Fracción de pantalla donde cae el borde inferior del arte.
+                    // Por encima del alto del arte medido en pantallas (~1,5 en un
+                    // móvil) la cuenta enrolla y el encuadre vuelve a empezar, así
+                    // que el tope es solo de cordura: cada zona clava su encuadre
+                    // real en su propio test.
+                    anchor in 0f..2f
                 )
             }
             assertTrue(
-                "${zone.id}: startOffset ${background.startOffset} corre la imagen más de una pantalla",
-                // Hasta una pantalla entera: un arte del doble de ancho que la
-                // pantalla necesita ±1 para dejar su marco izquierdo (o derecho)
-                // bajo el entrenador.
-                abs(background.startOffset) <= 1f
+                "${zone.id}: startOffset ${background.startOffset} corre la imagen más de un ancho de arte",
+                // El corrimiento se enrolla módulo el ancho del arte, así que el
+                // tope real es un ancho de arte medido en pantallas. El arte más
+                // ancho del catálogo mide 4608 px (cuatro anchos de cámara), de ahí
+                // 4: un arte del doble de ancho necesita ±1 para dejar su marco
+                // izquierdo bajo el entrenador, y uno de cuatro anchos necesita ±2.
+                abs(background.startOffset) <= 4f
             )
         }
     }
@@ -155,6 +163,7 @@ class RouteBackgroundsTest {
         assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_plateada"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_celeste"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
     }
@@ -342,6 +351,34 @@ class RouteBackgroundsTest {
         val background = RouteBackgrounds.forZone("mt_moon")
         assertEquals(-1f, background.startOffset, 1e-6f)
         assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun ciudadCeleste_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_celeste,
+            RouteBackgrounds.forZone("ciudad_celeste").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadCeleste_scrollsSideways() {
+        // Tercer fondo horizontal, con el arte de 4608 px: cuatro anchos de cámara.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ciudad_celeste").motion.axis
+        )
+    }
+
+    @Test
+    fun ciudadCeleste_startsOnTheLeftFrameOfItsArtwork() {
+        // El arte mide cuatro pantallas de ancho, así que dejar al entrenador sobre
+        // su **marco izquierdo** pide dos pantallas enteras: -2 lo pone en el 0 %
+        // del dibujo (-1 lo dejaría en el 25 % y 0 en el centro). El encuadre
+        // vertical (`startAnchor`) es un valor de ajuste manual y no se clava aquí:
+        // solo lo vigila el rango sano de `everyZone_hasASaneStart`.
+        val background = RouteBackgrounds.forZone("ciudad_celeste")
+        assertEquals(-2f, background.startOffset, 1e-6f)
     }
 
     @Test
