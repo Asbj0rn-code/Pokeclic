@@ -934,8 +934,8 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
 | `water_gym.png` | Fondo del gimnasio de agua (`drawable-nodpi`, 1536×2304 pixel art) |
 | `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
-| `hydro_burst.png` | Acierto del anillo de Misty, en verde (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
-| `hydro_implode.png` | Fallo del anillo de Misty, en rojo (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
+| `hydro_burst.png` | Acierto del anillo de Misty (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
+| `hydro_implode.png` | Fallo del anillo de Misty (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
@@ -1754,10 +1754,11 @@ roca o el anillo más cercano, o la celda de Voltorb).
   (`src/fx/water/hydro-burst.js` y `src/fx/water/hydro-implode.js`, con el helper
   `wetRing`/`wetArc` en `src/fx/water/_lib.js`). Se editan allí, se reexportan con
   `node tools/render.mjs water/hydro-burst water/hydro-implode --sheet` y se copian
-  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. El color es parte del
-  arte: el acierto usa la rampa verde de `PAL.heal` y el fallo la roja de
-  `PAL.blood` (`meta.options.palette` en cada efecto), porque el resultado tiene
-  que leerse sin depender del texto. `WaterRingFxTest`
+  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. Las dos hojas van con
+  la rampa de agua a propósito: el aro que se cierra y el estallido siguen siendo
+  agua. El verde del acierto y el rojo del fallo los lleva el **círculo fijo**
+  alrededor del Pokémon (`tinted(...)` y `RING_TINT_MS` en `GymOverlay`).
+  `WaterRingFxTest`
   comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
   6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
   del lienzo ni deja píxeles al terminar.

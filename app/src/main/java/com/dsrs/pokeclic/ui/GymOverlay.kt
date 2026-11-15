@@ -547,6 +547,23 @@ private fun RingGymScene(
         BitmapFactory.decodeResource(context.resources, R.drawable.hydro_implode).asImageBitmap()
     }
 
+    // El resultado tiñe el **círculo fijo** que rodea al Pokémon, no el aro que se
+    // cierra ni el estallido: esos siguen siendo agua. Así el color dice "acierto"
+    // o "fallo" sin disfrazar el ataque de otra cosa.
+    val resultTint = when (feedback?.outcome) {
+        RingOutcome.HIT -> HIT_GREEN
+        RingOutcome.MISS -> MISS_RED
+        null -> null
+    }
+    val tintAge = now - fxStartMs
+    val tintMix = if (resultTint != null && tintAge in 0 until RING_TINT_MS) {
+        val u = tintAge / RING_TINT_MS.toFloat()
+        // Aguanta encendido un tercio del tiempo y luego se apaga.
+        if (u < 0.35f) 1f else (1f - (u - 0.35f) / 0.65f).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
     // Latido del enemigo mientras está expuesto.
     val pulse = rememberInfiniteTransition(label = "ringExposed")
     val pulseScale by pulse.animateFloat(
@@ -568,10 +585,29 @@ private fun RingGymScene(
             val outlineStroke = Stroke(width = (RING_STROKE + 3.dp).toPx())
             val foamStroke = Stroke(width = 1.dp.toPx())
 
+            // El color del resultado. El círculo fijo es el que lo lleva: el aro
+            // que se cierra y el estallido se quedan en agua.
+            fun tinted(base: Color): Color =
+                if (resultTint == null || tintMix <= 0f) base
+                else lerp(base, resultTint, tintMix)
+
+            // Halo del resultado: envuelve el círculo fijo mientras dura el aviso.
+            if (resultTint != null && tintMix > 0.01f) {
+                drawCircle(
+                    color = resultTint.copy(alpha = 0.34f * tintMix),
+                    radius = targetRadius,
+                    center = center,
+                    style = Stroke(width = RING_GLOW_STROKE.toPx() * 2f)
+                )
+            }
+
             // Charco de agua bajo el Pokémon: da profundidad al círculo fijo.
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(WATER_POOL.copy(alpha = 0.34f), Color.Transparent),
+                    colors = listOf(
+                        tinted(WATER_POOL).copy(alpha = 0.34f + 0.26f * tintMix),
+                        Color.Transparent
+                    ),
                     center = center,
                     radius = targetRadius
                 ),
@@ -589,13 +625,13 @@ private fun RingGymScene(
                 style = outlineStroke
             )
             drawCircle(
-                color = WATER_LIGHT.copy(alpha = 0.95f),
+                color = tinted(WATER_LIGHT).copy(alpha = 0.95f),
                 radius = targetRadius,
                 center = center,
                 style = mainStroke
             )
             drawCircle(
-                color = WATER_FOAM.copy(alpha = 0.95f),
+                color = tinted(WATER_FOAM).copy(alpha = 0.95f),
                 radius = targetRadius - 3.dp.toPx(),
                 center = center,
                 style = foamStroke
@@ -608,7 +644,7 @@ private fun RingGymScene(
                 val bubbleX = center.x + (index - 2f) * (targetRadius * 0.28f)
                 val bubbleY = center.y + targetRadius * 0.82f - phase * targetRadius * 1.6f
                 drawCircle(
-                    color = WATER_FOAM.copy(alpha = 0.42f * (1f - phase)),
+                    color = tinted(WATER_FOAM).copy(alpha = 0.42f * (1f - phase)),
                     radius = if (index % 2 == 0) 3.dp.toPx() else 2.dp.toPx(),
                     center = Offset(bubbleX, bubbleY)
                 )
@@ -1682,6 +1718,12 @@ private val RING_WAVE_AMPLITUDE = 2.5.dp
 /** Distancia entre el cuerpo del aro y la cresta de espuma. */
 private val RING_CREST_OFFSET = 1.5.dp
 private val RING_CREST_STROKE = 1.dp
+
+/**
+ * Cuánto dura el tinte de resultado en el círculo fijo del jugador, en ms. Cubre
+ * el arranque del efecto (0,83 s el acierto, 1,03 s el fallo) sin quedarse pegado.
+ */
+private const val RING_TINT_MS = 800L
 
 /** Duración del estallido y de la etiqueta de acierto/fallo. */
 private const val RING_FEEDBACK_MS = 900
