@@ -98,6 +98,7 @@ import com.dsrs.pokeclic.model.VoltorbFeedback
 import com.dsrs.pokeclic.model.VoltorbOutcome
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.annotation.DrawableRes
@@ -525,17 +526,13 @@ private fun RingGymScene(
     val context = LocalContext.current
 
     // Acierto/fallo del último anillo: el ViewModel publica el resultado y aquí
-    // se convierte en un estallido de agua (hoja de pixelfx), más la etiqueta
-    // flotante. El instante de arranque se guarda aparte porque el sprite sheet
-    // se indexa por tiempo, no por el `Animatable` de la etiqueta.
+    // se convierte en un estallido de agua (hoja de pixelfx), más el cartel.
+    // El instante de arranque es la única autoridad temporal: el sprite sheet se
+    // indexa por tiempo y el cartel se calcula desde los mismos segundos.
     val feedback = state.ringFeedback
-    val feedbackProgress = remember { Animatable(1f) }
     var fxStartMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(feedback?.ringId) {
-        if (feedback == null) return@LaunchedEffect
-        fxStartMs = nowMs()
-        feedbackProgress.snapTo(0f)
-        feedbackProgress.animateTo(1f, tween(durationMillis = RING_FEEDBACK_MS))
+        if (feedback != null) fxStartMs = nowMs()
     }
 
     // Una decodificación por escena para cada hoja.
@@ -820,8 +817,8 @@ private fun RingGymScene(
             }
         }
 
-        // Cartel del resultado: entra con golpe, suelta confeti de píxeles y, si
-        // hay combo, lo cuenta. Verde para los aciertos y rojo para los fallos.
+        // Cartel del resultado, portado de `ui/combo-counter` de pixelfx: entra
+        // coleteando, golpea y se va barrido. Verde para aciertos, rojo para fallos.
         feedback?.let { result ->
             val hit = result.outcome == RingOutcome.HIT
             val label = when {
@@ -830,13 +827,16 @@ private fun RingGymScene(
                 result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
                 else -> stringResource(R.string.gym_ring_miss)
             }
-            RingResultBanner(
-                text = label,
-                color = if (hit) HIT_GREEN else MISS_RED,
-                combo = if (hit) result.combo else 0,
-                progress = feedbackProgress.value,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            val seconds = (now - fxStartMs) / 1000f
+            if (seconds >= 0f && seconds < BANNER_LIFE_S) {
+                RingResultBanner(
+                    text = label,
+                    color = if (hit) HIT_GREEN else MISS_RED,
+                    combo = if (hit) result.combo else 0,
+                    seconds = seconds,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
 
     }
@@ -845,91 +845,280 @@ private fun RingGymScene(
 /**
  * Cartel del resultado del anillo.
  *
- * Entra con un golpe (arranca chico, se pasa de tamaño y se asienta), suelta un
- * confeti de cuadraditos del color del resultado y se va subiendo mientras se
- * apaga. Con combo, el cartel pide más espacio y el número viaja con el texto;
- * todo se deriva de [progress], así que no necesita animaciones propias.
+ * Portado de `ui/combo-counter` de pixelfx: las letras entran coleteando desde la
+ * izquierda con líneas de velocidad y dos estelas, frenan de golpe con un destello
+ * blanco, un anillo y chispas, laten en el pulso y se van barridas a la derecha
+ * mientras una barra se vacía debajo. Todo se calcula desde [seconds], así que no
+ * necesita animaciones propias ni acumular estado.
  *
  * @param color verde del acierto o rojo del fallo.
- * @param combo aciertos seguidos; `0` o `1` no se cuentan.
+ * @param combo aciertos seguidos; solo engorda la lluvia de chispas.
  */
 @Composable
 private fun RingResultBanner(
     text: String,
     color: Color,
     combo: Int,
-    progress: Float,
+    seconds: Float,
     modifier: Modifier = Modifier
 ) {
-    // Golpe de entrada: 0,55 → 1,22 en el primer 10 %, y de ahí se asienta.
-    val pop = when {
-        progress < 0.10f -> mix(0.55f, 1.22f, progress / 0.10f)
-        progress < 0.30f -> mix(1.22f, 1f, (progress - 0.10f) / 0.20f)
-        else -> 1f
-    }
-    // Un combo largo empuja un poco más el tamaño, sin desmadrarse.
-    val comboBoost = 1f + 0.05f * (combo - 1).coerceIn(0, 4)
-    // Se queda legible y después se apaga.
-    val fade = if (progress < 0.55f) 1f else ((1f - progress) / 0.45f).coerceIn(0f, 1f)
-    // Sacudida lateral del impacto: dos vaivenes que mueren en el primer tercio.
-    val shake = sin(progress * 42f) * (1f - (progress / 0.33f)).coerceIn(0f, 1f)
-    // El confeti sale en el primer tercio y se apaga al final del recorrido.
-    val burst = (progress / 0.34f).coerceIn(0f, 1f)
+    val cell = 4.dp
+    val cells = PixelFont.widthOf(text)
 
-    Box(
+    // Latido del pulso: las letras crecen un 12 % y destellan blanco en el pico.
+    val fromBeat = (seconds - BANNER_BEAT_S) / 0.05f
+    val pulse = exp(-(fromBeat * fromBeat))
+    val flash = (seconds >= BANNER_HIT_S && seconds < BANNER_HIT_S + 0.07f) || pulse > 0.6f
+    // Salida: se va barrida a la derecha.
+    val gone = seg(seconds, BANNER_OUT_S + 0.08f, BANNER_OUT_S + 0.20f)
+    val moving = seconds < BANNER_HIT_S || seconds > BANNER_OUT_S + 0.06f
+    val stretch = when {
+        !moving -> 1f
+        seconds < BANNER_HIT_S -> 1.22f
+        else -> 1.12f
+    }
+
+    Canvas(
         modifier = modifier
-            .offset(y = (-36).dp - 14.dp * progress)
-            .graphicsLayer {
-                alpha = fade
-                translationX = shake * 9.dp.toPx()
-            },
-        contentAlignment = Alignment.Center
+            .fillMaxWidth()
+            .height(150.dp)
     ) {
-        // Confeti: cuadraditos del color del resultado, sin degradados.
-        Canvas(modifier = Modifier.size(280.dp)) {
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val count = 10 + (combo * 2).coerceAtMost(12)
-            val reach = 26.dp.toPx() + 74.dp.toPx() * easeOutCubic(burst)
-            repeat(count) { index ->
-                val angle = index * (2.0 * PI).toFloat() / count + combo * 0.42f
-                val size2 = (5f - 3f * burst) * (1.dp.toPx())
-                if (size2 <= 0.2f) return@repeat
-                drawRect(
-                    color = if (index % 3 == 0) Color.White.copy(alpha = fade * (1f - burst))
-                    else color.copy(alpha = fade * (1f - burst)),
-                    topLeft = Offset(
-                        center.x + cos(angle) * reach - size2 / 2f,
-                        center.y + sin(angle) * reach - size2 / 2f
-                    ),
-                    size = Size(size2, size2)
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val px = cell.toPx() * (1f + 0.12f * pulse)
+        val wordW = cells * px * stretch
+        val wordH = PixelFont.HEIGHT * px
+        val dx = bannerX(seconds).dp.toPx()
+        val frame = (seconds * 30f).toInt()
+
+        // 1. Líneas de velocidad: se relanzan cada fotograma, como una viñeta.
+        val lineK = when {
+            seconds < BANNER_HIT_S -> 1f
+            seconds < BANNER_OUT_S ->
+                (1f - (seconds - BANNER_HIT_S) / 0.35f).coerceAtLeast(0f) * 0.9f
+            else -> seg(seconds, BANNER_OUT_S + 0.04f, BANNER_OUT_S + 0.12f) *
+                (1f - seg(seconds, BANNER_OUT_S + 0.18f, BANNER_OUT_S + 0.30f))
+        }
+        if (lineK > 0.02f) {
+            val outgoing = seconds >= BANNER_OUT_S
+            repeat(18) { index ->
+                if (hashNoise(frame * 31 + index, 3) > lineK) return@repeat
+                val y = (hashNoise(frame * 31 + index, 1) - 0.5f) * 60f
+                val half = 8f + hashNoise(frame * 31 + index, 2) * 25f
+                val x = (hashNoise(frame * 31 + index, 4) - 0.5f) * 190f
+                val left = center.x + (x - half).dp.toPx()
+                val right = center.x + (x + half).dp.toPx()
+                val lineY = center.y + y.dp.toPx()
+                drawLine(
+                    color = color.copy(alpha = 0.45f),
+                    start = Offset(left, lineY),
+                    end = Offset(right, lineY),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+                // La punta que marca el sentido de la marcha va en blanco.
+                drawLine(
+                    color = Color.White.copy(alpha = 0.6f),
+                    start = Offset(if (outgoing) left else right - half * 0.35f, lineY),
+                    end = Offset(if (outgoing) left + half * 0.35f else right, lineY),
+                    strokeWidth = 1.5.dp.toPx()
                 )
             }
         }
-        // Letras de píxeles, no tipografía del sistema: la fuente 5×7 de pixelfx.
-        val cell = 4.dp
-        val textWidth = cell * PixelFont.widthOf(text) + cell
-        val textHeight = cell * PixelFont.HEIGHT + cell
-        Canvas(
-            modifier = Modifier
-                .size(textWidth, textHeight)
-                .graphicsLayer {
-                    val scale = pop * comboBoost
-                    scaleX = scale
-                    scaleY = scale
+
+        // 2. El golpe: picos blancos dos fotogramas y un anillo que rueda.
+        val sinceHit = seconds - BANNER_HIT_S
+        if (sinceHit >= 0f && sinceHit < 0.07f) {
+            val arm = if (sinceHit < 0.035f) 22.dp.toPx() else 30.dp.toPx()
+            repeat(10) { index ->
+                val angle = index / 10f * (2f * PI.toFloat()) + 0.25f
+                val reach = arm * (0.6f + hashNoise(index, 5) * 0.7f)
+                drawLine(
+                    color = if (sinceHit < 0.035f) Color.White else color,
+                    start = Offset(
+                        center.x + dx + cos(angle) * reach * 0.35f,
+                        center.y + sin(angle) * reach * 0.35f
+                    ),
+                    end = Offset(
+                        center.x + dx + cos(angle) * reach,
+                        center.y + sin(angle) * reach
+                    ),
+                    strokeWidth = 3.dp.toPx()
+                )
+            }
+        }
+        val ringT = sinceHit / 0.32f
+        if (ringT > 0f && ringT < 1f) {
+            val r = 20.dp.toPx() + 34.dp.toPx() * easeOutCubic(ringT)
+            drawOval(
+                color = if (ringT < 0.3f) Color.White else color,
+                topLeft = Offset(center.x + dx - r * 1.5f, center.y - r * 0.75f),
+                size = Size(r * 3f, r * 1.5f),
+                alpha = 1f - ringT,
+                style = Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        // 3. Chispas del impacto, resueltas en el sitio: no hay emisor.
+        if (sinceHit >= 0f && sinceHit < 0.30f) {
+            repeat(12 + combo.coerceAtMost(8)) { index ->
+                val angle = index / 20f * (2f * PI.toFloat()) + 0.4f
+                val speed = 90f + hashNoise(index, 7) * 160f
+                val distance = speed * sinceHit * (1f - sinceHit * 1.2f).coerceAtLeast(0.1f)
+                drawRect(
+                    color = (if (index % 3 == 0) Color.White else color)
+                        .copy(alpha = 1f - sinceHit / 0.30f),
+                    topLeft = Offset(
+                        center.x + dx + cos(angle) * distance.dp.toPx(),
+                        center.y + sin(angle) * distance.dp.toPx()
+                    ),
+                    size = Size(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+        }
+
+        // 4. Estelas: dos copias apagadas persiguiendo a las letras.
+        if (moving && gone < 1f) {
+            listOf(0.03f to 0.28f, 0.015f to 0.48f).forEach { (lag, tone) ->
+                val lagged = if (seconds < BANNER_HIT_S) seconds - lag else seconds + lag
+                PixelFont.run {
+                    drawText(
+                        text = text,
+                        origin = Offset(
+                            center.x + bannerX(lagged).dp.toPx() - wordW / 2f,
+                            center.y - wordH / 2f
+                        ),
+                        pixel = px,
+                        color = color.copy(alpha = tone),
+                        stretchX = stretch
+                    )
                 }
-        ) {
+            }
+        }
+
+        // 5. Las letras, con contorno oscuro, tramos de color y brillo que barre.
+        if (gone < 1f) {
+            val body = if (flash) Color.White else color
+            val top = if (flash) Color.White else lerp(color, Color.White, 0.55f)
+            val bottom = if (flash) Color.White else lerp(color, Color.Black, 0.55f)
+            val sweep = seg(seconds, 0.55f, 0.80f)
             PixelFont.run {
                 drawText(
                     text = text,
-                    origin = Offset.Zero,
-                    pixel = cell.toPx(),
-                    color = color,
-                    shadow = Color.Black
+                    origin = Offset(
+                        center.x + dx - wordW / 2f,
+                        center.y - wordH / 2f
+                    ),
+                    pixel = px,
+                    color = body.copy(alpha = 1f - gone),
+                    stretchX = stretch,
+                    top = top.copy(alpha = 1f - gone),
+                    bottom = bottom.copy(alpha = 1f - gone),
+                    outline = Color(0xFF06111C).copy(alpha = 1f - gone),
+                    shine = if (sweep > 0f && sweep < 1f) -2f + (cells + 4) * sweep else null
                 )
+            }
+        }
+
+        // 6. Barra del combo: aparece con el golpe y se vacía hasta la salida.
+        val barIn = seg(seconds, BANNER_HIT_S + 0.10f, BANNER_HIT_S + 0.20f) *
+            (if (seconds > BANNER_OUT_S) 0f else 1f)
+        if (barIn > 0f) {
+            val barW = wordW * barIn
+            val left = 1f - seg(seconds, BANNER_HIT_S + 0.20f, BANNER_OUT_S)
+            val x0 = center.x + dx - wordW / 2f
+            val y0 = center.y + wordH / 2f + 10.dp.toPx()
+            drawRect(
+                color = Color(0xFF06111C).copy(alpha = 1f - gone),
+                topLeft = Offset(x0 - 2.dp.toPx(), y0 - 2.dp.toPx()),
+                size = Size(barW + 4.dp.toPx(), 6.dp.toPx())
+            )
+            drawRect(
+                color = color.copy(alpha = 0.3f * (1f - gone)),
+                topLeft = Offset(x0, y0),
+                size = Size(barW, 2.dp.toPx())
+            )
+            if (left > 0f) {
+                drawRect(
+                    color = color.copy(alpha = 1f - gone),
+                    topLeft = Offset(x0, y0),
+                    size = Size(barW * left, 2.dp.toPx())
+                )
+                drawRect(
+                    color = Color.White.copy(alpha = 1f - gone),
+                    topLeft = Offset(x0, y0),
+                    size = Size(barW * left, 1.dp.toPx())
+                )
+            }
+        }
+
+        // 7. Salida: las motas que se escapan hacia la derecha.
+        if (seconds > BANNER_OUT_S) {
+            val fade = 1f - seg(seconds, BANNER_OUT_S + 0.06f, BANNER_OUT_S + 0.20f)
+            if (fade > 0f) {
+                repeat(10) { index ->
+                    val y = (hashNoise(index, 11) - 0.5f) * 26f
+                    val travel = (seconds - BANNER_OUT_S) * 260f *
+                        (0.5f + hashNoise(index, 13))
+                    drawRect(
+                        color = Color.White.copy(alpha = fade * 0.8f),
+                        topLeft = Offset(
+                            center.x + travel.dp.toPx(),
+                            center.y + y.dp.toPx()
+                        ),
+                        size = Size(6.dp.toPx(), 2.dp.toPx())
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * Dónde caen las letras a lo largo de su vida, en dp respecto al centro: entran
+ * desde la izquierda frenando, se pasan de largo y vibran, y salen disparadas a la
+ * derecha. Es la curva del `xAt` de `ui/combo-counter`.
+ */
+private fun bannerX(t: Float): Float {
+    if (t < BANNER_HIT_S) {
+        val u = 1f - t / BANNER_HIT_S
+        return -32f * u * u
+    }
+    if (t < BANNER_OUT_S) {
+        val e = t - BANNER_HIT_S
+        return 7f * exp(-e * 18f) * sin(e * 34f)
+    }
+    val u = ((t - BANNER_OUT_S) / 0.2f).coerceIn(0f, 1f)
+    return if (u < 0.3f) -4f * easeOutQuad(u / 0.3f)
+    else -4f + 24f * easeInQuad((u - 0.3f) / 0.7f)
+}
+
+/** Ruido determinista por índice: las líneas de velocidad cambian por fotograma. */
+private fun hashNoise(index: Int, salt: Int): Float {
+    var h = index * 374761393 + salt * 668265263
+    h = (h xor (h shr 13)) * 1274126177
+    return ((h xor (h shr 16)) and 0x7fffffff) / 2147483647f
+}
+
+/** Tramo normalizado de [t] entre [from] y [to]. */
+private fun seg(t: Float, from: Float, to: Float): Float =
+    ((t - from) / (to - from)).coerceIn(0f, 1f)
+
+private fun easeOutQuad(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u
+}
+
+private fun easeInQuad(t: Float): Float {
+    val u = t.coerceIn(0f, 1f)
+    return u * u
+}
+
+/** Golpe, pulso y salida del cartel, en segundos. Salen del efecto de pixelfx. */
+private const val BANNER_HIT_S = 0.10f
+private const val BANNER_BEAT_S = 0.42f
+private const val BANNER_OUT_S = 0.95f
+
+/** Vida total del cartel; pasado este tiempo el llamante deja de componerlo. */
+private const val BANNER_LIFE_S = 1.20f
 
 /** Interpolación lineal suelta, para no arrastrar otra dependencia. */
 private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
@@ -1805,9 +1994,6 @@ private val RING_CREST_STROKE = 1.dp
  * el arranque del efecto (0,83 s el acierto, 1,03 s el fallo) sin quedarse pegado.
  */
 private const val RING_TINT_MS = 800L
-
-/** Duración del estallido y de la etiqueta de acierto/fallo. */
-private const val RING_FEEDBACK_MS = 900
 
 /** Paleta de agua de los anillos. */
 private val WATER_DEEP = Color(0xFF0D47A1)

@@ -5,13 +5,21 @@
  * propósito: la tipografía del sistema no es pixel art y desentonaba con el resto
  * del juego. Los glifos están recortados a sus columnas entintadas, así que la "I"
  * ocupa menos que la "M" y el texto no queda lleno de huecos.
+ *
+ * `drawText` hace el trabajo sucio del cartel de combo de pixelfx
+ * (`ui/combo-counter`): contorno oscuro de un píxel, tramos de color arriba,
+ * centro y abajo, ensanche horizontal para la mancha al entrar y un brillo que
+ * barre las letras.
  */
 package com.dsrs.pokeclic.ui
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.translate
 
 internal object PixelFont {
 
@@ -109,24 +117,30 @@ internal object PixelFont {
     fun hasGlyph(ch: Char): Boolean = ch == ' ' || glyphOf(ch) != null
 
     /**
-     * Dibuja [text] con su esquina superior izquierda en [origin]. [pixel] es el
-     * lado de un píxel de fuente en px de pantalla. Con [shadow], primero pinta
-     * una copia desplazada un píxel abajo a la derecha: el escalón duro de siempre.
+     * Dibuja [text] con su esquina superior izquierda en [origin].
+     *
+     * @param pixel lado de una celda, en px de pantalla.
+     * @param stretchX ensancha cada celda en horizontal: la mancha de velocidad.
+     * @param top color de las tres filas de arriba.
+     * @param bottom color de las dos filas de abajo (el resto usa [color]).
+     * @param outline si no es `null`, rodea cada píxel por sus cuatro lados.
+     * @param shine columna, en celdas, que se pinta blanca: el brillo que barre.
      */
     fun DrawScope.drawText(
         text: String,
         origin: Offset,
         pixel: Float,
         color: Color,
-        shadow: Color? = null
+        stretchX: Float = 1f,
+        top: Color = color,
+        bottom: Color = color,
+        outline: Color? = null,
+        shine: Float? = null
     ) {
-        if (shadow != null) {
-            plot(text, Offset(origin.x + pixel, origin.y + pixel), pixel, shadow)
-        }
-        plot(text, origin, pixel, color)
-    }
+        val bands = arrayOf(Path(), Path(), Path())
+        val shinePath = Path()
+        val cellW = pixel * stretchX
 
-    private fun DrawScope.plot(text: String, origin: Offset, pixel: Float, color: Color) {
         var penX = 0
         text.forEach { ch ->
             val glyph = glyphOf(ch)
@@ -138,17 +152,31 @@ internal object PixelFont {
                 val row = glyph.rows[y]
                 for (x in 0 until glyph.width) {
                     if (!row[x]) continue
-                    drawRect(
-                        color = color,
-                        topLeft = Offset(
-                            origin.x + (penX + x) * pixel,
-                            origin.y + y * pixel
-                        ),
-                        size = Size(pixel, pixel)
+                    val cellX = penX + x
+                    val rect = Rect(
+                        offset = Offset(origin.x + cellX * cellW, origin.y + y * pixel),
+                        size = Size(cellW, pixel)
                     )
+                    // Filas 0-2 arriba, 5-6 abajo, 3-4 el color base.
+                    val band = if (y < 3) 0 else if (y < 5) 1 else 2
+                    bands[band].addRect(rect)
+                    if (shine != null && kotlin.math.abs(cellX - shine) < 1.5f) shinePath.addRect(rect)
                 }
             }
             penX += glyph.width + GAP
         }
+
+        if (outline != null) {
+            for (path in bands) {
+                translate(pixel, 0f) { drawPath(path, outline) }
+                translate(-pixel, 0f) { drawPath(path, outline) }
+                translate(0f, pixel) { drawPath(path, outline) }
+                translate(0f, -pixel) { drawPath(path, outline) }
+            }
+        }
+        drawPath(bands[0], top)
+        drawPath(bands[1], color)
+        drawPath(bands[2], bottom)
+        if (shine != null) drawPath(shinePath, Color.White)
     }
 }

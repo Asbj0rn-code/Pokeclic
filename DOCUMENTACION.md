@@ -1762,13 +1762,16 @@ roca o el anillo más cercano, o la celda de Voltorb).
   comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
   6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
   del lienzo ni deja píxeles al terminar.
-- **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` deriva
-  toda la animación de un solo `progress` (golpe de entrada, sacudida, confeti y
-  desvanecido), así que se ajusta moviendo esos tramos. Las letras no usan la
-  tipografía del sistema: `PixelFont` es la fuente 5×7 de pixelfx
-  (`src/core/font.js`, la "big") portada a Kotlin, dibujada con rectángulos y con
-  sombra dura de un píxel. El tamaño de celda es el `cell = 4.dp` del cartel; ahí
-  se agranda o achica. El combo vive en
+- **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` es el
+  `ui/combo-counter` de pixelfx portado a Compose; todo se calcula desde los
+  segundos transcurridos (`BANNER_HIT_S`, `BANNER_BEAT_S`, `BANNER_OUT_S`,
+  `BANNER_LIFE_S`), sin animaciones propias ni estado acumulado. Encadena líneas
+  de velocidad, golpe con picos y anillo, chispas, dos estelas, el pulso del
+  latido, el brillo que barre las letras, la barra que se vacía y la salida con
+  motas. Las letras no usan la tipografía del sistema: `PixelFont` es la fuente
+  5×7 de pixelfx (`src/core/font.js`, la "big") portada a Kotlin, dibujada con
+  rectángulos, contorno oscuro de una celda y tres tramos de color. El tamaño de
+  celda es el `cell = 4.dp` del cartel; ahí se agranda o achica. El combo vive en
   `GymState.ringCombo` y viaja en `RingFeedback.combo`: sube con cada acierto y
   cualquier fallo lo devuelve a 0. Con combo ≥ 2 el cartel usa
   `gym_ring_combo` (`¡Combo ×N!`).
