@@ -523,15 +523,28 @@ private fun RingGymScene(
     }
     val now = clock.longValue
     val currentState by rememberUpdatedState(state)
+    val context = LocalContext.current
 
     // Acierto/fallo del último anillo: el ViewModel publica el resultado y aquí
-    // se convierte en un estallido de agua o uno rojo, más la etiqueta flotante.
+    // se convierte en un estallido de agua (hoja de pixelfx), más la etiqueta
+    // flotante. El instante de arranque se guarda aparte porque el sprite sheet
+    // se indexa por tiempo, no por el `Animatable` de la etiqueta.
     val feedback = state.ringFeedback
     val feedbackProgress = remember { Animatable(1f) }
+    var fxStartMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(feedback?.ringId) {
         if (feedback == null) return@LaunchedEffect
+        fxStartMs = nowMs()
         feedbackProgress.snapTo(0f)
         feedbackProgress.animateTo(1f, tween(durationMillis = RING_FEEDBACK_MS))
+    }
+
+    // Una decodificación por escena para cada hoja.
+    val burstSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_burst).asImageBitmap()
+    }
+    val implodeSheet = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.hydro_implode).asImageBitmap()
     }
 
     // Latido del enemigo mientras está expuesto.
@@ -601,13 +614,20 @@ private fun RingGymScene(
                 )
             }
 
-            // Anillos que se cierran: agua profunda, espuma, ondulación y gotas.
+            // Anillos que se cierran. El aro es una banda de agua: contorno oscuro
+            // que lo separa del fondo, cuerpo con degradado, cresta de espuma,
+            // cáusticas que giran y gotas que se desprenden hacia fuera.
             currentState.rings.forEach { ring ->
-                val radius = startRadius + (targetRadius - startRadius) * ring.progressAt(now)
+                val progress = ring.progressAt(now)
+                val radius = startRadius + (targetRadius - startRadius) * progress
                 val onBeat = ring.isInWindow(now, currentState.ringWindowMs)
+                // Un aro grande ondula; al llegar al círculo fijo se alisa.
+                val energy = ((radius - targetRadius) / (startRadius - targetRadius))
+                    .coerceIn(0f, 1f)
 
+                // Halo: el volumen de agua que empuja el aro.
                 drawCircle(
-                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.30f),
+                    color = (if (onBeat) RING_ON_BEAT_COLOR else WATER_LIGHT).copy(alpha = 0.26f),
                     radius = radius,
                     center = center,
                     style = Stroke(width = RING_GLOW_STROKE.toPx())
@@ -628,101 +648,82 @@ private fun RingGymScene(
                     center = center
                 )
 
-                if (onBeat) {
-                    // En su ventana el anillo queda liso: es la señal exacta.
-                    drawCircle(
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        radius = radius,
-                        center = center,
-                        style = outlineStroke
-                    )
-                    drawCircle(
-                        brush = ringBrush,
-                        radius = radius,
-                        center = center,
-                        style = mainStroke
-                    )
-                } else {
-                    // Fuera de la ventana, el borde ondula como una ola.
-                    val wave = Path()
-                    val segments = 72
-                    for (step in 0..segments) {
-                        val angle = step * (2.0 * PI / segments).toFloat()
-                        val ripple = sin(angle * RING_WAVE_CYCLES + now / 220f) *
-                            RING_WAVE_AMPLITUDE.toPx()
-                        val x = center.x + cos(angle) * (radius + ripple)
-                        val y = center.y + sin(angle) * (radius + ripple)
-                        if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                // La onda: dos armónicos con velocidades distintas, para que no se
+                // lea como un círculo perfecto que respira.
+                val wave = Path()
+                val crestWave = Path()
+                val segments = 72
+                for (step in 0..segments) {
+                    val angle = step * (2.0 * PI / segments).toFloat()
+                    val ripple = if (onBeat) {
+                        0f
+                    } else {
+                        (sin(angle * 5f - now / 260f) * 0.62f +
+                            sin(angle * 11f + now / 190f) * 0.38f) *
+                            RING_WAVE_AMPLITUDE.toPx() * (0.25f + 0.75f * energy)
                     }
-                    wave.close()
-                    drawPath(
-                        path = wave,
-                        color = RING_OUTLINE.copy(alpha = 0.65f),
-                        style = outlineStroke
-                    )
-                    drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                    val x = center.x + cos(angle) * (radius + ripple)
+                    val y = center.y + sin(angle) * (radius + ripple)
+                    if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+                    val crestRadius = radius + ripple + RING_CREST_OFFSET.toPx()
+                    val cx = center.x + cos(angle) * crestRadius
+                    val cy = center.y + sin(angle) * crestRadius
+                    if (step == 0) crestWave.moveTo(cx, cy) else crestWave.lineTo(cx, cy)
                 }
+                wave.close()
+                crestWave.close()
 
-                drawCircle(
-                    color = WATER_FOAM.copy(alpha = if (onBeat) 0.95f else 0.65f),
-                    radius = radius - 3.dp.toPx(),
-                    center = center,
+                drawPath(
+                    path = wave,
+                    color = RING_OUTLINE.copy(alpha = 0.62f),
+                    style = outlineStroke
+                )
+                drawPath(path = wave, brush = ringBrush, style = mainStroke)
+                // Cresta de espuma en el borde exterior.
+                drawPath(
+                    path = crestWave,
+                    color = WATER_FOAM.copy(alpha = if (onBeat) 1f else 0.78f),
                     style = foamStroke
                 )
 
-                // Gotas de espuma que orbitan el anillo y respiran con el tiempo.
-                val spin = (now % 7_000L) / 7_000f * 360f
-                repeat(4) { dropIndex ->
-                    val direction = if (dropIndex % 2 == 0) 1f else -1f
-                    val angle = (dropIndex * 90f + spin * direction) * PI.toFloat() / 180f
-                    val dropX = center.x + cos(angle) * radius
-                    val dropY = center.y + sin(angle) * radius
-                    val dropRadius = (dropIndex + 2).dp.toPx() *
-                        (0.75f + 0.25f * sin(now / 300f + dropIndex))
+                // Cáusticas: arcos cortos que corren por la cresta a distinta
+                // velocidad, como la luz sobre el agua en movimiento.
+                if (!onBeat) {
+                    repeat(4) { index ->
+                        val spinMs = 2_100L + index * 380L
+                        val base = (index * 90f) + (now % spinMs) / spinMs.toFloat() * 360f
+                        val sweep = 16f + index * 4f
+                        val arcRadius = radius + RING_CREST_OFFSET.toPx() + 1.dp.toPx()
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.30f + 0.12f * energy),
+                            startAngle = base,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
+                            size = Size(arcRadius * 2f, arcRadius * 2f),
+                            style = Stroke(width = RING_CREST_STROKE.toPx())
+                        )
+                    }
+                }
+
+                // Gotas que se desprenden del aro hacia fuera y se apagan.
+                repeat(6) { index ->
+                    val periodMs = 900L + index * 120L
+                    val phase = ((now + index * 217L) % periodMs) / periodMs.toFloat()
+                    val angle = index * (360f / 6f) + progress * 90f
+                    val rad = angle * PI.toFloat() / 180f
+                    val distance = radius + phase * 7.dp.toPx()
                     drawCircle(
-                        color = if (onBeat) Color.White.copy(alpha = 0.95f)
-                        else WATER_FOAM.copy(alpha = 0.9f),
-                        radius = dropRadius,
-                        center = Offset(dropX, dropY)
+                        color = if (onBeat) Color.White.copy(alpha = 0.9f * (1f - phase))
+                        else WATER_FOAM.copy(alpha = 0.85f * (1f - phase)),
+                        radius = (1.2f + (index % 3) * 0.5f).dp.toPx() * (1f - phase * 0.5f),
+                        center = Offset(center.x + cos(rad) * distance, center.y + sin(rad) * distance)
                     )
                 }
             }
 
-            // Estallido del resultado: salpicadura de espuma o onda roja.
-            val progress = feedbackProgress.value
-            if (feedback != null && progress < 1f) {
-                val fade = 1f - progress
-                when (feedback.outcome) {
-                    RingOutcome.HIT -> {
-                        drawCircle(
-                            color = WATER_FOAM.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 42.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (4f * fade + 1f).dp.toPx())
-                        )
-                        repeat(8) { dropIndex ->
-                            val angle = dropIndex * 45f * PI.toFloat() / 180f
-                            val distance = targetRadius + 60.dp.toPx() * progress
-                            drawCircle(
-                                color = WATER_LIGHT.copy(alpha = 0.9f * fade),
-                                radius = (3.5f * fade + 1f).dp.toPx(),
-                                center = Offset(
-                                    center.x + cos(angle) * distance,
-                                    center.y + sin(angle) * distance
-                                )
-                            )
-                        }
-                    }
-                    RingOutcome.MISS -> {
-                        drawCircle(
-                            color = MISS_RED.copy(alpha = 0.9f * fade),
-                            radius = targetRadius + 36.dp.toPx() * progress,
-                            center = center,
-                            style = Stroke(width = (5f * fade + 1f).dp.toPx())
-                        )
-                    }
-                }
-            }
+            // El resultado lo pinta la capa de sprite sheets que va por encima de
+            // los sprites: el anillo fallado tiene que cerrarse *sobre* el Pokémon.
         }
 
         // Enemigo, con pulso mientras está expuesto.
@@ -756,6 +757,33 @@ private fun RingGymScene(
                 .offset(y = -layout.playerBottom)
                 .size(layout.playerWidth, layout.playerHeight)
         )
+
+        // Efecto del resultado, por encima de los sprites: el acierto salpica y el
+        // fallo cierra el anillo sobre el Pokémon y estalla en el centro. Arranca
+        // en el radio que tenía el anillo al resolverse, no en el del jugador.
+        feedback?.let { result ->
+            val spec = WaterRingSheet.forOutcome(result.outcome)
+            val elapsed = now - fxStartMs
+            if (elapsed >= 0L && elapsed < spec.durationMs) {
+                val sheet = if (result.outcome == RingOutcome.HIT) burstSheet else implodeSheet
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val targetRadius = RING_TARGET_RADIUS.toPx()
+                    val startRadius = RING_START_RADIUS.toPx()
+                    val radius = startRadius + (targetRadius - startRadius) * result.ringProgress
+                    drawWaterRingFx(
+                        sheet = sheet,
+                        spec = spec,
+                        frame = spec.frameAt(elapsed),
+                        center = Offset(
+                            x = size.width / 2f,
+                            y = size.height - layout.playerBottom.toPx() -
+                                layout.playerHeight.toPx() / 2f
+                        ),
+                        radiusPx = radius
+                    )
+                }
+            }
+        }
 
         // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
         // cueva. Sube y se desvanece con el mismo reloj que el estallido.
@@ -1650,7 +1678,10 @@ private val RING_GLOW_STROKE = 11.dp
 
 /** Ondulación del anillo de agua fuera de la ventana de acierto. */
 private val RING_WAVE_AMPLITUDE = 2.5.dp
-private const val RING_WAVE_CYCLES = 6f
+
+/** Distancia entre el cuerpo del aro y la cresta de espuma. */
+private val RING_CREST_OFFSET = 1.5.dp
+private val RING_CREST_STROKE = 1.dp
 
 /** Duración del estallido y de la etiqueta de acierto/fallo. */
 private const val RING_FEEDBACK_MS = 900

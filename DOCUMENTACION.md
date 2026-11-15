@@ -932,7 +932,10 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `golem.gif` | Enemigo de Brock |
 | `rock.png` | Proyectil del gimnasio |
 | `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
+| `water_gym.png` | Fondo del gimnasio de agua (`drawable-nodpi`, 1536×2304 pixel art) |
 | `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
+| `hydro_burst.png` | Acierto del anillo de Misty (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
+| `hydro_implode.png` | Fallo del anillo de Misty (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
@@ -958,8 +961,9 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 > se muestra a 80 dp. Conviene reducirla a unas 300×300 px o pasarla a WebP.
 > `tall_grass_full.png` y `tall_grass_mid.png` son de 750×750 px y se muestran a
 > 120 dp, así que también admiten reducción. Los fondos de gimnasio (`rock_gym.png`,
-> `water_gym.jpg`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
-> densidad no los reescale; el de roca pasó de 3,4 MB en JPG a ~40 KB en PNG.
+> `water_gym.png`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
+> densidad no los reescale; roca y agua pasaron de varios MB en JPG a ~40 KB y
+> ~29 KB en PNG.
 
 ### Strings (`res/values/strings.xml`)
 
@@ -1730,7 +1734,9 @@ roca o el anillo más cercano, o la celda de Voltorb).
   Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
   Registra su composición en `GymSceneLayouts` (tamaño y ancla de los sprites del
   líder y del jugador): cada arte coloca la plataforma a otra altura y, sin
-  entrada, el gimnasio usa `DEFAULT`.
+  entrada, el gimnasio usa `DEFAULT`. Los fondos pixel-art 2:3 (Brock, Misty)
+  comparten la escala de sprite en `PixelArtSprites`: un cambio ahí mueve los dos
+  gimnasios a la vez, y lo que se ajusta por arte es solo el ancla.
 - **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
   (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
 - **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
@@ -1744,6 +1750,14 @@ roca o el anillo más cercano, o la celda de Voltorb).
   `rock-shatter.png` a `drawable-nodpi/rock_shatter.png`. `RockShatterFxTest`
   comprueba que el sheet real coincide con la rejilla declarada en
   `RockShatterFx` (5 columnas, 13 frames de 64×80, 24 fps).
+- **Retocar los efectos del anillo de Misty**: los dos artes viven en pixelfx
+  (`src/fx/water/hydro-burst.js` y `src/fx/water/hydro-implode.js`, con el helper
+  `wetRing`/`wetArc` en `src/fx/water/_lib.js`). Se editan allí, se reexportan con
+  `node tools/render.mjs water/hydro-burst water/hydro-implode --sheet` y se copian
+  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. `WaterRingFxTest`
+  comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
+  6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
+  del lienzo ni deja píxeles al terminar.
 - **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
   ataque (hoy hay *lunge* + destello) y proyectiles que aguantan varios toques
   (`Projectile.hitsRemaining` ya existe; el umbral de furia es

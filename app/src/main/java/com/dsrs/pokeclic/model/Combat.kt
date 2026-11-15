@@ -299,11 +299,16 @@ enum class RingOutcome {
  * @param outcome acierto o fallo.
  * @param count anillos cobrados en el mismo evento; solo puede ser mayor que 1
  *   cuando varios caducan en el mismo tick.
+ * @param ringProgress avance del anillo al resolverse, `0` recién nacido y `1`
+ *   cuando ya tocó el círculo fijo. La UI lo necesita para arrancar el efecto
+ *   justo en el radio en el que estaba el anillo: un acierto dentro de la ventana
+ *   todavía no ha llegado del todo, y un fallo por pulsar antes lo coge más lejos.
  */
 data class RingFeedback(
     val ringId: Long,
     val outcome: RingOutcome,
-    val count: Int = 1
+    val count: Int = 1,
+    val ringProgress: Float = 1f
 )
 
 /**

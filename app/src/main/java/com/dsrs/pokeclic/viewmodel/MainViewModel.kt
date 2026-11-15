@@ -727,7 +727,8 @@ class MainViewModel(
                 rings = current.rings.filterNot { it.id == ring.id },
                 ringFeedback = RingFeedback(
                     ringId = ring.id,
-                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS
+                    outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS,
+                    ringProgress = ring.progressAt(now)
                 )
             )
             if (onBeat) GymCombat.addPosture(resolved)
@@ -993,7 +994,10 @@ class MainViewModel(
                 ringFeedback = RingFeedback(
                     ringId = expired.maxOf { it.id },
                     outcome = RingOutcome.MISS,
-                    count = expired.size
+                    count = expired.size,
+                    // Un anillo caducado ya había llegado al círculo fijo: el
+                    // efecto arranca en el radio del jugador.
+                    ringProgress = expired.maxOf { it.progressAt(now) }
                 )
             )
             next = GymCombat.registerImpact(next, expired.size * config.ringMissDamage)

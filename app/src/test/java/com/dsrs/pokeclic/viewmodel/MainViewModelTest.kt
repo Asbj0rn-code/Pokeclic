@@ -679,6 +679,8 @@ class MainViewModelTest {
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
+            // Acertar justo en la convergencia: el efecto arranca en el círculo fijo.
+            assertEquals(1f, ringFeedback!!.ringProgress, 0.02f)
         }
     }
 
@@ -702,6 +704,9 @@ class MainViewModelTest {
             assertTrue(rings.none { it.id == ring.id })
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
+            // Pulsar nada más nacer: el anillo está casi en su radio de entrada, así
+            // que el efecto de fallo arranca grande y se cierra sobre el sprite.
+            assertTrue("progreso casi nulo", ringFeedback!!.ringProgress < 0.1f)
         }
     }
 
