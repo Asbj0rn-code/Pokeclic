@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,6 +42,13 @@ internal val VICTORY_ENEMY_SINK = 48.dp
 
 /** Tamaño ideal de la medalla cuando aparece en el centro de la pantalla. */
 private val VICTORY_BADGE_SIZE = 150.dp
+
+/**
+ * Cuánto se sube la medalla respecto al centro de la pantalla. Centrada caía muy
+ * abajo y se metía bajo el borde de la caja de diálogo; subida queda delante del
+ * retrato, que es donde se entrega.
+ */
+private val VICTORY_BADGE_RISE = 60.dp
 
 /**
  * Tope de alto de la medalla como fracción de la pantalla: en pantallas cortas
@@ -151,8 +159,8 @@ internal fun GymVictory(
         onAdvance = { if (isLast) onFinished() else stepIndex++ },
         modifier = modifier,
         overlay = {
-            // La medalla aparece en el centro de la pantalla cuando la entrega y
-            // se queda hasta el final de la despedida.
+            // La medalla aparece cuando la entrega y se queda hasta el final de la
+            // despedida. Va centrada pero subida, delante del retrato.
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val badgeSize = minOf(
                     VICTORY_BADGE_SIZE,
@@ -160,7 +168,9 @@ internal fun GymVictory(
                 )
                 AnimatedVisibility(
                     visible = line.badge,
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = -VICTORY_BADGE_RISE),
                     enter = fadeIn(tween(BADGE_FADE_IN_MS)) +
                         scaleIn(
                             initialScale = BADGE_START_SCALE,
