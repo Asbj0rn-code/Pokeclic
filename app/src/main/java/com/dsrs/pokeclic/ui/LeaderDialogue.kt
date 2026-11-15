@@ -37,13 +37,13 @@ import com.dsrs.pokeclic.R
 import kotlinx.coroutines.delay
 
 /** Fracción del ancho de pantalla que ocupa el retrato del líder. */
-private const val PORTRAIT_WIDTH_FRACTION = 0.72f
+private const val PORTRAIT_WIDTH_FRACTION = 0.86f
 
 /** Tope de ancho del retrato, para que no crezca sin límite en pantallas grandes. */
-private val PORTRAIT_MAX_WIDTH = 320.dp
+private val PORTRAIT_MAX_WIDTH = 360.dp
 
 /** Tope de alto, como fracción de la pantalla, para que siempre quede sitio al texto. */
-private const val PORTRAIT_HEIGHT_FRACTION = 0.55f
+private const val PORTRAIT_HEIGHT_FRACTION = 0.58f
 
 /** Margen superior del retrato. */
 private val PORTRAIT_TOP_PADDING = 24.dp
@@ -52,9 +52,12 @@ private val PORTRAIT_TOP_PADDING = 24.dp
 private const val PORTRAIT_FLAP_MS = 140L
 
 /**
- * Ancho del retrato de un líder dentro de un área: acotado por ancho **y** por
- * alto, para que el diálogo y los botones siempre entren aunque la pantalla sea
- * baja.
+ * Ancho del retrato de un líder dentro de un área.
+ *
+ * Los tres topes se muerden entre sí y cada arte lo frena uno distinto: el de
+ * **alto** manda en los dibujos verticales (Brock, 400×750) y el de **ancho** en
+ * los más cuadrados (Misty, 512×686). Por eso subir el ancho no agranda a Brock,
+ * que ya está limitado por la altura.
  *
  * @param aspect relación ancho/alto de la imagen.
  */
@@ -144,8 +147,6 @@ internal fun LeaderDialogue(
                 .size(portraitWidth, portraitHeight)
         )
 
-        overlay()
-
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -166,5 +167,10 @@ internal fun LeaderDialogue(
 
             footer(lineComplete)
         }
+
+        // La capa extra va la última: queda por delante del retrato **y** de la
+        // caja de diálogo. Es lo que necesita la medalla, que se entrega en el
+        // centro de la pantalla mientras el líder sigue hablando.
+        overlay()
     }
 }

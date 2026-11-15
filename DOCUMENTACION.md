@@ -1617,9 +1617,15 @@ tienen el suyo y Lt. Surge, que aún no tiene retrato ni guion, conserva el pane
 bienvenida genérico. Una línea puede declarar un **segundo retrato**
 (`GymLeaderLine.altPortraitRes`): mientras la máquina de escribir avanza, los dos
 se alternan cada 140 ms, que es como Misty mueve la boca entre `misty_happy` y
-`misty_happy2` sin dibujos extra. La última línea ofrece «Ver tutorial» / «Omitir»,
-que llevan a `TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez
-por entrada (un reintento tras perder va directo al cartel).
+`misty_happy2` sin dibujos extra. El tamaño del retrato lo frenan tres topes
+(`leaderPortraitSize`): fracción del ancho, ancho máximo y fracción del alto. Cada
+arte lo frena uno distinto —Brock es vertical (400×750) y manda el alto; Misty es
+más cuadrada (512×686) y manda el ancho—, así que subir el ancho no agranda a
+Brock. La capa extra (`overlay`, la medalla) se compone **la última**: va por
+delante del retrato y también de la caja de diálogo, y no come toques porque no
+declara ninguno. La última línea ofrece «Ver tutorial» / «Omitir», que llevan a
+`TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por entrada
+(un reintento tras perder va directo al cartel).
 
 El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
 pantalla completa: durante el combate **desaparece el bottom menu** (barra y
@@ -1728,7 +1734,7 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
 | `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
 | `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
-| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato, máquina de escribir y avance |
+| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato (con boca que alterna), máquina de escribir, avance y capa superior para la medalla |
 
 ### Estado nuevo (`GameUiState`)
 
