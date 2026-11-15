@@ -821,42 +821,114 @@ private fun RingGymScene(
             }
         }
 
-        // Etiqueta del resultado, grande y con sombra dura para leerse sobre la
-        // cueva. Sube y se desvanece con el mismo reloj que el estallido.
+        // Cartel del resultado: entra con golpe, suelta confeti de píxeles y, si
+        // hay combo, lo cuenta. Verde para los aciertos y rojo para los fallos.
         feedback?.let { result ->
-            val progress = feedbackProgress.value
-            // Se queda legible un instante y después se desvanece.
-            val fade = if (progress < 0.45f) {
-                1f
-            } else {
-                ((1f - progress) / 0.55f).coerceIn(0f, 1f)
-            }
             val hit = result.outcome == RingOutcome.HIT
             val label = when {
+                hit && result.combo >= 2 -> stringResource(R.string.gym_ring_combo, result.combo)
                 hit -> stringResource(R.string.gym_ring_hit)
                 result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
                 else -> stringResource(R.string.gym_ring_miss)
             }
-            Text(
+            RingResultBanner(
                 text = label,
                 color = if (hit) HIT_GREEN else MISS_RED,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
-                ),
-                fontWeight = FontWeight.Black,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-36).dp)
-                    .graphicsLayer {
-                        alpha = fade
-                        val scale = 1f + 0.18f * progress
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                combo = if (hit) result.combo else 0,
+                progress = feedbackProgress.value,
+                modifier = Modifier.align(Alignment.Center)
             )
         }
 
     }
+}
+
+/**
+ * Cartel del resultado del anillo.
+ *
+ * Entra con un golpe (arranca chico, se pasa de tamaño y se asienta), suelta un
+ * confeti de cuadraditos del color del resultado y se va subiendo mientras se
+ * apaga. Con combo, el cartel pide más espacio y el número viaja con el texto;
+ * todo se deriva de [progress], así que no necesita animaciones propias.
+ *
+ * @param color verde del acierto o rojo del fallo.
+ * @param combo aciertos seguidos; `0` o `1` no se cuentan.
+ */
+@Composable
+private fun RingResultBanner(
+    text: String,
+    color: Color,
+    combo: Int,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    // Golpe de entrada: 0,55 → 1,22 en el primer 10 %, y de ahí se asienta.
+    val pop = when {
+        progress < 0.10f -> mix(0.55f, 1.22f, progress / 0.10f)
+        progress < 0.30f -> mix(1.22f, 1f, (progress - 0.10f) / 0.20f)
+        else -> 1f
+    }
+    // Un combo largo empuja un poco más el tamaño, sin desmadrarse.
+    val comboBoost = 1f + 0.05f * (combo - 1).coerceIn(0, 4)
+    // Se queda legible y después se apaga.
+    val fade = if (progress < 0.55f) 1f else ((1f - progress) / 0.45f).coerceIn(0f, 1f)
+    // Sacudida lateral del impacto: dos vaivenes que mueren en el primer tercio.
+    val shake = sin(progress * 42f) * (1f - (progress / 0.33f)).coerceIn(0f, 1f)
+    // El confeti sale en el primer tercio y se apaga al final del recorrido.
+    val burst = (progress / 0.34f).coerceIn(0f, 1f)
+
+    Box(
+        modifier = modifier
+            .offset(y = (-36).dp - 14.dp * progress)
+            .graphicsLayer {
+                alpha = fade
+                translationX = shake * 9.dp.toPx()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // Confeti: cuadraditos del color del resultado, sin degradados.
+        Canvas(modifier = Modifier.size(280.dp)) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val count = 10 + (combo * 2).coerceAtMost(12)
+            val reach = 26.dp.toPx() + 74.dp.toPx() * easeOutCubic(burst)
+            repeat(count) { index ->
+                val angle = index * (2.0 * PI).toFloat() / count + combo * 0.42f
+                val size2 = (5f - 3f * burst) * (1.dp.toPx())
+                if (size2 <= 0.2f) return@repeat
+                drawRect(
+                    color = if (index % 3 == 0) Color.White.copy(alpha = fade * (1f - burst))
+                    else color.copy(alpha = fade * (1f - burst)),
+                    topLeft = Offset(
+                        center.x + cos(angle) * reach - size2 / 2f,
+                        center.y + sin(angle) * reach - size2 / 2f
+                    ),
+                    size = Size(size2, size2)
+                )
+            }
+        }
+        Text(
+            text = text,
+            color = color,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
+            ),
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.graphicsLayer {
+                val scale = pop * comboBoost
+                scaleX = scale
+                scaleY = scale
+            }
+        )
+    }
+}
+
+/** Interpolación lineal suelta, para no arrastrar otra dependencia. */
+private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/** Curva de salida rápida y frenada, la que usan el confeti y el golpe. */
+private fun easeOutCubic(t: Float): Float {
+    val u = 1f - t.coerceIn(0f, 1f)
+    return 1f - u * u * u
 }
 
 // ─────────────────────────── Voltorb (Lt. Surge) ───────────────────────────

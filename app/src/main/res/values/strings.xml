@@ -95,6 +95,7 @@
 
     <!-- Minijuego de anillos (Misty) -->
     <string name="gym_ring_hit">¡Acierto!</string>
+    <string name="gym_ring_combo">¡Combo ×%d!</string>
     <string name="gym_ring_miss">¡Fallo!</string>
     <string name="gym_ring_miss_multi">¡Fallo! ×%d</string>
     <string name="gym_ring_tutorial_step1_title">Acierta el círculo</string>

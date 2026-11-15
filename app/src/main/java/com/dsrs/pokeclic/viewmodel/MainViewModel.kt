@@ -723,12 +723,15 @@ class MainViewModel(
         updateGym { current ->
             val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
             val onBeat = GymCombat.isRingOnBeat(ring, current, now)
+            val combo = if (onBeat) current.ringCombo + 1 else 0
             val resolved = current.copy(
                 rings = current.rings.filterNot { it.id == ring.id },
+                ringCombo = combo,
                 ringFeedback = RingFeedback(
                     ringId = ring.id,
                     outcome = if (onBeat) RingOutcome.HIT else RingOutcome.MISS,
-                    ringProgress = ring.progressAt(now)
+                    ringProgress = ring.progressAt(now),
+                    combo = combo
                 )
             )
             if (onBeat) GymCombat.addPosture(resolved)
@@ -991,6 +994,7 @@ class MainViewModel(
             val expiredIds = expired.map { it.id }.toSet()
             next = next.copy(
                 rings = next.rings.filterNot { it.id in expiredIds },
+                ringCombo = 0,
                 ringFeedback = RingFeedback(
                     ringId = expired.maxOf { it.id },
                     outcome = RingOutcome.MISS,

@@ -303,12 +303,16 @@ enum class RingOutcome {
  *   cuando ya tocó el círculo fijo. La UI lo necesita para arrancar el efecto
  *   justo en el radio en el que estaba el anillo: un acierto dentro de la ventana
  *   todavía no ha llegado del todo, y un fallo por pulsar antes lo coge más lejos.
+ * @param combo aciertos seguidos que lleva el jugador **después** de este evento:
+ *   sube con cada acierto y vuelve a `0` con cualquier fallo. Es lo que la UI
+ *   cuenta como combo.
  */
 data class RingFeedback(
     val ringId: Long,
     val outcome: RingOutcome,
     val count: Int = 1,
-    val ringProgress: Float = 1f
+    val ringProgress: Float = 1f,
+    val combo: Int = 0
 )
 
 /**
@@ -428,6 +432,8 @@ data class GymState(
     val rings: List<TimingRing> = emptyList(),
     val ringWindowMs: Long = 0L,
     val ringFeedback: RingFeedback? = null,
+    /** Aciertos seguidos del minijuego de anillos; cualquier fallo lo devuelve a 0. */
+    val ringCombo: Int = 0,
     val voltorbs: List<Voltorb> = emptyList(),
     val voltorbFeedback: VoltorbFeedback? = null,
     val posture: Int = 0,

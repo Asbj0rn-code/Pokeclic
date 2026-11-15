@@ -681,6 +681,8 @@ class MainViewModelTest {
             assertEquals(ring.id, ringFeedback?.ringId)
             // Acertar justo en la convergencia: el efecto arranca en el círculo fijo.
             assertEquals(1f, ringFeedback!!.ringProgress, 0.02f)
+            assertEquals("el primer acierto abre el combo", 1, ringFeedback!!.combo)
+            assertEquals(1, ringCombo)
         }
     }
 
@@ -707,6 +709,52 @@ class MainViewModelTest {
             // Pulsar nada más nacer: el anillo está casi en su radio de entrada, así
             // que el efecto de fallo arranca grande y se cierra sobre el sprite.
             assertTrue("progreso casi nulo", ringFeedback!!.ringProgress < 0.1f)
+            assertEquals("un fallo no cuenta como combo", 0, ringFeedback!!.combo)
+            assertEquals(0, ringCombo)
+        }
+    }
+
+    @Test
+    fun consecutiveHitsRaiseTheComboAndAMissResetsIt() {
+        var now = 0L
+        val vm = startMistyCombat(nowMs = { now })
+        now = 900L
+        tick()
+
+        fun waitForANewRing(): Long {
+            var guard = 0
+            while (vm.uiState.value.gym!!.rings.isEmpty() && guard++ < 40) {
+                now += 100L
+                tick()
+            }
+            return vm.uiState.value.gym!!.rings.first().id
+        }
+
+        val first = vm.uiState.value.gym!!.rings.single()
+        now = first.convergeAtMs()
+        vm.onGymRingTap()
+        assertEquals(1, vm.uiState.value.gym!!.ringCombo)
+
+        // Nace el siguiente y también se acierta: el combo sube.
+        waitForANewRing()
+        val second = vm.uiState.value.gym!!.rings.first()
+        now = second.convergeAtMs()
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.HIT, ringFeedback?.outcome)
+            assertEquals("dos aciertos seguidos son combo 2", 2, ringFeedback?.combo)
+            assertEquals(2, ringCombo)
+        }
+
+        // Un fallo lo devuelve a cero.
+        waitForANewRing()
+        val third = vm.uiState.value.gym!!.rings.first()
+        now = third.spawnedAtMs + 1L
+        vm.onGymRingTap()
+        with(vm.uiState.value.gym!!) {
+            assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
+            assertEquals(0, ringFeedback?.combo)
+            assertEquals(0, ringCombo)
         }
     }
 
@@ -729,6 +777,7 @@ class MainViewModelTest {
             assertEquals(RingOutcome.MISS, ringFeedback?.outcome)
             assertEquals(ring.id, ringFeedback?.ringId)
             assertEquals(1, ringFeedback?.count)
+            assertEquals("un anillo caducado corta el combo", 0, ringFeedback?.combo)
         }
     }
 
