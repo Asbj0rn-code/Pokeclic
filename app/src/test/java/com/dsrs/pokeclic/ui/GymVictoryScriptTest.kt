@@ -50,11 +50,9 @@ class GymVictoryScriptTest {
 
     @Test
     fun gymsWithoutAVictoryScript_closeTheCombatAtOnce() {
-        // Misty y Lt. Surge aún no tienen retratos ni despedida: su combate
-        // termina en el acto, como siempre.
-        listOf("misty", "surge").forEach { id ->
-            assertNull("$id no debería tener despedida todavía", victoryScriptFor(id))
-        }
+        // Lt. Surge aún no tiene retratos ni despedida: su combate termina en el
+        // acto, como siempre.
+        assertNull("surge no debería tener despedida todavía", victoryScriptFor("surge"))
         assertNull(victoryScriptFor(null))
         assertNull(victoryScriptFor("gimnasio_inexistente"))
     }
@@ -65,7 +63,40 @@ class GymVictoryScriptTest {
         victorySpeechGymIds.forEach { id ->
             assertTrue("'$id' no es un gimnasio del catálogo", id in gymIds)
         }
-        assertEquals(setOf("brock"), victorySpeechGymIds)
+        assertEquals(setOf("brock", "misty"), victorySpeechGymIds)
+    }
+
+    @Test
+    fun misty_goesFromSadToHappyAndHandsOverTheCascadeBadge() {
+        val misty = victoryScriptFor("misty")!!
+        assertEquals(R.drawable.medalla_cascada, misty.badgeRes)
+        assertEquals(R.string.gym_victory_badge_cascada_desc, misty.badgeDescRes)
+        assertEquals(
+            listOf(
+                // La tristeza por haber perdido, con su cara de pena.
+                Triple(R.string.gym_victory_line_misty_almost, R.drawable.misty_sad, false),
+                Triple(R.string.gym_victory_line_misty_enjoyed, R.drawable.misty_sad, false),
+                // Se rehace, da la enhorabuena y entrega la medalla.
+                Triple(R.string.gym_victory_line_misty_badge, R.drawable.misty_happy, true),
+                Triple(R.string.gym_victory_line_misty_farewell, R.drawable.misty_happy, true)
+            ),
+            misty.lines.map { Triple(it.textRes, it.portraitRes, it.badge) }
+        )
+    }
+
+    @Test
+    fun misty_flapsHerMouthOnlyOnTheHappyLines() {
+        val misty = victoryScriptFor("misty")!!
+        misty.lines.filter { it.portraitRes == R.drawable.misty_happy }.forEach { line ->
+            assertEquals(
+                "la cara alegre habla con la boca abierta y cerrada",
+                R.drawable.misty_happy2,
+                line.altPortraitRes
+            )
+        }
+        misty.lines.filter { it.portraitRes != R.drawable.misty_happy }.forEach { line ->
+            assertNull("la cara triste no alterna", line.altPortraitRes)
+        }
     }
 
     @Test

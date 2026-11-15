@@ -149,6 +149,7 @@ fun GymOverlay(
     // pintar del HUD ni de los sprites.
     if (state.rageSpeech) {
         GymRageSpeech(
+            gymId = state.gymId,
             leaderName = state.leaderName,
             onFinished = onRageSpeechDone,
             modifier = modifier

@@ -64,13 +64,20 @@ internal data class GymVictoryLine(
     @param:StringRes val textRes: Int,
     /** Retrato que se muestra mientras se escribe la línea (`R.drawable.*`). */
     @param:DrawableRes val portraitRes: Int,
-    val badge: Boolean = false
+    val badge: Boolean = false,
+    /**
+     * Segundo retrato que se turna con [portraitRes] mientras la línea se escribe.
+     * `null` deja el retrato quieto.
+     */
+    @param:DrawableRes val altPortraitRes: Int? = null
 )
 
 /** Despedida de un líder: sus líneas y la medalla que entrega. */
 internal data class GymVictoryScript(
     val lines: List<GymVictoryLine>,
-    @param:DrawableRes val badgeRes: Int
+    @param:DrawableRes val badgeRes: Int,
+    /** Descripción de la medalla para lectores de pantalla. */
+    @param:StringRes val badgeDescRes: Int = R.string.gym_victory_badge_desc
 )
 
 /** Brock: rabia por el resultado, alegría por el combate y la Medalla Roca. */
@@ -84,7 +91,33 @@ private val brockVictory = GymVictoryScript(
     )
 )
 
-private val victoryScripts: Map<String, GymVictoryScript> = mapOf("brock" to brockVictory)
+/**
+ * Misty: la tristeza de perder, el ánimo y la Medalla Cascada. La boca se mueve
+ * en las líneas de su cara de siempre, igual que en el discurso de entrada.
+ */
+private val mistyVictory = GymVictoryScript(
+    badgeRes = R.drawable.medalla_cascada,
+    badgeDescRes = R.string.gym_victory_badge_cascada_desc,
+    lines = listOf(
+        GymVictoryLine(R.string.gym_victory_line_misty_almost, R.drawable.misty_sad),
+        GymVictoryLine(R.string.gym_victory_line_misty_enjoyed, R.drawable.misty_sad),
+        GymVictoryLine(
+            R.string.gym_victory_line_misty_badge,
+            R.drawable.misty_happy,
+            badge = true,
+            altPortraitRes = R.drawable.misty_happy2
+        ),
+        GymVictoryLine(
+            R.string.gym_victory_line_misty_farewell,
+            R.drawable.misty_happy,
+            badge = true,
+            altPortraitRes = R.drawable.misty_happy2
+        )
+    )
+)
+
+private val victoryScripts: Map<String, GymVictoryScript> =
+    mapOf("brock" to brockVictory, "misty" to mistyVictory)
 
 /** Gimnasios con despedida propia; el resto cierra el combate en el acto. */
 internal val victorySpeechGymIds: Set<String> = victoryScripts.keys
@@ -111,6 +144,7 @@ internal fun GymVictory(
 
     LeaderDialogue(
         portraitRes = line.portraitRes,
+        altPortraitRes = line.altPortraitRes,
         leaderName = leaderName,
         step = stepIndex,
         text = stringResource(line.textRes),
@@ -136,7 +170,7 @@ internal fun GymVictory(
                 ) {
                     Image(
                         painter = painterResource(script.badgeRes),
-                        contentDescription = stringResource(R.string.gym_victory_badge_desc),
+                        contentDescription = stringResource(script.badgeDescRes),
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.size(badgeSize)
                     )

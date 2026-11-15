@@ -48,6 +48,9 @@ private const val PORTRAIT_HEIGHT_FRACTION = 0.55f
 /** Margen superior del retrato. */
 private val PORTRAIT_TOP_PADDING = 24.dp
 
+/** Cada cuánto se turna el retrato con su segunda cara (la boca), en ms. */
+private const val PORTRAIT_FLAP_MS = 140L
+
 /**
  * Ancho del retrato de un líder dentro de un área: acotado por ancho **y** por
  * alto, para que el diálogo y los botones siempre entren aunque la pantalla sea
@@ -71,6 +74,8 @@ private fun aspectOf(painter: Painter): Float {
  * Marco de diálogo del líder: retrato, caja y máquina de escribir.
  *
  * @param portraitRes retrato que se muestra mientras se escribe la línea.
+ * @param altPortraitRes segunda cara que se turna con [portraitRes] mientras la
+ *   línea se escribe (la boca abierta y cerrada). `null` deja el retrato quieto.
  * @param step índice de la línea; reinicia la máquina de escribir aunque dos
  *   líneas seguidas tengan el mismo texto (los «...» de Brock).
  * @param text texto completo de la línea.
@@ -89,6 +94,7 @@ internal fun LeaderDialogue(
     text: String,
     onAdvance: () -> Unit,
     modifier: Modifier = Modifier,
+    altPortraitRes: Int? = null,
     portraitModifier: Modifier = Modifier,
     overlay: @Composable BoxScope.() -> Unit = {},
     footer: @Composable ColumnScope.(lineComplete: Boolean) -> Unit = {}
@@ -105,14 +111,31 @@ internal fun LeaderDialogue(
     val lineComplete = revealed >= text.length
     val shown = text.take(revealed)
 
+    // Boca: mientras la línea se está escribiendo, el retrato se turna con su
+    // segunda cara. Al completarse se queda la de siempre, quieta.
+    var flapTick by remember { mutableIntStateOf(0) }
+    val flapping = altPortraitRes != null && !lineComplete
+    LaunchedEffect(step, altPortraitRes, flapping) {
+        flapTick = 0
+        if (!flapping) return@LaunchedEffect
+        while (true) {
+            delay(PORTRAIT_FLAP_MS)
+            flapTick++
+        }
+    }
+    val shownPortraitRes =
+        if (flapping && flapTick % 2 == 1) altPortraitRes!! else portraitRes
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        // El tamaño sale del retrato base: las dos caras miden lo mismo y así el
+        // parpadeo no puede mover el encuadre.
         val painter = painterResource(portraitRes)
         val aspect = aspectOf(painter)
         val portraitWidth = leaderPortraitSize(maxWidth, maxHeight, aspect)
         val portraitHeight = portraitWidth / aspect
 
         Image(
-            painter = painter,
+            painter = painterResource(shownPortraitRes),
             contentDescription = stringResource(R.string.gym_leader_desc, leaderName ?: "?"),
             contentScale = ContentScale.Fit,
             modifier = portraitModifier

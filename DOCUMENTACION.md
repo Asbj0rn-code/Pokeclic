@@ -927,6 +927,12 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `brock_angry.png` | Brock enfadado, en el discurso de furia a mitad de combate |
 | `brock_happy.png` | Brock sonriente, en la despedida al ganar el gimnasio |
 | `medalla_roca.png` | Medalla Roca, que Brock entrega al perder |
+| `misty_happy.png`, `misty_happy2.png` | Misty de siempre, boca abierta y cerrada: se alternan mientras habla |
+| `misty_surprised.png` | Misty sorprendida, mientras escucha lo del Team Rocket |
+| `misty_smiling.png` | Misty con media sonrisa, al negarse a regalar la medalla |
+| `misty_angry.png` | Misty enfadada, en el discurso de furia a mitad de combate |
+| `misty_sad.png` | Misty apenada, al perder el combate |
+| `medalla_cascada.png` | Medalla Cascada, que Misty entrega al perder |
 | `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados de la intro |
 | `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principal visto de espaldas en el gimnasio |
 | `golem.gif` | Enemigo de Brock |
@@ -1606,11 +1612,14 @@ va **por línea**: Brock sigue con su cara de siempre mientras escucha los prime
 «...» y cambia a `brock_surprised` justo en «Espera... ¿me estás diciendo que el
 Team Rocket...?», manteniéndola hasta el estallido; después recupera su cara de
 siempre para la medalla y el reto.
-El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock tiene el
-suyo y Misty y Lt. Surge, que aún no tienen retrato ni guion, conservan el panel de
-bienvenida genérico. La última línea ofrece «Ver tutorial» / «Omitir», que llevan
-a `TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por
-entrada (un reintento tras perder va directo al cartel).
+El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock y Misty
+tienen el suyo y Lt. Surge, que aún no tiene retrato ni guion, conserva el panel de
+bienvenida genérico. Una línea puede declarar un **segundo retrato**
+(`GymLeaderLine.altPortraitRes`): mientras la máquina de escribir avanza, los dos
+se alternan cada 140 ms, que es como Misty mueve la boca entre `misty_happy` y
+`misty_happy2` sin dibujos extra. La última línea ofrece «Ver tutorial» / «Omitir»,
+que llevan a `TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez
+por entrada (un reintento tras perder va directo al cartel).
 
 El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
 pantalla completa: durante el combate **desaparece el bottom menu** (barra y
@@ -1645,9 +1654,12 @@ en el panel de derrota):
    saltársela con daño alto.
    Ese cruce abre además el **discurso de furia** (`GymState.rageSpeech`): el
    combate se **detiene** del todo —el bucle del ViewModel no avanza— y la escena
-   se sustituye por `brock_angry` con dos líneas de diálogo, la segunda en
-   mayúsculas y con el retrato bamboleándose (el grito a su Pokémon). Al cerrarlo
-   se apaga el flag y la siguiente vuelta del bucle ya dispara la oleada de furia.
+   se sustituye por la cara de furia del líder con dos líneas de diálogo, la
+   segunda en mayúsculas y con el retrato bamboleándose (el grito a su Pokémon).
+   Las caras y las frases son por gimnasio (`rageScriptFor`: Brock le grita a su
+   Golem, Misty a su Starmie); un líder sin furia propia conserva las de Brock.
+   Al cerrarlo se apaga el flag y la siguiente vuelta del bucle ya dispara la
+   oleada de furia.
 4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
    lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
    cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
@@ -1659,7 +1671,9 @@ en el panel de derrota):
    detiene y el Pokémon del líder **se hunde y se apaga** (`VICTORY_FADE_MS`,
    `VICTORY_ENEMY_SINK`); después llega la **despedida** (`ui/GymVictory.kt`): la
    cara de cada línea, la medalla apareciendo en el centro cuando la entrega y,
-   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Los gimnasios sin
+   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Cada guion declara
+   su medalla, su descripción y sus caras (`victoryScriptFor`); Misty pasa de
+   `misty_sad` a `misty_happy` y entrega la `medalla_cascada`. Los gimnasios sin
    despedida propia se cierran en cuanto termina el desvanecimiento.
 7. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
    sale del overlay; en el reset las **medallas persisten**, así que los
