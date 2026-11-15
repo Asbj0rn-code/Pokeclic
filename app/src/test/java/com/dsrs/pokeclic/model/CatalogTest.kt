@@ -152,11 +152,126 @@ class CatalogTest {
         }
     }
 
+    /** Un ID repetido dentro de una zona sesgaría el selector uniforme. */
+    @Test
+    fun zoneCatalog_hasNoRepeatedSpeciesWithinAZone() {
+        ZoneCatalog.zones.forEach { zone ->
+            assertEquals(
+                "${zone.id}: especies repetidas en la zona",
+                zone.wildSpeciesIds.size,
+                zone.wildSpeciesIds.toSet().size
+            )
+        }
+    }
+
+    /** Las ciudades no tienen hierba alta: caminar por ellas nunca abre encuentro. */
+    @Test
+    fun zoneCatalog_citiesHaveNoWildEncounters() {
+        val cities = listOf(
+            "pueblo_paleta",
+            "ciudad_verde",
+            "ciudad_plateada",
+            "ciudad_celeste",
+            "ciudad_carmin"
+        )
+        cities.forEach { id ->
+            val zone = ZoneCatalog.zones.single { it.id == id }
+            assertTrue(
+                "$id: una ciudad no debe tener especies salvajes",
+                zone.wildSpeciesIds.isEmpty()
+            )
+        }
+    }
+
+    /** Mew queda definido en el catálogo pero excluido de los encuentros. */
+    @Test
+    fun zoneCatalog_doesNotSpawnMew() {
+        assertTrue(
+            "Mew no debe aparecer en ninguna zona",
+            ZoneCatalog.zones.none { "mew" in it.wildSpeciesIds }
+        )
+    }
+
+    /** Las ocho zonas actuales con hierba mantienen al menos una especie salvaje. */
+    @Test
+    fun zoneCatalog_wildZonesAreNotEmpty() {
+        val wildZones = listOf(
+            "ruta1",
+            "ruta2",
+            "bosque_verde",
+            "ruta3",
+            "mt_moon",
+            "ruta4",
+            "ruta5",
+            "ruta6"
+        )
+        wildZones.forEach { id ->
+            val zone = ZoneCatalog.zones.single { it.id == id }
+            assertTrue(
+                "$id: una zona con hierba necesita especies salvajes",
+                zone.wildSpeciesIds.isNotEmpty()
+            )
+        }
+    }
+
     /** Todo gimnasio referenciado por una zona existe en el catálogo de gimnasios. */
     @Test
     fun zoneCatalog_gymReferencesResolve() {
         ZoneCatalog.zones.forEach { zone ->
             zone.gymId?.let { GymCatalog.require(it) }
         }
+    }
+
+    // --- catálogo de especies -------------------------------------------------
+
+    /**
+     * Las 151 especies de Kanto, con IDs estables y números de Pokédex únicos.
+     * El orden de `all` es el de declaración (hoy, orden de Pokédex).
+     */
+    @Test
+    fun speciesCatalog_hasThe151KantoSpecies() {
+        val species = SpeciesCatalog.all
+
+        assertEquals(151, species.size)
+        assertEquals(151, species.map { it.id }.toSet().size)
+        species.forEach { entry ->
+            assertTrue(
+                "ID no estable: ${entry.id}",
+                entry.id.matches(Regex("[a-z0-9_]+"))
+            )
+        }
+        assertEquals((1..151).toSet(), species.map { it.dexNumber }.toSet())
+    }
+
+    /** Cada especie declara parámetros de captura utilizables. */
+    @Test
+    fun speciesCatalog_hasValidCaptureParameters() {
+        SpeciesCatalog.all.forEach { entry ->
+            assertTrue(
+                "${entry.id}: dificultad fuera de 0..1",
+                entry.captureDifficulty in 0f..1f
+            )
+            assertTrue("${entry.id}: recompensa no positiva", entry.coinReward > 0)
+            assertTrue("${entry.id}: nombre vacío", entry.name.isNotBlank())
+        }
+    }
+
+    /** La elección del inicial de la intro no cambia con el catálogo completo. */
+    @Test
+    fun speciesCatalog_keepsTheStarterSelection() {
+        assertEquals(
+            listOf("bulbasaur", "charmander", "squirtle"),
+            SpeciesCatalog.starters.map { it.id }
+        )
+        assertEquals(listOf(1, 4, 7), SpeciesCatalog.starters.map { it.dexNumber })
+        assertEquals(
+            listOf(PokemonType.GRASS, PokemonType.FIRE, PokemonType.WATER),
+            SpeciesCatalog.starters.map { it.type }
+        )
+        assertEquals(
+            listOf(0.1f, 0.1f, 0.1f),
+            SpeciesCatalog.starters.map { it.captureDifficulty }
+        )
+        assertEquals(listOf(10, 10, 10), SpeciesCatalog.starters.map { it.coinReward })
     }
 }

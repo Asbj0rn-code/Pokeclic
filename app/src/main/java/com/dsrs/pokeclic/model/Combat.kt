@@ -19,9 +19,14 @@ const val RAGE_HP_FRACTION = 0.25f
 /**
  * Tipos elementales usados por el juego.
  *
- * Es un subconjunto de los tipos de la primera generación: solo los que
- * aparecen en el contenido planificado. Añadir un tipo es añadir una constante y
- * sus entradas en las tablas de efectividad.
+ * Son los **15 tipos** de la tabla aprobada para Pokeclic: los de la primera
+ * generación sin Siniestro, Acero ni Hada. Cada especie tiene un único tipo y
+ * todas las constantes tienen entrada en las dos tablas de efectividad, aunque
+ * su lista esté vacía. Las relaciones de inmunidad del juego original se
+ * recogen como ×0,5: no hay multiplicadores ×0.
+ *
+ * Añadir un tipo es añadir una constante, sus entradas en las tablas y su rama
+ * de presentación (`typeColor`).
  */
 enum class PokemonType {
     NORMAL,
@@ -31,14 +36,22 @@ enum class PokemonType {
     ELECTRIC,
     ROCK,
     FLYING,
-    POISON;
+    POISON,
+    BUG,
+    GROUND,
+    FIGHTING,
+    PSYCHIC,
+    ICE,
+    GHOST,
+    DRAGON;
 
     /**
      * Efectividad de este tipo (atacante) contra [defender].
      *
      * 2f = súper eficaz (ventaja para el atacante), 0.5f = poco eficaz
-     * (desventaja) y 1f = neutro. La tabla es una simplificación del juego
-     * original, suficiente para el minijuego de gimnasio y la captura.
+     * (desventaja, incluidas las inmunidades del juego original) y 1f = neutro.
+     * Es la tabla completa de 15 × 15 tipos: no se deducen relaciones por
+     * simetría. Solo la lee [typeDamageMultiplier] para el daño de gimnasio.
      */
     fun effectiveness(defender: PokemonType): Float = when {
         defender in strongAgainst.getValue(this) -> 2f
@@ -49,24 +62,38 @@ enum class PokemonType {
     private companion object {
         val strongAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
             NORMAL to emptySet(),
-            FIRE to setOf(GRASS),
-            WATER to setOf(FIRE, ROCK),
-            GRASS to setOf(WATER, ROCK),
+            FIRE to setOf(GRASS, BUG, ICE),
+            WATER to setOf(FIRE, ROCK, GROUND),
+            GRASS to setOf(WATER, ROCK, GROUND),
             ELECTRIC to setOf(WATER, FLYING),
-            ROCK to setOf(FIRE, FLYING),
-            FLYING to setOf(GRASS),
-            POISON to setOf(GRASS)
+            ROCK to setOf(FIRE, FLYING, BUG, ICE),
+            FLYING to setOf(GRASS, BUG, FIGHTING),
+            POISON to setOf(GRASS),
+            BUG to setOf(GRASS, PSYCHIC),
+            GROUND to setOf(FIRE, ELECTRIC, ROCK, POISON),
+            FIGHTING to setOf(NORMAL, ROCK, ICE),
+            PSYCHIC to setOf(POISON, FIGHTING),
+            ICE to setOf(GRASS, FLYING, GROUND, DRAGON),
+            GHOST to setOf(PSYCHIC, GHOST),
+            DRAGON to setOf(DRAGON)
         )
 
         val weakAgainst: Map<PokemonType, Set<PokemonType>> = mapOf(
-            NORMAL to setOf(ROCK),
-            FIRE to setOf(WATER, ROCK),
-            WATER to setOf(GRASS, ELECTRIC),
-            GRASS to setOf(FIRE, FLYING, POISON),
-            ELECTRIC to setOf(GRASS),
-            ROCK to setOf(WATER, GRASS),
+            NORMAL to setOf(ROCK, GHOST),
+            FIRE to setOf(FIRE, WATER, ROCK, DRAGON),
+            WATER to setOf(WATER, GRASS, DRAGON),
+            GRASS to setOf(FIRE, GRASS, FLYING, POISON, BUG, DRAGON),
+            ELECTRIC to setOf(GRASS, ELECTRIC, GROUND, DRAGON),
+            ROCK to setOf(GROUND, FIGHTING),
             FLYING to setOf(ELECTRIC, ROCK),
-            POISON to setOf(ROCK)
+            POISON to setOf(ROCK, POISON, GROUND, GHOST),
+            BUG to setOf(FIRE, FLYING, POISON, FIGHTING, GHOST),
+            GROUND to setOf(GRASS, FLYING, BUG),
+            FIGHTING to setOf(FLYING, POISON, BUG, PSYCHIC, GHOST),
+            PSYCHIC to setOf(PSYCHIC),
+            ICE to setOf(FIRE, WATER, ICE),
+            GHOST to setOf(NORMAL),
+            DRAGON to emptySet()
         )
     }
 }

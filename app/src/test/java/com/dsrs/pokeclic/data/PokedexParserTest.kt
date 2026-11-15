@@ -71,22 +71,46 @@ class PokedexParserTest {
     }
 
     /**
-     * Discrepancia documentada (no operativa): Caterpie y Weedle entran en la
-     * dex como **Bicho** (según el JSON de la primera generación), mientras que
-     * el combate provisional les declara GRASS y POISON en `SpeciesCatalog`.
-     * El test candado impide que esta divergencia se "arregle sola": si cambia
-     * algo, se revisan las dos fuentes **juntas**.
+     * El catálogo de juego y el de la Pokédex describen las mismas 151 especies:
+     * IDs estables, números, nombres y tipo. El asset es la fuente de
+     * presentación y `SpeciesCatalog` la del combate; si divergen, este test lo
+     * detecta. No duplica el catálogo: lo cruza con el asset del proyecto.
      */
     @Test
-    fun adaptedCatalog_typesDivergeFromCombatCatalogOnCaterpieAndWeedle() {
+    fun gameCatalogAndPokedexAsset_agreeOnEverySpecies() {
         val catalog = parsePokedexCatalog(assetText(DEX_CATALOG_ASSET))
-        assertEquals("Bicho", catalog.bySpeciesId("caterpie")?.typeName)
-        assertEquals("Bicho", catalog.bySpeciesId("weedle")?.typeName)
+        assertEquals(151, SpeciesCatalog.all.size)
+        assertEquals(151, catalog.entries.size)
 
-        val combat = SpeciesCatalog.byId("caterpie")
-        assertEquals(PokemonType.GRASS, combat?.type)
-        val weedle = SpeciesCatalog.byId("weedle")
-        assertEquals(PokemonType.POISON, weedle?.type)
+        val typeBySpanishName = mapOf(
+            "Normal" to PokemonType.NORMAL,
+            "Fuego" to PokemonType.FIRE,
+            "Agua" to PokemonType.WATER,
+            "Planta" to PokemonType.GRASS,
+            "Eléctrico" to PokemonType.ELECTRIC,
+            "Roca" to PokemonType.ROCK,
+            "Volador" to PokemonType.FLYING,
+            "Veneno" to PokemonType.POISON,
+            "Bicho" to PokemonType.BUG,
+            "Tierra" to PokemonType.GROUND,
+            "Lucha" to PokemonType.FIGHTING,
+            "Psíquico" to PokemonType.PSYCHIC,
+            "Hielo" to PokemonType.ICE,
+            "Fantasma" to PokemonType.GHOST,
+            "Dragón" to PokemonType.DRAGON
+        )
+
+        catalog.entries.forEach { entry ->
+            val species = SpeciesCatalog.byId(entry.speciesId)
+                ?: error("Falta en SpeciesCatalog: ${entry.speciesId}")
+            assertEquals("Dex de ${entry.speciesId}", entry.dexNumber, species.dexNumber)
+            assertEquals("Nombre de ${entry.speciesId}", entry.name, species.name)
+            assertEquals(
+                "Tipo de ${entry.speciesId}",
+                typeBySpanishName.getValue(entry.typeName),
+                species.type
+            )
+        }
     }
 
     // --- parser puro --------------------------------------------------------

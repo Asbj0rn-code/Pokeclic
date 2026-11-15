@@ -19,18 +19,156 @@ object SpeciesCatalog {
 
     private val species: List<Species> = listOf(
         Species("bulbasaur", "Bulbasaur", PokemonType.GRASS, 0.1f, 10, dexNumber = 1),
+        Species("ivysaur", "Ivysaur", PokemonType.GRASS, 0.45f, 12, dexNumber = 2),
+        Species("venusaur", "Venusaur", PokemonType.GRASS, 0.6f, 20, dexNumber = 3),
         Species("charmander", "Charmander", PokemonType.FIRE, 0.1f, 10, dexNumber = 4),
+        Species("charmeleon", "Charmeleon", PokemonType.FIRE, 0.45f, 12, dexNumber = 5),
+        Species("charizard", "Charizard", PokemonType.FIRE, 0.6f, 20, dexNumber = 6),
         Species("squirtle", "Squirtle", PokemonType.WATER, 0.1f, 10, dexNumber = 7),
+        Species("wartortle", "Wartortle", PokemonType.WATER, 0.45f, 12, dexNumber = 8),
+        Species("blastoise", "Blastoise", PokemonType.WATER, 0.6f, 20, dexNumber = 9),
+        Species("caterpie", "Caterpie", PokemonType.BUG, 0.3f, 6, dexNumber = 10),
+        Species("metapod", "Metapod", PokemonType.BUG, 0.45f, 12, dexNumber = 11),
+        Species("butterfree", "Butterfree", PokemonType.BUG, 0.6f, 20, dexNumber = 12),
+        Species("weedle", "Weedle", PokemonType.BUG, 0.35f, 7, dexNumber = 13),
+        Species("kakuna", "Kakuna", PokemonType.BUG, 0.45f, 12, dexNumber = 14),
+        Species("beedrill", "Beedrill", PokemonType.BUG, 0.6f, 20, dexNumber = 15),
         Species("pidgey", "Pidgey", PokemonType.FLYING, 0.2f, 5, dexNumber = 16),
+        Species("pidgeotto", "Pidgeotto", PokemonType.FLYING, 0.45f, 12, dexNumber = 17),
+        Species("pidgeot", "Pidgeot", PokemonType.FLYING, 0.6f, 20, dexNumber = 18),
         Species("rattata", "Rattata", PokemonType.NORMAL, 0.15f, 4, dexNumber = 19),
-        Species("caterpie", "Caterpie", PokemonType.GRASS, 0.3f, 6, dexNumber = 10),
-        Species("weedle", "Weedle", PokemonType.POISON, 0.35f, 7, dexNumber = 13),
+        Species("raticate", "Raticate", PokemonType.NORMAL, 0.45f, 12, dexNumber = 20),
         Species("spearow", "Spearow", PokemonType.FLYING, 0.25f, 6, dexNumber = 21),
+        Species("fearow", "Fearow", PokemonType.FLYING, 0.45f, 12, dexNumber = 22),
+        Species("ekans", "Ekans", PokemonType.POISON, 0.2f, 5, dexNumber = 23),
+        Species("arbok", "Arbok", PokemonType.POISON, 0.45f, 12, dexNumber = 24),
+        Species("pikachu", "Pikachu", PokemonType.ELECTRIC, 0.35f, 8, dexNumber = 25),
+        Species("raichu", "Raichu", PokemonType.ELECTRIC, 0.6f, 20, dexNumber = 26),
+        Species("sandshrew", "Sandshrew", PokemonType.GROUND, 0.2f, 5, dexNumber = 27),
+        Species("sandslash", "Sandslash", PokemonType.GROUND, 0.45f, 12, dexNumber = 28),
+        Species("nidoran_f", "Nidoran♀", PokemonType.POISON, 0.2f, 5, dexNumber = 29),
+        Species("nidorina", "Nidorina", PokemonType.POISON, 0.45f, 12, dexNumber = 30),
+        Species("nidoqueen", "Nidoqueen", PokemonType.POISON, 0.6f, 20, dexNumber = 31),
+        Species("nidoran_m", "Nidoran♂", PokemonType.POISON, 0.2f, 5, dexNumber = 32),
+        Species("nidorino", "Nidorino", PokemonType.POISON, 0.45f, 12, dexNumber = 33),
+        Species("nidoking", "Nidoking", PokemonType.POISON, 0.6f, 20, dexNumber = 34),
+        Species("clefairy", "Clefairy", PokemonType.NORMAL, 0.35f, 8, dexNumber = 35),
+        Species("clefable", "Clefable", PokemonType.NORMAL, 0.6f, 20, dexNumber = 36),
+        Species("vulpix", "Vulpix", PokemonType.FIRE, 0.35f, 8, dexNumber = 37),
+        Species("ninetales", "Ninetales", PokemonType.FIRE, 0.6f, 20, dexNumber = 38),
         Species("jigglypuff", "Jigglypuff", PokemonType.NORMAL, 0.45f, 10, dexNumber = 39),
+        Species("wigglytuff", "Wigglytuff", PokemonType.NORMAL, 0.6f, 20, dexNumber = 40),
         Species("zubat", "Zubat", PokemonType.POISON, 0.5f, 10, dexNumber = 41),
-        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12, dexNumber = 74),
+        Species("golbat", "Golbat", PokemonType.POISON, 0.6f, 20, dexNumber = 42),
+        Species("oddish", "Oddish", PokemonType.GRASS, 0.3f, 6, dexNumber = 43),
+        Species("gloom", "Gloom", PokemonType.GRASS, 0.45f, 12, dexNumber = 44),
+        Species("vileplume", "Vileplume", PokemonType.GRASS, 0.6f, 20, dexNumber = 45),
+        Species("paras", "Paras", PokemonType.BUG, 0.2f, 5, dexNumber = 46),
+        Species("parasect", "Parasect", PokemonType.BUG, 0.45f, 12, dexNumber = 47),
+        Species("venonat", "Venonat", PokemonType.BUG, 0.2f, 5, dexNumber = 48),
+        Species("venomoth", "Venomoth", PokemonType.BUG, 0.45f, 12, dexNumber = 49),
+        Species("diglett", "Diglett", PokemonType.GROUND, 0.2f, 5, dexNumber = 50),
+        Species("dugtrio", "Dugtrio", PokemonType.GROUND, 0.45f, 12, dexNumber = 51),
         Species("meowth", "Meowth", PokemonType.NORMAL, 0.3f, 7, dexNumber = 52),
-        Species("oddish", "Oddish", PokemonType.GRASS, 0.3f, 6, dexNumber = 43)
+        Species("persian", "Persian", PokemonType.NORMAL, 0.45f, 12, dexNumber = 53),
+        Species("psyduck", "Psyduck", PokemonType.WATER, 0.2f, 5, dexNumber = 54),
+        Species("golduck", "Golduck", PokemonType.WATER, 0.45f, 12, dexNumber = 55),
+        Species("mankey", "Mankey", PokemonType.FIGHTING, 0.35f, 8, dexNumber = 56),
+        Species("primeape", "Primeape", PokemonType.FIGHTING, 0.45f, 12, dexNumber = 57),
+        Species("growlithe", "Growlithe", PokemonType.FIRE, 0.35f, 8, dexNumber = 58),
+        Species("arcanine", "Arcanine", PokemonType.FIRE, 0.6f, 20, dexNumber = 59),
+        Species("poliwag", "Poliwag", PokemonType.WATER, 0.35f, 8, dexNumber = 60),
+        Species("poliwhirl", "Poliwhirl", PokemonType.WATER, 0.45f, 12, dexNumber = 61),
+        Species("poliwrath", "Poliwrath", PokemonType.WATER, 0.6f, 20, dexNumber = 62),
+        Species("abra", "Abra", PokemonType.PSYCHIC, 0.35f, 8, dexNumber = 63),
+        Species("kadabra", "Kadabra", PokemonType.PSYCHIC, 0.45f, 12, dexNumber = 64),
+        Species("alakazam", "Alakazam", PokemonType.PSYCHIC, 0.6f, 20, dexNumber = 65),
+        Species("machop", "Machop", PokemonType.FIGHTING, 0.35f, 8, dexNumber = 66),
+        Species("machoke", "Machoke", PokemonType.FIGHTING, 0.45f, 12, dexNumber = 67),
+        Species("machamp", "Machamp", PokemonType.FIGHTING, 0.6f, 20, dexNumber = 68),
+        Species("bellsprout", "Bellsprout", PokemonType.GRASS, 0.2f, 5, dexNumber = 69),
+        Species("weepinbell", "Weepinbell", PokemonType.GRASS, 0.45f, 12, dexNumber = 70),
+        Species("victreebel", "Victreebel", PokemonType.GRASS, 0.6f, 20, dexNumber = 71),
+        Species("tentacool", "Tentacool", PokemonType.WATER, 0.2f, 5, dexNumber = 72),
+        Species("tentacruel", "Tentacruel", PokemonType.WATER, 0.45f, 12, dexNumber = 73),
+        Species("geodude", "Geodude", PokemonType.ROCK, 0.55f, 12, dexNumber = 74),
+        Species("graveler", "Graveler", PokemonType.ROCK, 0.6f, 20, dexNumber = 75),
+        Species("golem", "Golem", PokemonType.ROCK, 0.7f, 30, dexNumber = 76),
+        Species("ponyta", "Ponyta", PokemonType.FIRE, 0.35f, 8, dexNumber = 77),
+        Species("rapidash", "Rapidash", PokemonType.FIRE, 0.45f, 12, dexNumber = 78),
+        Species("slowpoke", "Slowpoke", PokemonType.WATER, 0.35f, 8, dexNumber = 79),
+        Species("slowbro", "Slowbro", PokemonType.WATER, 0.45f, 12, dexNumber = 80),
+        Species("magnemite", "Magnemite", PokemonType.ELECTRIC, 0.35f, 8, dexNumber = 81),
+        Species("magneton", "Magneton", PokemonType.ELECTRIC, 0.45f, 12, dexNumber = 82),
+        Species("farfetchd", "Farfetch'd", PokemonType.FLYING, 0.7f, 30, dexNumber = 83),
+        Species("doduo", "Doduo", PokemonType.FLYING, 0.2f, 5, dexNumber = 84),
+        Species("dodrio", "Dodrio", PokemonType.FLYING, 0.45f, 12, dexNumber = 85),
+        Species("seel", "Seel", PokemonType.WATER, 0.35f, 8, dexNumber = 86),
+        Species("dewgong", "Dewgong", PokemonType.ICE, 0.45f, 12, dexNumber = 87),
+        Species("grimer", "Grimer", PokemonType.POISON, 0.35f, 8, dexNumber = 88),
+        Species("muk", "Muk", PokemonType.POISON, 0.45f, 12, dexNumber = 89),
+        Species("shellder", "Shellder", PokemonType.WATER, 0.35f, 8, dexNumber = 90),
+        Species("cloyster", "Cloyster", PokemonType.ICE, 0.6f, 20, dexNumber = 91),
+        Species("gastly", "Gastly", PokemonType.GHOST, 0.35f, 8, dexNumber = 92),
+        Species("haunter", "Haunter", PokemonType.GHOST, 0.45f, 12, dexNumber = 93),
+        Species("gengar", "Gengar", PokemonType.GHOST, 0.6f, 20, dexNumber = 94),
+        Species("onix", "Onix", PokemonType.ROCK, 0.7f, 30, dexNumber = 95),
+        Species("drowzee", "Drowzee", PokemonType.PSYCHIC, 0.2f, 5, dexNumber = 96),
+        Species("hypno", "Hypno", PokemonType.PSYCHIC, 0.45f, 12, dexNumber = 97),
+        Species("krabby", "Krabby", PokemonType.WATER, 0.2f, 5, dexNumber = 98),
+        Species("kingler", "Kingler", PokemonType.WATER, 0.45f, 12, dexNumber = 99),
+        Species("voltorb", "Voltorb", PokemonType.ELECTRIC, 0.35f, 8, dexNumber = 100),
+        Species("electrode", "Electrode", PokemonType.ELECTRIC, 0.45f, 12, dexNumber = 101),
+        Species("exeggcute", "Exeggcute", PokemonType.GRASS, 0.35f, 8, dexNumber = 102),
+        Species("exeggutor", "Exeggutor", PokemonType.GRASS, 0.6f, 20, dexNumber = 103),
+        Species("cubone", "Cubone", PokemonType.GROUND, 0.35f, 8, dexNumber = 104),
+        Species("marowak", "Marowak", PokemonType.GROUND, 0.45f, 12, dexNumber = 105),
+        Species("hitmonlee", "Hitmonlee", PokemonType.FIGHTING, 0.7f, 30, dexNumber = 106),
+        Species("hitmonchan", "Hitmonchan", PokemonType.FIGHTING, 0.7f, 30, dexNumber = 107),
+        Species("lickitung", "Lickitung", PokemonType.NORMAL, 0.7f, 30, dexNumber = 108),
+        Species("koffing", "Koffing", PokemonType.POISON, 0.35f, 8, dexNumber = 109),
+        Species("weezing", "Weezing", PokemonType.POISON, 0.45f, 12, dexNumber = 110),
+        Species("rhyhorn", "Rhyhorn", PokemonType.ROCK, 0.35f, 8, dexNumber = 111),
+        Species("rhydon", "Rhydon", PokemonType.ROCK, 0.45f, 12, dexNumber = 112),
+        Species("chansey", "Chansey", PokemonType.NORMAL, 0.7f, 30, dexNumber = 113),
+        Species("tangela", "Tangela", PokemonType.GRASS, 0.7f, 30, dexNumber = 114),
+        Species("kangaskhan", "Kangaskhan", PokemonType.NORMAL, 0.7f, 30, dexNumber = 115),
+        Species("horsea", "Horsea", PokemonType.WATER, 0.35f, 8, dexNumber = 116),
+        Species("seadra", "Seadra", PokemonType.WATER, 0.45f, 12, dexNumber = 117),
+        Species("goldeen", "Goldeen", PokemonType.WATER, 0.2f, 5, dexNumber = 118),
+        Species("seaking", "Seaking", PokemonType.WATER, 0.45f, 12, dexNumber = 119),
+        Species("staryu", "Staryu", PokemonType.WATER, 0.35f, 8, dexNumber = 120),
+        Species("starmie", "Starmie", PokemonType.WATER, 0.6f, 20, dexNumber = 121),
+        Species("mr_mime", "Mr. Mime", PokemonType.PSYCHIC, 0.7f, 30, dexNumber = 122),
+        Species("scyther", "Scyther", PokemonType.BUG, 0.7f, 30, dexNumber = 123),
+        Species("jynx", "Jynx", PokemonType.ICE, 0.7f, 30, dexNumber = 124),
+        Species("electabuzz", "Electabuzz", PokemonType.ELECTRIC, 0.7f, 30, dexNumber = 125),
+        Species("magmar", "Magmar", PokemonType.FIRE, 0.7f, 30, dexNumber = 126),
+        Species("pinsir", "Pinsir", PokemonType.BUG, 0.7f, 30, dexNumber = 127),
+        Species("tauros", "Tauros", PokemonType.NORMAL, 0.7f, 30, dexNumber = 128),
+        Species("magikarp", "Magikarp", PokemonType.WATER, 0.2f, 5, dexNumber = 129),
+        Species("gyarados", "Gyarados", PokemonType.WATER, 0.7f, 30, dexNumber = 130),
+        Species("lapras", "Lapras", PokemonType.WATER, 0.8f, 45, dexNumber = 131),
+        Species("ditto", "Ditto", PokemonType.NORMAL, 0.7f, 30, dexNumber = 132),
+        Species("eevee", "Eevee", PokemonType.NORMAL, 0.35f, 8, dexNumber = 133),
+        Species("vaporeon", "Vaporeon", PokemonType.WATER, 0.6f, 20, dexNumber = 134),
+        Species("jolteon", "Jolteon", PokemonType.ELECTRIC, 0.6f, 20, dexNumber = 135),
+        Species("flareon", "Flareon", PokemonType.FIRE, 0.6f, 20, dexNumber = 136),
+        Species("porygon", "Porygon", PokemonType.NORMAL, 0.7f, 30, dexNumber = 137),
+        Species("omanyte", "Omanyte", PokemonType.ROCK, 0.7f, 30, dexNumber = 138),
+        Species("omastar", "Omastar", PokemonType.ROCK, 0.8f, 45, dexNumber = 139),
+        Species("kabuto", "Kabuto", PokemonType.ROCK, 0.7f, 30, dexNumber = 140),
+        Species("kabutops", "Kabutops", PokemonType.ROCK, 0.8f, 45, dexNumber = 141),
+        Species("aerodactyl", "Aerodactyl", PokemonType.ROCK, 0.8f, 45, dexNumber = 142),
+        Species("snorlax", "Snorlax", PokemonType.NORMAL, 0.8f, 45, dexNumber = 143),
+        Species("articuno", "Articuno", PokemonType.ICE, 0.9f, 100, dexNumber = 144),
+        Species("zapdos", "Zapdos", PokemonType.ELECTRIC, 0.9f, 100, dexNumber = 145),
+        Species("moltres", "Moltres", PokemonType.FIRE, 0.9f, 100, dexNumber = 146),
+        Species("dratini", "Dratini", PokemonType.DRAGON, 0.35f, 8, dexNumber = 147),
+        Species("dragonair", "Dragonair", PokemonType.DRAGON, 0.45f, 12, dexNumber = 148),
+        Species("dragonite", "Dragonite", PokemonType.DRAGON, 0.7f, 30, dexNumber = 149),
+        Species("mewtwo", "Mewtwo", PokemonType.PSYCHIC, 0.95f, 150, dexNumber = 150),
+        Species("mew", "Mew", PokemonType.PSYCHIC, 0.95f, 150, dexNumber = 151)
     )
 
     private val byId: Map<String, Species> = species.associateBy { it.id }
@@ -60,6 +198,11 @@ object SpeciesCatalog {
  *
  * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
  * avanzan con clics.
+ *
+ * Las listas `wildSpeciesIds` de este catálogo solo cubren las zonas jugables
+ * implementadas. Las apariciones de ubicaciones futuras están planificadas en
+ * `docs/apariciones-planificadas.md`: no se adelantan aquí ni se reparten entre
+ * zonas existentes.
  *
  * Los umbrales siguen siendo **provisionales y bajos** para poder probar el
  * bucle (y el gimnasio) durante el desarrollo; se subirán al equilibrar.
@@ -95,7 +238,9 @@ object ZoneCatalog {
             id = "bosque_verde",
             name = "Bosque Verde",
             clickRequirement = 65L,
-            wildSpeciesIds = listOf("caterpie", "weedle")
+            wildSpeciesIds = listOf(
+                "caterpie", "weedle", "metapod", "kakuna", "pikachu"
+            )
         ),
         Zone(
             id = "ciudad_plateada",
@@ -108,13 +253,15 @@ object ZoneCatalog {
             id = "ruta3",
             name = "Ruta 3",
             clickRequirement = 150L,
-            wildSpeciesIds = listOf("spearow", "jigglypuff")
+            wildSpeciesIds = listOf(
+                "spearow", "jigglypuff", "pidgey", "nidoran_f", "nidoran_m", "mankey"
+            )
         ),
         Zone(
             id = "mt_moon",
             name = "Mt.Moon",
             clickRequirement = 160L,
-            wildSpeciesIds = listOf("zubat", "geodude"),
+            wildSpeciesIds = listOf("zubat", "geodude", "clefairy", "paras"),
             // Cueva: los salvajes aparecen caminando, sin modo hierba alta.
             alwaysWilds = true
         ),
@@ -122,7 +269,10 @@ object ZoneCatalog {
             id = "ruta4",
             name = "Ruta 4",
             clickRequirement = 210L,
-            wildSpeciesIds = listOf("spearow", "rattata")
+            wildSpeciesIds = listOf(
+                "spearow", "rattata", "ekans", "sandshrew", "mankey",
+                "tentacool", "krabby", "horsea", "magikarp"
+            )
         ),
         Zone(
             id = "ciudad_celeste",
@@ -135,13 +285,16 @@ object ZoneCatalog {
             id = "ruta5",
             name = "Ruta 5 - Vía Subterránea",
             clickRequirement = 320L,
-            wildSpeciesIds = listOf("pidgey", "meowth", "oddish")
+            wildSpeciesIds = listOf("pidgey", "meowth", "oddish", "bellsprout")
         ),
         Zone(
             id = "ruta6",
             name = "Ruta 6",
             clickRequirement = 380L,
-            wildSpeciesIds = listOf("pidgey", "rattata", "oddish")
+            wildSpeciesIds = listOf(
+                "pidgey", "oddish", "meowth", "psyduck",
+                "poliwag", "bellsprout", "slowpoke", "goldeen"
+            )
         ),
         Zone(
             id = "ciudad_carmin",

@@ -6,24 +6,12 @@
  * en la pantalla de Pokédex, no cómo se juega. La fuente de verdad del juego
  * sigue siendo `SpeciesCatalog` (captura, recompensas, tipos de combate).
  *
- * **Tipo de Pokédex separado del combate** (decisión de alcance): `typeName`
- * es el nombre del tipo tal como lo aporta el catálogo adaptado
- * (`assets/pokedex_catalogo.json`), conservado como texto para
- * **no tocar** `PokemonType` ni sus tablas de efectividad (los tipos Bicho,
- * Tierra, Lucha, Psíquico, Hielo, Fantasma y Dragón no existen en el enum del
- * combate).
- *
- * **Discrepancia temporal Caterpie / Weedle**: el catálogo de combate
- * (`SpeciesCatalog`) declara Caterpie de tipo GRASS y Weedle de POISON, pero
- * la Pokédex muestra ambos como Bicho según el JSON de la primera generación.
- * Esta incongruencia es deliberada en esta etapa: la Pokédex enseña el dato
- * original y el combate conserva sus valores provisionales; no conviene
- * leerla como coherencia completa entre ambas fuentes.
- *
- * **Discrepancia temporal de los tipos fuera de `PokemonType`**: especies cuyo
- * único tipo JSON no existe como constante de combate (Bicho/Tierra/Lucha/
- * Psíquico/Hielo/Fantasma/Dragón) se muestran igualmente por su nombre; su
- * color de presentación es una decoración de UI, no una regla de juego.
+ * **Tipo de Pokédex como texto** (decisión de alcance): `typeName` es el nombre
+ * del tipo tal como lo aporta el catálogo adaptado
+ * (`assets/pokedex_catalogo.json`) y se conserva como texto para que la pantalla
+ * no dependa del enum de combate. Los dos catálogos describen las mismas
+ * especies con el mismo tipo; `PokedexParserTest` los cruza y avisa si divergen.
+ * El color de presentación sigue siendo decoración de UI, no una regla de juego.
  *
  * Nada aquí depende de Android: idéntico tratamiento que el resto de `model/`.
  */
