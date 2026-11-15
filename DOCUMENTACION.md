@@ -1232,6 +1232,20 @@ pestaña nueva no siempre cabrá sin reordenar el menú.
 3. En `AppRoot`, dibújalo tras el `Scaffold` cuando el flag sea `true`.
 4. Añade un botón en el `MenuBar` que llame a `onOpen...`.
 
+### Añadir un paso al tutorial
+
+1. Añade la fase y su acción al enum correspondiente en `model/Tutorial.kt`
+   (o reutiliza las existentes) y su transición en `advance()`.
+2. Declárala en `allowedInteractions` (qué control responde) y en
+   `isMessageVisible` (si arranca con el mensaje abierto).
+3. Añade el texto del mensaje en `strings.xml` (`tutorial_*`) y mapea la fase
+   en `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
+4. Cablea la detección en `AppRoot`/`MainViewModel` si el paso reacciona a una
+   interacción que aún no alimenta la máquina (ver §22).
+5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
+   persiste con `enum.name`; renombrar una fase rompe los guardados
+   existentes a menos que se añada antes un mapeo de compatibilidad.
+
 ### Añadir una nueva dirección de animación
 
 1. Añade el valor al `enum class Direction`.
@@ -1286,13 +1300,17 @@ clave por campo:
 | `coins` | `coins` | `Long` |
 | `seen` | `seenSpecies` | IDs separados por comas |
 | `rewarded` | `rewardedSpecies` | IDs separados por comas |
+| `caught` | `caughtSpecies` | IDs separados por comas |
 | `medals` | `medals` | IDs separados por comas |
 | `starter` | `starterSpeciesId` | Texto o vacío |
 | `starter_bond` | `starterBond` | `Int` |
 | `owned` | `ownedSpecies` | IDs separados por comas |
 | `lead` | `leadSpeciesId` | Texto o vacío |
+| `gym_cleared_run` | `gymClearedRun` | IDs separados por comas |
 | `zone_index` | `zoneIndex` | `Int` |
 | `zone_clicks` | `zoneClicks` | `Long` |
+| `tutorial_phase` | `tutorialPhase` | Nombre del enum (`PENDING`…`COMPLETED`) |
+| `tutorial_message_closed` | `tutorialMessageClosed` | `Boolean` |
 
 Limitaciones que condicionan la migración:
 
@@ -1424,11 +1442,13 @@ simple, monedas, principal y reset. El diseño completo vive en
 
 ### Estado (`GameUiState`)
 
-Cuatro grupos:
+Cinco grupos:
 
 - **meta permanente**: `coins`, `seenSpecies`, `rewardedSpecies`, `medals`,
   `starterSpeciesId`, `starterBond`, `playerName`.
 - **run**: `ownedSpecies`, `leadSpeciesId`, `zoneIndex`, `zoneClicks`.
+- **tutorial**: `tutorialPhase` (fase de la máquina de `model/Tutorial.kt`,
+  persistida) y `tutorialMessageClosed` (momento del paso, persistido).
 - **transitorio/UI**: `isTallGrass`, `walkProgress`, `encounter`, `gym`,
   `trainer` y la navegación (`contentTab`, `isOptionsOpen`, `isLeadOpen`).
 - **derivados**: nombre de zona, `clickPower`, `maxHp`, `isGymReady`,
@@ -1663,9 +1683,11 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `model/Combat.kt` | `Gym`, `GymState`, fases, `Projectile`, `GymCombat` y `typeDamageMultiplier()` |
 | `model/GameData.kt` | `Zone`, `advanceZone()` y el resto de entidades |
 | `model/Catalogs.kt` | `GymCatalog` (Brock) y sprites |
+| `model/Tutorial.kt` | máquina de estados del tutorial explicativo (fases, acciones, guards, ver §22) |
 | `ui/Intro.kt` | introducción del Profesor Oak (nombre + starter, ver §20) |
 | `ui/Overlays.kt` | selector de principal |
 | `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
+| `ui/TutorialOverlay.kt` | capa de diálogos del tutorial explicativo (ver §22) |
 | `ui/RockShatterFx.kt` | estallido de roca al romper un proyectil (reproducción del sprite sheet) |
 | `ui/GymSceneLayouts.kt` | composición por gimnasio: tamaño y ancla de los sprites del líder y del jugador |
 | `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
@@ -1772,7 +1794,10 @@ El nombre es **meta permanente** y se muestra en el HUD («Entrenador: …»). S
 persiste junto al starter en una sola operación:
 
 - `MainViewModel.onFinishIntro(playerName, starterSpeciesId)` fija `playerName`,
-  `starterSpeciesId`, `starterBond = 0` y `leadSpeciesId` en un único `mutate`.
+  `starterSpeciesId`, `starterBond = 0` y `leadSpeciesId` en un único `mutate`,
+  y alimenta la máquina del tutorial (`OAK_FINISHED`): al cerrar la última fase
+  **ya no se entra directo al juego**, sino que se ofrece el tutorial explicativo
+  (ver §22). Tras un reset la oferta reaparece sin repetir la introducción.
 - `GameSnapshot.playerName` se guarda bajo la clave `player_name` en
   SharedPreferences.
 - Nada se persiste hasta terminar la intro: si se cierra a medias, vuelve a
@@ -2315,3 +2340,132 @@ Riesgos principales:
 - [ ] Los efectos, si existen, se resuelven sin `when` por especie.
 - [ ] `assembleDebug`, `testDebugUnitTest` y `lintDebug` pasan.
 - [ ] Las partidas existentes siguen abriendo con `kanto_clicker`.
+
+---
+
+## 22. Tutorial explicativo
+
+Tercera rebanada de onboarding: un **recorrido guiado** que enseña el menú, el
+mapa y la Pokédex. Se ofrece tras la introducción de Oak (primera partida) o
+después de un reset (sin repetir a Oak); con un borrado total vuelve a aparecer
+el flujo completo desde la intro.
+
+### Flujo
+
+```text
+Intro de Oak → ¿Oferta? → ¿Confirmar?
+  ├─ Omitir ─────────────► juego normal (la oferta reaparece tras un reset)
+  └─ Empezar → desplegar Pokéball → abrir Mapa → volver
+              → abrir Pokédex → volver → despedida
+              → aviso de experiencia → primer avance → COMPLETED
+```
+
+- **Oferta**: tras cerrar la despedida de Oak se pregunta «¿es tu primera vez
+  aquí?» con botones Sí/No.
+- **Doble confirmación**: responder *Sí* lleva a una segunda pregunta
+  «Empezar tutorial / Omitir». Solo *Empezar* inicia el recorrido; *Omitir*
+  juega con normalidad.
+- **Recorrido obligatorio**: una vez empezado, no se puede abandonar; se
+  completa con el primer avance real de zona.
+- **Dos momentos por paso**: cada paso arranca con su mensaje explicativo
+  visible (todo bloqueado); al tocar la caja el mensaje se cierra y **solo**
+  la interacción del paso responde. La acción real de juego es lo que
+  completa el paso: cerrar el mensaje no lo salta.
+
+### Máquina de estados (`model/Tutorial.kt`)
+
+Pura y sin Android: 14 fases (`TutorialPhase`), 14 acciones
+(`TutorialAction`) y una función `advance()` que descarta cualquier acción
+que no aplique (no-op) — los finales (`SKIPPED`, `COMPLETED`) absorben todo.
+
+| Fase | Momento | Acción que la completa |
+|---|---|---|
+| `PENDING` | Antes de terminar Oak | `OAK_FINISHED` → `OFFER` |
+| `OFFER` | Pregunta «primera vez?» | `ACCEPT_OFFER` / `DECLINE_OFFER` |
+| `CONFIRM` | Doble confirmación | `BEGIN_TUTORIAL` / `SKIP_TUTORIAL` |
+| `DEPLOY_POKEBALL` | Paso 1: desplegar | `POKEBALL_EXPANDED` |
+| `OPEN_MAP` | Paso 2: instrucción | `MAP_OPENED` |
+| `RETURN_MAP` | Paso 3: volver del mapa | `MAP_CLOSED` |
+| `OPEN_POKEDEX` | Paso 4: instrucción | `POKEDEX_OPENED` |
+| `RETURN_POKEDEX` | Paso 5: volver de la Dex | `POKEDEX_CLOSED` |
+| `FAREWELL` | Despedida | `FAREWELL_DISMISSED` |
+| `EXP_WAIT` | Jugar hasta llenar la barra | `EXP_BAR_FILLED` (derivado) |
+| `EXP_NOTICE` | Aviso de avance | `EXP_NOTICE_DISMISSED` |
+| `ADVANCE_WAIT` | Primer avance real | `ADVANCE_ZONE_EXECUTED` |
+| `SKIPPED` / `COMPLETED` | Finales (juego libre) | absorben todo |
+
+Predicados puros que comparten UI y ViewModel:
+
+- `allowedInteractions`: qué control responde en cada fase (en los pasos
+  guiados, solo el del paso).
+- `isMessageVisible`: si el mensaje del paso está en pantalla.
+- `isFreePlay`: fases sin restricción (`EXP_WAIT`, esperas y finales, y
+  también `PENDING` — su aislamiento lo hacen las capas visuales: la intro es
+  opaca y el menú no se compone porque `menuHidden` incluye `needsStarter`).
+- `tutorialInteractionAllowed` (regla principal): mientras **cualquier**
+  mensaje esté visible, nada del juego responde; con el mensaje cerrado, en
+  pasos guiados solo responde la interacción del paso, y en el resto, juego
+  libre total.
+
+### Integración en el ViewModel y la UI
+
+- `MainViewModel`: cada evento de juego real consulta el guard
+  (`tutorialAllows(...)`) y alimenta la máquina con su acción. Los guards
+  cubren **toda** la operación: bloqueado, el método devuelve el estado
+  intacto (no navega ni cierra nada). Puertas adicionales:
+  `onTutorialAction` (respuestas y cierres de mensaje) y
+  `onTutorialMessageTap` (avanza/cierra la caja de diálogo).
+- `AppRoot.kt`: dibuja la capa (`TutorialOverlay`), oculta el menú en las
+  capas modales (`tutorialHidesMenu`), inmoviliza la Pokéball
+  (`tutorialPokeBallEnabled`), los destinos de la hoja
+  (`tutorialDexDestinationsEnabled`) y el clic de juego
+  (`tutorialPokeBallClickEnabled`), y bloquea el botón Atrás con
+  `BackHandler` mientras el tutorial lo exija.
+- `derive()` normaliza dos transiciones dependientes del juego: `PENDING` +
+  starter → `OFFER` (oferta tras la intro o tras un reset) y `EXP_WAIT` +
+  barra llena → `EXP_NOTICE`.
+
+### Persistencia
+
+- `GameSnapshot.tutorialPhase` (clave `tutorial_phase`, **nombre del enum**)
+  y `GameSnapshot.tutorialMessageClosed` (clave `tutorial_message_closed`).
+- Guardados antiguos sin la clave: `GameStateStore` resuelve `COMPLETED` si
+  ya hay starter (jugador anterior a la función, no se le ofrece) y
+  `PENDING` si no.
+- Limitación conocida: al reabrir la app a mitad de un diálogo paginado se
+  recupera la fase y el momento (mensaje abierto o cerrado), pero la página
+  concreta del diálogo vuelve al inicio del mensaje.
+
+### Archivos
+
+| Archivo | Rol |
+|---|---|
+| `model/Tutorial.kt` | máquina de estados: fases, acciones, transiciones y predicados |
+| `ui/TutorialOverlay.kt` | diálogos paginados estilo Oak (sin retrato), scrim y `modalBlocking` |
+| `ui/AppRoot.kt` | composición de la capa, scrims modales y bloqueo del menú/Atrás |
+| `viewmodel/MainViewModel.kt` | guards sobre los eventos reales y eventos del tutorial |
+
+### Cómo ajustarlo
+
+| Quiero… | Cambio |
+|---|---|
+| Cambiar los textos | `strings.xml`, claves `tutorial_*` |
+| Cambiar la velocidad de la máquina de escribir | `TYPE_CHAR_MS` en `TutorialOverlay.kt` |
+| Cambiar el scrim de las preguntas | `QuestionScrim` en `TutorialOverlay.kt` |
+
+Los tutoriales de gimnasio (`GymIntro`, `GymOverlay`, §19) son un mecanismo
+independiente y no comparten máquina con este recorrido.
+
+### Cómo extenderlo
+
+1. Añade la fase y su acción a los enums de `model/Tutorial.kt` y su
+   transición en `advance()`.
+2. Declárala en `allowedInteractions` y en `isMessageVisible`.
+3. Añade su texto en `strings.xml` (`tutorial_*`) y mapea la fase en
+   `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
+4. Si el paso reacciona a una interacción que aún no alimenta la máquina,
+   añade la detección en su método de `MainViewModel` y los helpers que
+   falten en `AppRoot` (ver §13).
+5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
+   persiste con `enum.name`; renombrar una fase rompe los guardados
+   existentes salvo que se añada antes un mapeo de compatibilidad.

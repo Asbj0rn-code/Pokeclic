@@ -13,6 +13,7 @@ import com.dsrs.pokeclic.model.PokedexCatalog
 import com.dsrs.pokeclic.model.PokedexCatalogLoad
 import com.dsrs.pokeclic.model.PokedexSpecies
 import com.dsrs.pokeclic.model.SpeciesCatalog
+import com.dsrs.pokeclic.model.TutorialAction
 import com.dsrs.pokeclic.model.Zone
 import kotlin.math.abs
 import kotlin.random.Random
@@ -119,6 +120,7 @@ class PokedexDexTest {
     fun onOpenDex_closesOptionsAndOpensTheDex() {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onOpenOptions()
         assertTrue(vm.uiState.value.isOptionsOpen)
 
@@ -138,6 +140,7 @@ class PokedexDexTest {
     fun onCloseDex_returnsToTheGame() {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onOpenDex()
         assertTrue(vm.uiState.value.isPokedexOpen)
 
@@ -161,6 +164,7 @@ class PokedexDexTest {
     fun onOpenDex_isBlockedDuringAnEncounter() {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
         advanceUntilEncounter(vm)
@@ -175,6 +179,7 @@ class PokedexDexTest {
     fun onOpenDex_isBlockedWhileTheLeadOverlayIsOpen() {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onOpenLead()
 
         vm.onOpenDex()
@@ -190,6 +195,7 @@ class PokedexDexTest {
         )
         val vm = viewModel(zones = zones)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         // Llena z1, avanza a la zona del gimnasio y llena también su barra.
         repeat(5) { vm.onPokeBallTouch(Direction.BACK) }
         assertTrue(vm.uiState.value.canAdvanceZone)
@@ -222,6 +228,7 @@ class PokedexDexTest {
     fun dexOpen_pausesWalkingAndClosingRequiresANewTap() {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
         // Ritmo real de toques: dos tandas de 500 ms con re-toque (la ventana
@@ -329,6 +336,7 @@ class PokedexDexTest {
     fun catalogLoadFailure_showsErrorButGameKeepsWorking() {
         val vm = viewModel(loadFailed = true, catalog = PokedexCatalog.EMPTY)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         val state = vm.uiState.value
         assertTrue(state.dexLoadFailed)
@@ -407,6 +415,7 @@ class PokedexDexTest {
     fun catchingResultContinue_capturedRegistersHistoryAndRewardsOnce() {
         val vm = viewModel(random = DartosAlRielRandom())
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onTallGrassToggle()
 
         // Primera captura de la run.
@@ -463,6 +472,7 @@ class PokedexDexTest {
         val store = FakeStore()
         val vm = viewModel(random = DartosAlRielRandom(), store = store)
         vm.onFinishIntro("Ash", "charmander")
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
         vm.onTallGrassToggle()
 
         // Captura de pidgey: +5 monedas (primera vez), en posesión.
@@ -474,6 +484,7 @@ class PokedexDexTest {
 
         // Reset: la posesión de la run se vacía; queda solo el starter.
         vm.onReset()
+        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite la nueva oferta: juego libre
         with(vm.uiState.value) {
             assertTrue(ownedSpecies.isEmpty())
             assertEquals("charmander", leadSpeciesId)

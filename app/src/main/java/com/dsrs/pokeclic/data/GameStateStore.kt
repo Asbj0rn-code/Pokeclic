@@ -3,6 +3,8 @@ package com.dsrs.pokeclic.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.TutorialPhase
+import com.dsrs.pokeclic.model.tutorialPhaseFromName
 
 /**
  * Persistencia del estado de juego.
@@ -60,7 +62,9 @@ class SharedPreferencesGameStateStore internal constructor(
             leadSpeciesId = decodeNullable(prefs.getString(KEY_LEAD, null)),
             gymClearedRun = decodeSet(prefs.getString(KEY_GYM_CLEARED_RUN, null)),
             zoneIndex = prefs.getInt(KEY_ZONE_INDEX, 0),
-            zoneClicks = prefs.getLong(KEY_ZONE_CLICKS, 0L)
+            zoneClicks = prefs.getLong(KEY_ZONE_CLICKS, 0L),
+            tutorialPhase = loadTutorialPhase(),
+            tutorialMessageClosed = prefs.getBoolean(KEY_TUTORIAL_MESSAGE_CLOSED, false)
         )
     }
 
@@ -79,10 +83,36 @@ class SharedPreferencesGameStateStore internal constructor(
             .putString(KEY_GYM_CLEARED_RUN, encodeSet(snapshot.gymClearedRun))
             .putInt(KEY_ZONE_INDEX, snapshot.zoneIndex)
             .putLong(KEY_ZONE_CLICKS, snapshot.zoneClicks)
+            .putString(KEY_TUTORIAL_PHASE, snapshot.tutorialPhase.name)
+            .putBoolean(KEY_TUTORIAL_MESSAGE_CLOSED, snapshot.tutorialMessageClosed)
             .apply()
     }
 
     override fun clear(): Boolean = prefs.edit().clear().commit()
+
+    /**
+     * Progreso del tutorial guardado, con la regla de compatibilidad de los
+     * **guardados anteriores a esta característica**:
+     *
+     * - Clave presente y valor conocido → la fase exacta que se guardó.
+     * - Clave presente con valor desconocido (datos corruptos o de una versión
+     *   futura) → `COMPLETED`: nunca se re-ofrece un tutorial por datos ilegibles.
+     * - Clave ausente → se deduce de la partida: `COMPLETED` si ya hay starter
+     *   (jugador veterano al que no se le ofrece el tutorial) y `PENDING` si no
+     *   (aún en la introducción de Oak, o partida recién creada).
+     */
+    private fun loadTutorialPhase(): TutorialPhase {
+        val raw = prefs.getString(KEY_TUTORIAL_PHASE, null) ?: return legacyTutorialPhase()
+        return tutorialPhaseFromName(raw, TutorialPhase.COMPLETED)
+    }
+
+    /** Fase del tutorial deducida para un guardado sin la clave nueva. */
+    private fun legacyTutorialPhase(): TutorialPhase =
+        if (decodeNullable(prefs.getString(KEY_STARTER, null)) != null) {
+            TutorialPhase.COMPLETED
+        } else {
+            TutorialPhase.PENDING
+        }
 
     private fun encodeNullable(value: String?): String = value.orEmpty()
 
@@ -112,6 +142,8 @@ class SharedPreferencesGameStateStore internal constructor(
         const val KEY_GYM_CLEARED_RUN = "gym_cleared_run"
         const val KEY_ZONE_INDEX = "zone_index"
         const val KEY_ZONE_CLICKS = "zone_clicks"
+        const val KEY_TUTORIAL_PHASE = "tutorial_phase"
+        const val KEY_TUTORIAL_MESSAGE_CLOSED = "tutorial_message_closed"
         const val ITEM_SEPARATOR = ","
     }
 }
