@@ -803,7 +803,7 @@ private fun RingGymScene(
             }
             Text(
                 text = label,
-                color = if (hit) WATER_FOAM else MISS_RED,
+                color = if (hit) HIT_GREEN else MISS_RED,
                 style = MaterialTheme.typography.headlineSmall.copy(
                     shadow = Shadow(color = Color.Black, offset = Offset(3f, 3f), blurRadius = 0f)
                 ),
@@ -1702,6 +1702,12 @@ private val RING_ON_BEAT_DEEP = Color(0xFFFFB300)
 
 /** Rojo del fallo. */
 private val MISS_RED = Color(0xFFFF5252)
+
+/**
+ * Verde del acierto. Es el paso claro de la rampa con la que se exportó
+ * `hydro_burst.png`, así el mensaje y el estallido hablan el mismo idioma.
+ */
+private val HIT_GREEN = Color(0xFF7EE88A)
 
 /** Frames del Voltorb: reposo, carga y resolución, en orden de reproducción. */
 private val VOLTORB_FRAME_RES = intArrayOf(

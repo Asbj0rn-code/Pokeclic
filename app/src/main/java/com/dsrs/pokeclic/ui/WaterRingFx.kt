@@ -6,6 +6,10 @@
  * reproducen. Cada hoja alinea su aro con el radio que tenía el anillo al
  * resolverse (`RingFeedback.ringProgress`), así el efecto continúa exactamente
  * donde estaba el círculo en lugar de saltar al radio del jugador.
+ *
+ * El color es parte del arte, no un tinte: el acierto se exportó con la rampa
+ * verde de `PAL.heal` y el fallo con la roja de `PAL.blood`, porque el resultado
+ * tiene que leerse de un vistazo sin depender del texto.
  */
 package com.dsrs.pokeclic.ui
 
@@ -26,10 +30,10 @@ internal enum class WaterRingSheet(
     val columns: Int,
     val frameCount: Int
 ) {
-    /** Acierto: el aro revienta hacia fuera y salpica gotas. */
+    /** Acierto: el aro revienta hacia fuera y salpica gotas. Verde. */
     BURST(R.drawable.hydro_burst, columns = 5, frameCount = 25),
 
-    /** Fallo: el aro se cierra sobre el sprite y estalla en el centro. */
+    /** Fallo: el aro se cierra sobre el sprite y estalla en el centro. Rojo. */
     IMPLODE(R.drawable.hydro_implode, columns = 6, frameCount = 31);
 
     val durationMs: Long get() = frameCount * 1000L / FPS
