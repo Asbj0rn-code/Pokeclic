@@ -906,11 +906,17 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 | `left0-3.png` | Frames "left" (toque izquierda) |
 | `back0-3.png` | Frames "back" (toque arriba) |
 | `profesor_oak.png` | Retrato de la introducción |
+| `brock.png` | Retrato de Brock para el discurso de entrada al gimnasio |
+| `brock_surprised.png` | Brock sorprendido, mientras escucha lo del Team Rocket |
+| `brock_angry.png` | Brock enfadado, en el discurso de furia a mitad de combate |
+| `brock_happy.png` | Brock sonriente, en la despedida al ganar el gimnasio |
+| `medalla_roca.png` | Medalla Roca, que Brock entrega al perder |
 | `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados de la intro |
 | `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principal visto de espaldas en el gimnasio |
 | `golem.gif` | Enemigo de Brock |
 | `rock.png` | Proyectil del gimnasio |
-| `rock_gym.jpg` | Fondo del gimnasio |
+| `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
+| `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
 | `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
 | `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
 | `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
@@ -933,9 +939,10 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 
 > **Aviso de tamaño:** `tall_grass_button.png` ocupa 1500×1500 px (394 KB) pero
 > se muestra a 80 dp. Conviene reducirla a unas 300×300 px o pasarla a WebP.
-> `rock_gym.jpg` pesa ~3,4 MB y es el recurso más grande del APK; es el candidato
-> prioritario a compresión. `tall_grass_full.png` y `tall_grass_mid.png` son de
-> 750×750 px y se muestran a 120 dp, así que también admiten reducción.
+> `tall_grass_full.png` y `tall_grass_mid.png` son de 750×750 px y se muestran a
+> 120 dp, así que también admiten reducción. Los fondos de gimnasio (`rock_gym.png`,
+> `water_gym.jpg`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
+> densidad no los reescale; el de roca pasó de 3,4 MB en JPG a ~40 KB en PNG.
 
 ### Strings (`res/values/strings.xml`)
 
@@ -1559,6 +1566,31 @@ Es una función **pura** para poder testearla en la JVM.
 Una zona con `gymId` **termina** en ese gimnasio: al alcanzar su umbral el
 progreso se capa y **no se avanza** hasta ganar la medalla.
 
+#### Entrada al gimnasio
+
+Pulsar «Gimnasio» no abre el panel directamente: primero se cierra una
+**cortinilla** con las dos mitades de la Pokéball (`pokeball_splash_top` baja
+desde arriba, `pokeball_splash_bottom` sube desde abajo), se queda cerrada
+**1 segundo** y se abre deslizándose. La cortinilla se cierra **sobre la pantalla
+de juego** y el cambio de escena ocurre con la Pokéball ya cerrada: el fondo del
+gimnasio solo se dibuja a partir de ahí, así que al abrirse se descubre el
+gimnasio y nunca se ve aparecer un escenario vacío antes de tiempo. Detrás queda
+la escena **sin sprites ni barras** (`gym == null`, así que `AppRoot` solo pinta el
+fondo).
+
+Al abrirse aparece el **retrato del líder** sobre el escenario y su discurso, con
+el mismo sistema que la intro de Oak: caja blanca con borde negro, máquina de
+escribir y toque para completar la línea y luego avanzar (`introTap`). El retrato
+va **por línea**: Brock sigue con su cara de siempre mientras escucha los primeros
+«...» y cambia a `brock_surprised` justo en «Espera... ¿me estás diciendo que el
+Team Rocket...?», manteniéndola hasta el estallido; después recupera su cara de
+siempre para la medalla y el reto.
+El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock tiene el
+suyo y Misty y Lt. Surge, que aún no tienen retrato ni guion, conservan el panel de
+bienvenida genérico. La última línea ofrece «Ver tutorial» / «Omitir», que llevan
+a `TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por
+entrada (un reintento tras perder va directo al cartel).
+
 El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
 pantalla completa: durante el combate **desaparece el bottom menu** (barra y
 Pokéball). La escena es vertical, con el enemigo arriba-centro y el principal
@@ -1570,9 +1602,10 @@ en el panel de derrota):
 1. **Fase de ataque** (`GymPhase.ATTACKING`): el líder ataca con su mecánica
    (rocas, anillos o Voltorb según el gimnasio). Cada **acierto** del jugador
    —romper una roca, acertar un anillo, apagar un Voltorb— suma un punto a la
-   barra de **postura** (`posture` / `postureHits`). Un **fallo** resta HP al
-   jugador (`projectileDamage`, `ringMissDamage`, `voltorbExplosionDamage`,
-   `voltorbShockDamage`) y **no suma postura**. La barra ya no baja por tiempo.
+   barra de **postura** (`posture` / `postureHits`). Un **clic fallado** resta un
+   punto (`GymCombat.failPosture`, nunca por debajo de cero) y un **fallo** además
+   resta HP al jugador (`projectileDamage`, `ringMissDamage`,
+   `voltorbExplosionDamage`, `voltorbShockDamage`). La barra ya no baja por tiempo.
 2. **Fase expuesta** (`GymPhase.EXPOSED`): al llenarse la postura, ésta se
    **rompe**: el líder deja de atacar (se vacían rocas, anillos y Voltorb) y se
    abre una ventana que sigue funcionando **por tiempo** (`exposureDurationMs`,
@@ -1589,6 +1622,11 @@ en el panel de derrota):
    completa de furia. Al romper la postura durante esa ronda se marca
    `rageRoundPlayed`; solo entonces el líder puede morir. No hay forma de
    saltársela con daño alto.
+   Ese cruce abre además el **discurso de furia** (`GymState.rageSpeech`): el
+   combate se **detiene** del todo —el bucle del ViewModel no avanza— y la escena
+   se sustituye por `brock_angry` con dos líneas de diálogo, la segunda en
+   mayúsculas y con el retrato bamboleándose (el grito a su Pokémon). Al cerrarlo
+   se apaga el flag y la siguiente vuelta del bucle ya dispara la oleada de furia.
 4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
    lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
    cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
@@ -1596,16 +1634,22 @@ en el panel de derrota):
 5. **Ganas** al vaciar la barra del líder; **pierdes** al quedarte sin HP y desde
    el panel de derrota puedes **reintentar** sin coste o **rendirte** (reinicia
    el combate).
-6. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
+6. **Victoria** (`GymOutcome.WON`): el combate no se cierra de golpe. El bucle se
+   detiene y el Pokémon del líder **se hunde y se apaga** (`VICTORY_FADE_MS`,
+   `VICTORY_ENEMY_SINK`); después llega la **despedida** (`ui/GymVictory.kt`): la
+   cara de cada línea, la medalla apareciendo en el centro cuando la entrega y,
+   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Los gimnasios sin
+   despedida propia se cierran en cuanto termina el desvanecimiento.
+7. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
    sale del overlay; en el reset las **medallas persisten**, así que los
    gimnasios ya ganados se **saltan**.
 
 El sprite del enemigo se mapea por `gymId` (Brock → `golem.gif`) y el del jugador
 por `leadSpeciesId` (los tres starters tienen back). Para cualquier principal sin
 arte se dibuja un **placeholder por tipo** (disco del color del tipo + nombre), de
-modo que el combate sigue siendo jugable. La animación de ataque es un sustituto
-intercambiable: un *lunge* del sprite y un destello del color del principal en el
-punto tocado.
+modo que el combate sigue siendo jugable. La animación de ataque es un *lunge*
+del sprite, y cada roca rota estalla con su propio efecto
+(`ui/RockShatterFx.kt`).
 
 La vida máxima es fija (`BASE_MAX_HP = 5`). Los gimnasios escalan (vida del líder,
 aciertos de postura, duración de la ventana, cadencia/velocidad y número de
@@ -1644,6 +1688,12 @@ roca o el anillo más cercano, o la celda de Voltorb).
 | `ui/Overlays.kt` | selector de principal |
 | `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
 | `ui/TutorialOverlay.kt` | capa de diálogos del tutorial explicativo (ver §22) |
+| `ui/RockShatterFx.kt` | estallido de roca al romper un proyectil (reproducción del sprite sheet) |
+| `ui/GymSceneLayouts.kt` | composición por gimnasio: tamaño y ancla de los sprites del líder y del jugador |
+| `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
+| `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
+| `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
+| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato, máquina de escribir y avance |
 
 ### Estado nuevo (`GameUiState`)
 
@@ -1661,6 +1711,9 @@ roca o el anillo más cercano, o la celda de Voltorb).
   `exposureDurationMs`, `columns`, `spawnIntervalMs`, `projectilesPerSpawn`,
   `projectileTravelMs`, `projectileDamage`, la pareja `rage*` y `coinReward`.
   Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
+  Registra su composición en `GymSceneLayouts` (tamaño y ancla de los sprites del
+  líder y del jugador): cada arte coloca la plataforma a otra altura y, sin
+  entrada, el gimnasio usa `DEFAULT`.
 - **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
   (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
 - **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
@@ -1668,6 +1721,12 @@ roca o el anillo más cercano, o la celda de Voltorb).
   ataques y furia por gimnasio en `GymCatalog`.
 - **Ajustar el starter**: `SpeciesCatalog.starters` y
   `STARTER_BOND_CLICK_BONUS` en `MainViewModel`.
+- **Retocar el estallido de roca**: el arte vive en pixelfx
+  (`src/fx/impacts/rock-shatter.js`). Se edita allí, se reexporta con
+  `node tools/render.mjs impacts/rock-shatter --sheet` y se copia
+  `rock-shatter.png` a `drawable-nodpi/rock_shatter.png`. `RockShatterFxTest`
+  comprueba que el sheet real coincide con la rejilla declarada en
+  `RockShatterFx` (5 columnas, 13 frames de 64×80, 24 fps).
 - **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
   ataque (hoy hay *lunge* + destello) y proyectiles que aguantan varios toques
   (`Projectile.hitsRemaining` ya existe; el umbral de furia es

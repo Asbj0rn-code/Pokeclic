@@ -7,6 +7,7 @@
  */
 package com.dsrs.pokeclic.ui
 
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -25,18 +26,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -160,9 +167,12 @@ fun AppRoot(
     onAdvanceZone: () -> Unit,
     onGymRetry: () -> Unit,
     onGymProjectileHit: (Long) -> Unit,
+    onGymProjectileMiss: () -> Unit,
     onGymRingTap: () -> Unit,
     onGymVoltorbTap: (Int) -> Unit,
     onGymEnemyHit: () -> Unit,
+    onGymRageSpeechDone: () -> Unit,
+    onGymVictoryDone: () -> Unit,
     onCatchingHold: (Boolean) -> Unit,
     onCatchingResultContinue: () -> Unit,
     onFinishIntro: (playerName: String, starterSpeciesId: String) -> Unit,
@@ -269,10 +279,15 @@ fun AppRoot(
 
     val gym = state.gym
     val gymActive = gym != null
-    // Escena de gimnasio: combate **o** capa de entrada (bienvenida, tutorial y
-    // cartel de arranque). Con la entrada activa aún no hay `GymState`, pero el
-    // escenario (fondo de la cueva) debe verse ya detrás de esa capa.
-    val gymScene = gymActive || state.gymIntro != null
+    // La cortinilla de entrada se cierra sobre el juego: mientras entra, el fondo
+    // del gimnasio **no** se dibuja. El cambio de escena ocurre con la cortinilla
+    // ya cerrada, así que lo que se descubre al abrirse es el gimnasio y no un
+    // escenario vacío apareciendo antes de tiempo.
+    //
+    // La clave reinicia el estado al abrir y cerrar la entrada; con la fase en
+    // curso (bienvenida → tutorial → cartel) se conserva.
+    var gymRevealed by rememberSaveable(state.gymIntro != null) { mutableStateOf(false) }
+    val gymScene = gymActive || (state.gymIntro != null && gymRevealed)
     val catching = state.catching
     val catchingActive = catching != null && state.encounter != null && !gymActive
     // Takeover de escena: gimnasio (combate o entrada) y captura ocultan HUD y
@@ -474,9 +489,12 @@ fun AppRoot(
                     GymOverlay(
                         state = activeGym,
                         onProjectileHit = onGymProjectileHit,
+                        onProjectileMiss = onGymProjectileMiss,
                         onRingTap = onGymRingTap,
                         onVoltorbTap = onGymVoltorbTap,
                         onEnemyHit = onGymEnemyHit,
+                        onRageSpeechDone = onGymRageSpeechDone,
+                        onVictoryDone = onGymVictoryDone,
                         onRetry = onGymRetry,
                         onLeave = onLeaveGym,
                         // Con una capa de entrada encima (al reintentar), el panel
@@ -504,11 +522,13 @@ fun AppRoot(
     if (state.gymIntro != null) {
         GymIntroLayer(
             phase = state.gymIntro,
+            gymId = state.gymId,
             leaderName = state.gymLeaderName,
             mechanic = state.gymMechanic,
             onWatchTutorial = onWatchGymTutorial,
             onSkip = onGymIntroSkip,
-            onAccepted = onGymIntroAccepted
+            onAccepted = onGymIntroAccepted,
+            onCurtainClosed = { gymRevealed = true }
         )
     }
 
@@ -730,6 +750,7 @@ private fun previewGameState(
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 20L,
+    gymId = "brock",
     gymLeaderName = "Brock",
     ownedCount = if (needsStarter) 0 else 3,
     clickPower = 3L,
@@ -752,13 +773,30 @@ private fun previewGameState(
 
 /**
  * Fondo del gimnasio: arte de cada mecánica a pantalla completa.
+ *
+ * Se dibuja con [FilterQuality.None] (vecino más cercano) porque el arte es
+ * pixel-art: el filtrado bilineal por defecto ablanda las líneas de una baldosa
+ * al escalar. [ContentScale.Crop] llena cualquier pantalla sin deformar el
+ * dibujo; el juego solo admite vertical y el arte (2:3) es más ancho que
+ * cualquier teléfono, así que el recorte cae siempre en los laterales
+ * decorativos y la composición vertical —plataforma del líder, suelo del
+ * jugador— se conserva entera. En un plegable o tablet vertical, más ancho que
+ * 2:3, recorta una franja superior e inferior también decorativa.
  */
 @Composable
 private fun GymBackground(@DrawableRes resId: Int) {
+    // Bitmap aparte (no `painterResource`) porque solo el overload de
+    // `ImageBitmap` permite `FilterQuality.None`. El recurso vive en
+    // `drawable-nodpi`, así que `decodeResource` no lo reescala por densidad.
+    val context = LocalContext.current
+    val bitmap = remember(resId) {
+        BitmapFactory.decodeResource(context.resources, resId).asImageBitmap()
+    }
     Image(
-        painter = painterResource(resId),
+        bitmap = bitmap,
         contentDescription = null,
         contentScale = ContentScale.Crop,
+        filterQuality = FilterQuality.None,
         modifier = Modifier.fillMaxSize()
     )
 }
@@ -785,9 +823,12 @@ private fun AppRootStage(state: GameUiState) {
         onAdvanceZone = {},
         onGymRetry = {},
         onGymProjectileHit = {},
+        onGymProjectileMiss = {},
         onGymRingTap = {},
         onGymVoltorbTap = {},
         onGymEnemyHit = {},
+        onGymRageSpeechDone = {},
+        onGymVictoryDone = {},
         onCatchingHold = {},
         onCatchingResultContinue = {},
         onFinishIntro = { _, _ -> },

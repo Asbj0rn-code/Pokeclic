@@ -2,8 +2,11 @@ package com.dsrs.pokeclic.viewmodel
 
 import com.dsrs.pokeclic.model.Direction
 import com.dsrs.pokeclic.model.GameSnapshot
+import com.dsrs.pokeclic.model.GymCatalog
+import com.dsrs.pokeclic.model.GymCombat
 import com.dsrs.pokeclic.model.GymIntroPhase
 import com.dsrs.pokeclic.model.GymMechanic
+import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.SpriteRepository
@@ -339,19 +342,31 @@ class MainViewModelTest {
         assertNotNull(enraged)
         assertTrue(enraged!!.rage)
         assertEquals(GymPhase.ATTACKING, enraged.phase)
-        assertEquals(14, enraged.leaderHp)      // umbral de furia de Brock (25 % de 60)
+        assertEquals(GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp), enraged.leaderHp)
         assertFalse(enraged.rageRoundPlayed)
+
+        // La furia abre el discurso del líder, con el combate en pausa.
+        dismissRageSpeech(vm)
 
         // Ronda de furia completa: al romper la postura queda jugada.
         fillBrockPosture(vm, clock)
         assertEquals(GymPhase.EXPOSED, vm.uiState.value.gym?.phase)
         assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
 
-        // Potencia de clic básica (1): los 14 HP restantes caen en la ventana.
+        // Potencia de clic básica (1): los HP restantes caen en la ventana.
         guard = 0
-        while (vm.uiState.value.gym != null && guard++ < 120) {
+        while (vm.uiState.value.gym?.outcome == GymOutcome.ACTIVE && guard++ < 120) {
             vm.onGymEnemyHit()
         }
+
+        // La victoria no cierra el combate: deja el estado en WON para que la capa
+        // de despedida lo cuente, y la medalla se cobra al cerrarla.
+        with(vm.uiState.value.gym!!) {
+            assertEquals(GymOutcome.WON, outcome)
+            assertEquals(0, leaderHp)
+        }
+        assertFalse("la medalla no puede cobrarse antes de la despedida", "brock" in vm.uiState.value.medals)
+        vm.onGymVictoryDone()
 
         val state = vm.uiState.value
         assertNull(state.gym)
@@ -386,28 +401,38 @@ class MainViewModelTest {
         testScope.runCurrent()
 
         fillBrockPosture(vm, clock)
-        assertTrue(vm.uiState.value.clickPower > 60) // un golpe bastaría para matarlo
+        // Un golpe bastaría para matarlo.
+        assertTrue(vm.uiState.value.clickPower > GymCatalog.brock.leaderHp)
 
         vm.onGymEnemyHit()
 
         val enraged = vm.uiState.value.gym
         assertNotNull(enraged)
         with(enraged!!) {
-            assertEquals(14, leaderHp)
+            assertEquals(GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp), leaderHp)
             assertTrue(rage)
             assertEquals(GymPhase.ATTACKING, phase)
             assertFalse(rageRoundPlayed)
         }
 
+        // El discurso de furia frena el combate hasta que el jugador lo cierra.
+        dismissRageSpeech(vm)
+
         // Ya no está expuesto: el golpe siguiente no le hace daño.
         vm.onGymEnemyHit()
-        assertEquals(14, vm.uiState.value.gym!!.leaderHp)
+        assertEquals(
+            GymCombat.rageThresholdHp(GymCatalog.brock.leaderHp),
+            vm.uiState.value.gym!!.leaderHp
+        )
 
         // Ronda de furia obligatoria y, después, el golpe letal sí entra.
         fillBrockPosture(vm, clock)
         assertTrue(vm.uiState.value.gym!!.rageRoundPlayed)
 
         vm.onGymEnemyHit()
+
+        assertEquals(GymOutcome.WON, vm.uiState.value.gym?.outcome)
+        vm.onGymVictoryDone()
 
         assertNull(vm.uiState.value.gym)
         assertTrue("brock" in vm.uiState.value.medals)
@@ -451,6 +476,9 @@ class MainViewModelTest {
         assertTrue(enraged!!.rage)
         assertTrue(enraged.projectiles.isEmpty())
 
+        // El discurso de furia se cierra antes de que arranque la ronda.
+        dismissRageSpeech(vm)
+
         // La ronda de furia arranca con el mismo respiro que una ronda normal:
         // nada cae en el acto ni se cobra de golpe la espera de la exposición.
         tick()
@@ -465,6 +493,84 @@ class MainViewModelTest {
             "ráfaga acumulada: ${projectiles.size} rocas en un segundo",
             projectiles.size <= 2
         )
+    }
+
+    @Test
+    fun rageSpeech_freezesTheCombatUntilItIsClosed() {
+        val clock = TestClock()
+        val vm = viewModel(nowMs = { clock.now }, random = Random(7))
+        tapZone(vm, times = 5)          // Z1 al límite
+        vm.onAdvanceZone()              // → Z2 (gimnasio)
+        tapZone(vm, times = 3)          // Z2 al límite
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        fillBrockPosture(vm, clock)
+        var guard = 0
+        while (vm.uiState.value.gym?.phase == GymPhase.EXPOSED && guard++ < 120) {
+            vm.onGymEnemyHit()
+        }
+
+        val atSpeech = vm.uiState.value.gym!!
+        assertTrue("la furia debería abrir su discurso", atSpeech.rageSpeech)
+        assertTrue(atSpeech.projectiles.isEmpty())
+
+        // Con el discurso abierto el combate no avanza: ni rocas ni daño, por
+        // mucho tiempo de juego que pase.
+        repeat(60) {
+            clock.now += 400L
+            tick()
+        }
+        with(vm.uiState.value.gym!!) {
+            assertTrue("cayeron rocas durante el discurso", projectiles.isEmpty())
+            assertEquals("la vida del líder cambió en pausa", atSpeech.leaderHp, leaderHp)
+            assertEquals("la vida del jugador cambió en pausa", atSpeech.playerHp, playerHp)
+        }
+
+        // Al cerrarlo, la furia arranca de verdad.
+        vm.onGymRageSpeechDone()
+        assertFalse(vm.uiState.value.gym!!.rageSpeech)
+        var spawned = false
+        repeat(60) {
+            clock.now += 400L
+            tick()
+            if (vm.uiState.value.gym!!.projectiles.isNotEmpty()) spawned = true
+        }
+        assertTrue("tras el discurso deberían volver a caer rocas", spawned)
+    }
+
+    @Test
+    fun missedClicksDrainThePostureBar() {
+        val clock = TestClock()
+        val vm = viewModel(nowMs = { clock.now }, random = Random(7))
+        tapZone(vm, times = 5)          // Z1 al límite
+        vm.onAdvanceZone()              // → Z2 (gimnasio)
+        tapZone(vm, times = 3)          // Z2 al límite
+        vm.onEnterGym()
+        vm.onGymIntroSkip()
+        testScope.advanceTimeBy(1_000L)
+        testScope.runCurrent()
+
+        // Se rompe una roca para tener algo de postura que perder.
+        var guard = 0
+        while (vm.uiState.value.gym!!.projectiles.isEmpty() && guard++ < 20) {
+            clock.now += 400L
+            tick()
+        }
+        val rock = vm.uiState.value.gym!!.projectiles.first()
+        vm.onGymProjectileHit(rock.id)
+
+        val afterHit = vm.uiState.value.gym!!.posture
+        assertTrue("el acierto debería sumar postura", afterHit > 0)
+
+        vm.onGymMiss()
+        assertEquals("un clic fallado resta postura", afterHit - 1, vm.uiState.value.gym!!.posture)
+
+        // La barra se queda en cero, nunca negativa.
+        repeat(50) { vm.onGymMiss() }
+        assertEquals(0, vm.uiState.value.gym!!.posture)
     }
 
     // --- Gimnasio de Misty: anillos rítmicos ---------------------------------
@@ -507,6 +613,17 @@ class MainViewModelTest {
                 ?.map { it.id }
                 ?.forEach { vm.onGymProjectileHit(it) }
         }
+    }
+
+    /**
+     * Cierra el discurso de furia. Mientras está abierto el combate no avanza, así
+     * que cualquier test que siga jugando tras entrar en furia tiene que pasar
+     * por aquí.
+     */
+    private fun dismissRageSpeech(vm: MainViewModel) {
+        assertTrue("la furia debería abrir su discurso", vm.uiState.value.gym?.rageSpeech == true)
+        vm.onGymRageSpeechDone()
+        assertFalse("el discurso no se cerró", vm.uiState.value.gym?.rageSpeech == true)
     }
 
     @Test

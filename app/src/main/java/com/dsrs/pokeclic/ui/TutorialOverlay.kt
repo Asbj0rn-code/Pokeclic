@@ -60,9 +60,6 @@ import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.isMessageVisible
 import kotlinx.coroutines.delay
 
-/** Milisegundos entre cada letra del efecto "máquina de escribir" (como la intro). */
-private const val TYPE_CHAR_MS = 35L
-
 /**
  * Scrim de la capa modal del tutorial: mismo tono que la capa de entrada al
  * gimnasio, suficiente para aislar el diálogo del juego de debajo.
