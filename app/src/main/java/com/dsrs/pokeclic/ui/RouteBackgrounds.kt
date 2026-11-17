@@ -29,9 +29,11 @@ import com.dsrs.pokeclic.model.Direction
  *   así que el borde inferior del dibujo coincide con el superior y se repiten sin
  *   costura. Solo el arte antiguo, dibujado como un tramo suelto, necesita aquí la
  *   fila por la que debe cortar el bucle (ver [RouteScrollDefaults.SEAM_CUT_ROW]).
- * @param startAnchor fracción de la altura de la pantalla donde cae el **borde
- *   inferior del arte** al entrar en la zona (`0,5` = el centro, donde está el
- *   entrenador). `null` arranca por el principio del arte.
+ * @param startAnchor fracción de la **altura de cámara** donde cae el **borde
+ *   inferior del arte** al entrar en la zona (`0,5` = el centro del arte, que es
+ *   la altura del entrenador). `null` arranca por el principio del arte. Al medirse
+ *   en alturas de cámara y no de pantalla, el encuadre es el mismo en cualquier
+ *   móvil: lo único que cambia es cuánto arte se ve arriba y abajo.
  * @param startOffset posición lateral del personaje al entrar, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
  *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
@@ -135,8 +137,9 @@ internal object RouteBackgrounds {
                 )
             ),
             // El borde inferior del arte cae un poco por debajo del centro de la
-            // pantalla, así que se empieza viendo la parte baja de la escena.
-            startAnchor = 0.6f
+            // escena, así que se empieza viendo la parte baja. En alturas de cámara
+            // (antes, 0,6 del alto de pantalla en el emulador de 1080×2400).
+            startAnchor = 0.6333333f
         ),
         // Bosque Verde: arte y trayectoria propios. Los clics y las direcciones
         // salen de esta lista, en orden y contados en clics:
@@ -235,10 +238,10 @@ internal object RouteBackgrounds {
             ),
             startOffset = -0.5f,
             // Deja el **eje central horizontal del arte** a la altura del
-            // entrenador: el borde inferior del arte cae al 5,7 % de la pantalla,
-            // detrás del HUD. Calibrado en 1080×2400; en una pantalla más baja el
-            // eje del arte cae por debajo del entrenador.
-            startAnchor = 0.057f
+            // entrenador. Antes eran 0,057 del alto de pantalla, calibrado en
+            // 1080×2400: en cualquier otro móvil el eje del arte se iba por debajo
+            // del entrenador. En alturas de cámara cae siempre en el mismo sitio.
+            startAnchor = -0.0906667f
         ),
         // Ciudad Plateada: arte propio de 4608×3840, cuatro anchos de cámara por
         // dos altos. Al ser vertical, lo que cierra el bucle es **la altura**:
@@ -317,9 +320,10 @@ internal object RouteBackgrounds {
             // se enrolla módulo el ancho del arte, así que -1 y +1 dan lo mismo;
             // -0,5 dejaría al entrenador en el 25% del dibujo y 0 en su centro.
             startOffset = -1f,
-            // Misma calibración que Ruta 3: pone el eje central horizontal del arte a
-            // la altura del entrenador. El alto del arte es el mismo (1920 px).
-            startAnchor = 0.057f
+            // Misma calibración que Ruta 3 —el alto del arte es el mismo (1920 px)—,
+            // expresada en alturas de cámara: pone el eje central horizontal del
+            // arte a la altura del entrenador.
+            startAnchor = -0.0906667f
         ),
         // Ciudad Celeste: tercer fondo **horizontal**, con el arte más grande del
         // catálogo (4608×3840: cuatro anchos de cámara por dos altos). La cámara
@@ -355,12 +359,12 @@ internal object RouteBackgrounds {
             // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro). La
             // vuelta arranca en el borde izquierdo de la ciudad y la cruza entera.
             startOffset = -2f,
-            // 1,15 deja el borde inferior del arte un 15 % de pantalla por debajo
-            // del borde inferior: sube el encuadre respecto a `1f` (que lo dejaba
-            // justo al pie) y se ve desde el borde del río hasta la calle de los
-            // edificios. El renderer enrolla el valor módulo el alto del arte, así
-            // que por encima de ~1,5 vuelve a empezar por arriba.
-            startAnchor = 1.15f
+            // Deja el borde inferior del arte por debajo del encuadre: se ve desde
+            // el borde del río hasta la calle de los edificios. Antes era 1,15 del
+            // alto de pantalla; ahora se mide en alturas de cámara. El renderer
+            // envuelve el valor módulo el alto del arte, así que por encima de una
+            // baldosa vuelve a empezar por arriba.
+            startAnchor = 1.3666667f
         ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
