@@ -1,5 +1,6 @@
 package com.dsrs.pokeclic.viewmodel
 
+import androidx.compose.runtime.Immutable
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.CatchingState
@@ -31,7 +32,15 @@ import com.dsrs.pokeclic.model.TrainerState
  * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [catching],
  *   [gym], [trainer] y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
+ *
+ * Se marca `@Immutable` a propósito: es una promesa, no una decoración. Compose
+ * no puede demostrar que un `List` no muta, así que sin la anotación trata todo
+ * `GameUiState` como inestable y **no puede saltarse** la recomposición de los
+ * ocho composables que lo reciben, ni siquiera cuando el valor es igual. La
+ * promesa se cumple en todo el proyecto: los campos se reemplazan con `copy`,
+ * nunca se mutan en sitio.
  */
+@Immutable
 data class GameUiState(
     // --- meta permanente ---
     val playerName: String? = null,

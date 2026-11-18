@@ -26,6 +26,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -1320,6 +1321,38 @@ class MainViewModelTest {
         val state = viewModel(saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L)).uiState.value
 
         assertEquals(3L, state.zoneClicks)
+    }
+
+    // ───────────────────── Estabilidad del estado derivado ─────────────────────
+
+    @Test
+    fun derive_reusesTheLeadOptionsWhenNothingChanges() {
+        // Contrato de skipping: con la misma posesión, `derive` debe devolver la
+        // **misma** lista. Una lista nueva por tick impide que Compose se salte
+        // los composables que la reciben.
+        val vm = viewModel(
+            saved = GameSnapshot(
+                starterSpeciesId = "bulbasaur",
+                ownedSpecies = setOf("pidgey")
+            )
+        )
+
+        val first = vm.uiState.value.leadOptions
+        assertTrue(first.isNotEmpty())
+        tapZone(vm, 1)
+
+        assertSame(first, vm.uiState.value.leadOptions)
+    }
+
+    @Test
+    fun derive_reusesTheStarterOptionsOnEveryTick() {
+        val vm = viewModel()
+
+        val first = vm.uiState.value.starterOptions
+        assertTrue(first.isNotEmpty())
+        tapZone(vm, 1)
+
+        assertSame(first, vm.uiState.value.starterOptions)
     }
 }
 
