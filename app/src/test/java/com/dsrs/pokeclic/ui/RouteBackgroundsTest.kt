@@ -280,6 +280,20 @@ class RouteBackgroundsTest {
     }
 
     @Test
+    fun everyZone_declaresAPowerOfTwoSampling() {
+        // `BitmapFactory.inSampleSize` se redondea a la potencia de 2 menor. Un
+        // artScale de 3 decodificaría a 1/2 mientras el dibujo escala por 3, y el
+        // arte saldría al doble de tamaño. Solo 1, 2, 4 y 8 son válidos.
+        (RouteBackgrounds.configuredZoneIds + NO_ARTWORK_ZONE).forEach { zoneId ->
+            val scale = RouteBackgrounds.forZone(zoneId).artScale
+            assertTrue(
+                "$zoneId: artScale=$scale no es potencia de 2",
+                scale > 0 && (scale and (scale - 1)) == 0
+            )
+        }
+    }
+
+    @Test
     fun rutaTres_closesItsLoop() {
         // El bucle puede durar varias vueltas: lo que cierra es el superciclo
         // completo. Sus rectos suman vueltas enteras al arte (15 clics cada una:
