@@ -170,9 +170,10 @@ class MainViewModel(
         // lateral anterior, ya no aplica.
         lateralFrameJob?.cancel()
 
-        var directionChanged = false
-        val updated = _uiState.updateAndGet { state ->
-            directionChanged = direction != state.trainer.currentDirection
+        // Se lee **antes** del update: dentro del lambda de `updateAndGet` el valor
+        // se recalcularía en cada reintento de CAS.
+        val directionChanged = direction != _uiState.value.trainer.currentDirection
+        mutate { state ->
             val trainer = if (directionChanged) {
                 // Al estrenar dirección se arranca por su fotograma de entrada:
                 // los laterales empiezan en el segundo del ciclo.
@@ -203,9 +204,8 @@ class MainViewModel(
                 }
                 else -> addZoneClicks(animated)
             }
-            derive(progressed)
+            progressed
         }
-        store.save(updated.toSnapshot())
 
         // El paso de lado dura un solo clic: su segundo fotograma entra cuando el
         // desplazamiento ya está en marcha, no en el mismo instante del toque.
@@ -293,7 +293,11 @@ class MainViewModel(
         lastWalkTapMs = 0L
         nextCombatId = 0L
         store.clear()
-        _uiState.value = derive(GameUiState(trainerFrameRes = sprites.frame(Direction.FRONT, 0)))
+        // Sin persistir a propósito: tras `store.clear()` un guardado nuevo
+        // reabriría la partida con valores por defecto en el siguiente arranque.
+        mutate(persist = false) {
+            GameUiState(trainerFrameRes = sprites.frame(Direction.FRONT, 0))
+        }
     }
 
     /**
@@ -410,7 +414,7 @@ class MainViewModel(
         }
     }
 
-    fun onCloseOptions() = _uiState.update { it.copy(isOptionsOpen = false) }
+    fun onCloseOptions() = mutate(persist = false) { it.copy(isOptionsOpen = false) }
 
     /**
      * **Pokédex (TEST)**: abre la pantalla propia a pantalla completa y cierra
@@ -471,7 +475,7 @@ class MainViewModel(
         if (it.tutorialPhase.isFreePlay) it.copy(isLeadOpen = true) else it
     }
 
-    fun onCloseLead() = _uiState.update { it.copy(isLeadOpen = false) }
+    fun onCloseLead() = mutate(persist = false) { it.copy(isLeadOpen = false) }
 
     /**
      * Al expandir la Pokéball se muestra la pantalla principal, que es donde
@@ -584,13 +588,13 @@ class MainViewModel(
         if (state.gymIntro != null) return
         if (!state.isGymReady) return
         val gymId = zoneAt(state.zoneIndex).gymId ?: return
-        _uiState.update { it.copy(gymIntro = GymIntroPhase.WELCOME) }
+        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.WELCOME) }
     }
 
     /** Desde la bienvenida, abre la explicación del minijuego. */
     fun onGymIntroWatchTutorial() {
         if (_uiState.value.gymIntro != GymIntroPhase.WELCOME) return
-        _uiState.update { it.copy(gymIntro = GymIntroPhase.TUTORIAL) }
+        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.TUTORIAL) }
     }
 
     /** "Omitir" (bienvenida): salta el tutorial y arma el cartel de arranque. */
@@ -617,7 +621,7 @@ class MainViewModel(
         gymIntroJob?.cancel()
         gymIntroJob = null
         gymJob?.cancel()
-        _uiState.update { derive(it.copy(gym = null, gymIntro = null)) }
+        mutate(persist = false) { it.copy(gym = null, gymIntro = null) }
     }
 
     /**
@@ -640,10 +644,10 @@ class MainViewModel(
             val state = _uiState.value
             if (state.gymIntro != GymIntroPhase.COUNTDOWN) return@launch
             val gymId = zoneAt(state.zoneIndex).gymId
-                ?: return@launch _uiState.update { it.copy(gymIntro = null) }
+                ?: return@launch mutate(persist = false) { it.copy(gymIntro = null) }
             startGymCombat(GymCatalog.require(gymId))
         }
-        _uiState.update { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
+        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
     }
 
     /**
@@ -798,35 +802,33 @@ class MainViewModel(
     private fun startGymCombat(config: Gym) {
         gymJob?.cancel()
         nextCombatId = 0L
-        _uiState.update { current ->
+        mutate(persist = false) { current ->
             val maxHp = current.maxHp
-            derive(
-                current.copy(
-                    isTallGrass = false,
-                    walkProgress = 0f,
-                    encounter = null,
-                    catching = null,
-                    gymIntro = null,
-                    gym = GymState(
-                        gymId = config.id,
-                        leaderName = config.leaderName,
-                        gymType = config.type,
-                        leaderHp = config.leaderHp,
-                        leaderMaxHp = config.leaderHp,
-                        playerHp = maxHp,
-                        maxHp = maxHp,
-                        mechanic = config.mechanic,
-                        columns = config.columns,
-                        rows = config.rows,
-                        ringWindowMs = config.ringWindowMs,
-                        postureMax = config.postureHits,
-                        posture = 0,
-                        exposureDurationMs = config.exposureDurationMs,
-                        // El principal efectivo es el elegido o, si no hay, el starter.
-                        leadSpeciesId = current.leadSpeciesId ?: current.starterSpeciesId,
-                        leadName = current.leadName,
-                        leadType = current.leadType
-                    )
+            current.copy(
+                isTallGrass = false,
+                walkProgress = 0f,
+                encounter = null,
+                catching = null,
+                gymIntro = null,
+                gym = GymState(
+                    gymId = config.id,
+                    leaderName = config.leaderName,
+                    gymType = config.type,
+                    leaderHp = config.leaderHp,
+                    leaderMaxHp = config.leaderHp,
+                    playerHp = maxHp,
+                    maxHp = maxHp,
+                    mechanic = config.mechanic,
+                    columns = config.columns,
+                    rows = config.rows,
+                    ringWindowMs = config.ringWindowMs,
+                    postureMax = config.postureHits,
+                    posture = 0,
+                    exposureDurationMs = config.exposureDurationMs,
+                    // El principal efectivo es el elegido o, si no hay, el starter.
+                    leadSpeciesId = current.leadSpeciesId ?: current.starterSpeciesId,
+                    leadName = current.leadName,
+                    leadType = current.leadType
                 )
             )
         }
@@ -1167,11 +1169,16 @@ class MainViewModel(
         }
     }
 
-    /** Actualiza el minijuego (estado transitorio, no se persiste). */
+    /**
+     * Actualiza el minijuego (estado transitorio, no se persiste).
+     *
+     * Delega en [mutate] para que toda escritura del estado pase por el mismo
+     * sitio y el tutorial se normalice siempre.
+     */
     private fun updateCatching(block: (CatchingState) -> CatchingState) {
-        _uiState.update { state ->
-            val catching = state.catching ?: return@update state
-            derive(state.copy(catching = block(catching)))
+        mutate(persist = false) { state ->
+            val catching = state.catching ?: return@mutate state
+            state.copy(catching = block(catching))
         }
     }
 
@@ -1291,7 +1298,7 @@ class MainViewModel(
         resetJob?.cancel()
         resetJob = viewModelScope.launch {
             delay(FRAME_RESET_DELAY_MS)
-            _uiState.update { state ->
+            mutate(persist = false) { state ->
                 state.copy(
                     trainer = state.trainer.copy(
                         currentDirection = Direction.FRONT,
@@ -1315,8 +1322,8 @@ class MainViewModel(
         lateralFrameJob?.cancel()
         lateralFrameJob = viewModelScope.launch {
             delay(LATERAL_SECOND_FRAME_DELAY_MS)
-            _uiState.update { state ->
-                if (state.trainer.currentDirection != direction) return@update state
+            mutate(persist = false) { state ->
+                if (state.trainer.currentDirection != direction) return@mutate state
                 val total = sprites.frameCount(direction)
                 val frame = (direction.startFrame() + 1)
                     .coerceIn(0, (total - 1).coerceAtLeast(0))
@@ -1382,11 +1389,16 @@ class MainViewModel(
         if (persist) store.save(updated.toSnapshot())
     }
 
-    /** Actualiza el gimnasio (estado transitorio, no se persiste). */
+    /**
+     * Actualiza el gimnasio (estado transitorio, no se persiste).
+     *
+     * Delegado a [mutate] como el resto de escrituras: un solo escritor, siempre
+     * derivando y con la persistencia explícita.
+     */
     private fun updateGym(block: (GymState) -> GymState) {
-        _uiState.update { state ->
-            val gym = state.gym ?: return@update state
-            derive(state.copy(gym = block(gym)))
+        mutate(persist = false) { state ->
+            val gym = state.gym ?: return@mutate state
+            state.copy(gym = block(gym))
         }
     }
 
