@@ -37,7 +37,6 @@ internal object RetroColors {
     // Chasis / hardware
     val PokedexRed = Color(0xFFDC0A2D)
     val PokedexDarkRed = Color(0xFF8B001D)
-    val HeaderBurgundy = Color(0xFF430D18)
     val SteelPanel = Color(0xFF303840)
     val SteelEdge = Color(0xFF14181D)
     val SteelBevel = Color(0xFF55636F)

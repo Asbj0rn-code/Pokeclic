@@ -395,7 +395,6 @@ fun AppRoot(
                     PokemonBottomMenu(
                         isMapSelected = !state.isOptionsOpen && state.contentTab == AppTab.Map,
                         isPokedexSelected = state.isOptionsOpen,
-                        isHomeSelected = !state.isOptionsOpen && state.contentTab == AppTab.Home,
                         // Sobre el mapa la bola no tiene juego: el arrastre no la
                         // desliza sobre la carcasa; un arrastre completado cuenta
                         // como toque y devuelve a la aventura (como en la Pokédex).
