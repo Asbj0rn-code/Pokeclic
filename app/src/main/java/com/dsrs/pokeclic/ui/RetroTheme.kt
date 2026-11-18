@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dsrs.pokeclic.model.PokemonType
 
 /**
  * Tokens del "skinning" retro: chasis Pokédex, cajas de diálogo GBA/NDS,
@@ -81,6 +82,64 @@ internal val PanelShape = CutCornerShape(10.dp)
 internal val PlateShape = CutCornerShape(6.dp)
 internal val CellShape = CutCornerShape(4.dp)
 internal val ButtonShape = CutCornerShape(6.dp)
+
+/**
+ * Color de cada tipo elemental, en un solo sitio.
+ *
+ * Usa la **paleta clásica** de la era GBA, la misma que ya gastaba la Pokédex.
+ * La otra tabla del proyecto (la de los gimnasios) tenía las variantes modernas
+ * y discrepaba en ocho de quince colores; se descartó para que el arte del juego
+ * y sus colores hablen del mismo momento.
+ *
+ * Dos accesos porque la Pokédex lleva el nombre visible (`String?`, tal como
+ * viene del catálogo) y los gimnasios el enum.
+ */
+internal object RetroTypeColors {
+
+    private val byType: Map<PokemonType, Color> = mapOf(
+        PokemonType.NORMAL to Color(0xFFA8A878),
+        PokemonType.FIRE to Color(0xFFF08030),
+        PokemonType.WATER to Color(0xFF6890F0),
+        PokemonType.GRASS to Color(0xFF78C850),
+        PokemonType.ELECTRIC to Color(0xFFF8D030),
+        PokemonType.ROCK to Color(0xFFB8A038),
+        PokemonType.FLYING to Color(0xFFA890F0),
+        PokemonType.POISON to Color(0xFFA040A0),
+        PokemonType.BUG to Color(0xFFA8B820),
+        PokemonType.GROUND to Color(0xFFE0C068),
+        PokemonType.FIGHTING to Color(0xFFC03028),
+        PokemonType.PSYCHIC to Color(0xFFF85888),
+        PokemonType.ICE to Color(0xFF98D8D8),
+        PokemonType.GHOST to Color(0xFF705898),
+        PokemonType.DRAGON to Color(0xFF7038F8)
+    )
+
+    /** Nombre visible del tipo tal como lo entrega el catálogo de la Pokédex. */
+    private val byDisplayName: Map<String, PokemonType> = mapOf(
+        "Normal" to PokemonType.NORMAL,
+        "Fuego" to PokemonType.FIRE,
+        "Agua" to PokemonType.WATER,
+        "Planta" to PokemonType.GRASS,
+        "Eléctrico" to PokemonType.ELECTRIC,
+        "Roca" to PokemonType.ROCK,
+        "Volador" to PokemonType.FLYING,
+        "Veneno" to PokemonType.POISON,
+        "Bicho" to PokemonType.BUG,
+        "Tierra" to PokemonType.GROUND,
+        "Lucha" to PokemonType.FIGHTING,
+        "Psíquico" to PokemonType.PSYCHIC,
+        "Hielo" to PokemonType.ICE,
+        "Fantasma" to PokemonType.GHOST,
+        "Dragón" to PokemonType.DRAGON
+    )
+
+    /** Color de respaldo para un tipo fuera de la paleta o desconocido. */
+    private val fallback = Color(0xFF9DA0A4)
+
+    fun of(type: PokemonType?): Color = byType[type] ?: fallback
+
+    fun ofName(typeName: String?): Color = byType[byDisplayName[typeName]] ?: fallback
+}
 
 /**
  * Tipografía del chasis.

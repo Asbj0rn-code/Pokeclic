@@ -121,27 +121,6 @@ import kotlin.math.min
  * español tal como los aporta el catálogo adaptado. Incluye tipos que **no**
  * existen como constantes de combate (`PokemonType` queda intacto).
  */
-private val DEX_TYPE_COLORS: Map<String, Color> = mapOf(
-    "Normal" to Color(0xFFA8A878),
-    "Fuego" to Color(0xFFF08030),
-    "Agua" to Color(0xFF6890F0),
-    "Planta" to Color(0xFF78C850),
-    "Eléctrico" to Color(0xFFF8D030),
-    "Roca" to Color(0xFFB8A038),
-    "Volador" to Color(0xFFA890F0),
-    "Veneno" to Color(0xFFA040A0),
-    "Bicho" to Color(0xFFA8B820),
-    "Tierra" to Color(0xFFE0C068),
-    "Lucha" to Color(0xFFC03028),
-    "Psíquico" to Color(0xFFF85888),
-    "Hielo" to Color(0xFF98D8D8),
-    "Fantasma" to Color(0xFF705898),
-    "Dragón" to Color(0xFF7038F8)
-)
-
-/** Color de respaldo para un tipo fuera de la paleta. */
-private val DEX_TYPE_FALLBACK = Color(0xFF9DA0A4)
-
 /**
  * Rojo de la carcasa: respaldo a pantalla completa detrás de cabecera, marco
  * y base, para que nunca se vean franjas de otro color en los huecos. Es el
@@ -641,8 +620,7 @@ private fun DexTypeBadge(typeName: String) {
     }
 }
 
-private fun typeColorFor(typeName: String?): Color =
-    DEX_TYPE_COLORS[typeName] ?: DEX_TYPE_FALLBACK
+private fun typeColorFor(typeName: String?): Color = RetroTypeColors.ofName(typeName)
 
 // ─────────────────────────── Previews ───────────────────────────
 
