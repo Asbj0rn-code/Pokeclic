@@ -74,7 +74,7 @@ data class Species(
     val name: String,
     val type: PokemonType,
     val captureDifficulty: Float,
-    val coinReward: Int,
+    val coinReward: Long,
     val dexNumber: Int
 )
 

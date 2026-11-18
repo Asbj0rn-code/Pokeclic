@@ -1093,7 +1093,7 @@ class MainViewModel(
             if (captured) {
                 val firstTime = encounter.speciesId !in state.rewardedSpecies
                 val reward = if (firstTime) {
-                    SpeciesCatalog.require(encounter.speciesId).coinReward.toLong()
+                    SpeciesCatalog.require(encounter.speciesId).coinReward
                 } else {
                     0L
                 }

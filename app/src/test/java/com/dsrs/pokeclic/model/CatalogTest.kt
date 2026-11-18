@@ -272,6 +272,6 @@ class CatalogTest {
             listOf(0.1f, 0.1f, 0.1f),
             SpeciesCatalog.starters.map { it.captureDifficulty }
         )
-        assertEquals(listOf(10, 10, 10), SpeciesCatalog.starters.map { it.coinReward })
+        assertEquals(listOf(10L, 10L, 10L), SpeciesCatalog.starters.map { it.coinReward })
     }
 }
