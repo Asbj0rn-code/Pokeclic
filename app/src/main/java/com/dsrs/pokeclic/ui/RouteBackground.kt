@@ -726,7 +726,15 @@ internal fun RouteScrollingBackground(
                 val tileH = artH * scale
                 if (tileH <= 1f || tileW <= 1f) return@drawBehind
 
-                val filter = if (scale >= 1f) FilterQuality.None else FilterQuality.Medium
+                // La nitidez se decide por la escala **efectiva** del bitmap: con
+                // el arte muestreado a 1/artScale, el renderer amplía por
+                // `scale * artScale`. Si esa ampliación ya es ≥1, el filtrado
+                // bilineal emborrona el pixel art; `None` conserva los bordes.
+                val filter = if (scale * artScale >= 1f) {
+                    FilterQuality.None
+                } else {
+                    FilterQuality.Medium
+                }
                 // El punto de partida de la zona se suma a la fase: `phaseV` sigue
                 // midiendo el recorrido (y por tanto la trayectoria), y el ancla
                 // solo decide por dónde se empieza a ver el arte. El ancla se mide
