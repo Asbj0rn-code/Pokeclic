@@ -1273,6 +1273,27 @@ class MainViewModelTest {
         testScope.runCurrent()
         assertEquals(Direction.FRONT, vm.uiState.value.trainer.currentDirection)
     }
+
+    // ───────────────────── Reapertura: progreso de zona ─────────────────────
+
+    @Test
+    fun restore_zoneIndexOutOfRange_startsAtTheFirstZoneWithoutProgress() {
+        // Un índice inválido no puede dejar al jugador en la última zona con
+        // progreso completo: se descarta el progreso de run, no la partida.
+        val vm = viewModel(saved = GameSnapshot(zoneIndex = 9, zoneClicks = 2L))
+
+        assertEquals(0, vm.uiState.value.zoneIndex)
+        assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    @Test
+    fun restore_zoneClicksBeyondRequirement_clampsToTheRequirement() {
+        // z2 exige 3 clics; un guardado con 99 no puede saltarse el umbral.
+        val vm = viewModel(saved = GameSnapshot(zoneIndex = 1, zoneClicks = 99L))
+
+        assertEquals(1, vm.uiState.value.zoneIndex)
+        assertEquals(3L, vm.uiState.value.zoneClicks)
+    }
 }
 
 /** Res que devuelve el repositorio de sprites de prueba para (direcci�n, fotograma). */

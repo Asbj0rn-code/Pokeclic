@@ -1329,6 +1329,15 @@ class MainViewModel(
             saved.rewardedSpecies +
             setOfNotNull(saved.starterSpeciesId)
         val seenRestored = saved.seenSpecies + caughtDeduced
+        // Progreso de run: un índice inválido no puede dejar al jugador en la
+        // última zona, y un contador por encima del umbral no puede saltárselo.
+        val hasValidIndex = saved.zoneIndex in zones.indices
+        val zoneIndex = if (hasValidIndex) saved.zoneIndex else 0
+        val zoneClicks = if (hasValidIndex) {
+            saved.zoneClicks.coerceIn(0L, zones[zoneIndex].clickRequirement)
+        } else {
+            0L
+        }
         return GameUiState(
             playerName = saved.playerName,
             coins = saved.coins,
@@ -1341,8 +1350,8 @@ class MainViewModel(
             ownedSpecies = saved.ownedSpecies,
             leadSpeciesId = saved.leadSpeciesId,
             gymClearedRun = saved.gymClearedRun,
-            zoneIndex = saved.zoneIndex,
-            zoneClicks = saved.zoneClicks,
+            zoneIndex = zoneIndex,
+            zoneClicks = zoneClicks,
             // El progreso del tutorial llega ya resuelto por el store (con su
             // compatibilidad de guardados antiguos): la reapertura conserva
             // exactamente la fase guardada y el momento del paso (mensaje

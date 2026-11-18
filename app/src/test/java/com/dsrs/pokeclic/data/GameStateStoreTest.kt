@@ -43,6 +43,54 @@ class GameStateStoreTest {
         assertEquals(snapshot, store.load())
     }
 
+    // ───────────────── Versión de esquema y validación ─────────────────
+
+    @Test
+    fun save_writesTheSchemaVersionContract() {
+        val prefs = FakePrefs()
+        SharedPreferencesGameStateStore(prefs).save(GameSnapshot(coins = 1L))
+
+        // La versión en disco es parte del contrato: cambiarla exige migración.
+        assertEquals(2, prefs.values["schema_version"])
+    }
+
+    @Test
+    fun load_saveFromAFutureSchema_returnsNull() {
+        // Un formato que esta versión no conoce no se reinterpreta a ciegas.
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+        prefs.values["schema_version"] = 99
+
+        assertNull(SharedPreferencesGameStateStore(prefs).load())
+    }
+
+    @Test
+    fun load_legacySaveWithoutVersion_stillLoads() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 7L
+        prefs.values["zone_index"] = 1
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(7L, loaded.coins)
+        assertEquals(1, loaded.zoneIndex)
+    }
+
+    @Test
+    fun load_negativeProgress_normalizesToZero() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 10L
+        prefs.values["zone_index"] = -4
+        prefs.values["zone_clicks"] = -9L
+        prefs.values["starter_bond"] = -3
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(0, loaded.zoneIndex)
+        assertEquals(0L, loaded.zoneClicks)
+        assertEquals(0, loaded.starterBond)
+    }
+
     // ───────────────── Persistencia del tutorial ─────────────────
 
     @Test
