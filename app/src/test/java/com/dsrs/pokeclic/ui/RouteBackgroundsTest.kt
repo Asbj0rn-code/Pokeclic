@@ -8,9 +8,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlin.random.Random
 
 /**
  * Arte real (`drawable-nodpi`) de cada fondo horizontal, por `Zone.id`. El
@@ -27,6 +29,56 @@ private val HORIZONTAL_ARTWORK = mapOf(
  * Ancho del PNG en píxeles de arte. El working dir de los tests es el módulo
  * `app`, con respaldo para invocaciones desde la raíz.
  */
+/** Ficheros de arte por `Zone.id`; el catálogo solo guarda el id del recurso. */
+private val ARTWORK_FILE_BY_ZONE = mapOf(
+    "pueblo_paleta" to "background_pallet_town.png",
+    "bosque_verde" to "background_bosque_verde.png",
+    "ciudad_verde" to "background_ciudad_verde.png",
+    "ruta3" to "background_ruta3.png",
+    "ciudad_plateada" to "background_ciudad_plateada.png",
+    "mt_moon" to "background_mt_moon.png",
+    "ciudad_celeste" to "background_ciudad_celeste.png",
+    "ciudad_carmin" to "background_ciudad_carmin.png",
+    "zona_sin_arte" to "background_ruta.png"
+)
+
+/** Id que no existe en el catálogo: resuelve al fondo `DEFAULT`. */
+private const val NO_ARTWORK_ZONE = "zona_sin_arte"
+
+/**
+ * ¿El PNG es una ampliación por nearest-neighbor de [factor]×?
+ *
+ * Muestrea bloques deterministas (semilla fija): comprobar los 17 millones de
+ * píxeles de Carmín no aporta nada frente a miles de bloques repartidos, y el
+ * test tarda milisegundos en vez de segundos.
+ */
+private fun isNearestNeighbourUpscaled(image: BufferedImage, factor: Int): Boolean {
+    val width = image.width
+    val height = image.height
+    if (factor < 2 || width % factor != 0 || height % factor != 0) return false
+    val columns = width / factor
+    val rows = height / factor
+    val random = Random(7)
+    repeat(minOf(4_000, columns * rows)) {
+        val x = random.nextInt(columns) * factor
+        val y = random.nextInt(rows) * factor
+        val reference = image.getRGB(x, y)
+        for (dy in 0 until factor) {
+            for (dx in 0 until factor) {
+                if (image.getRGB(x + dx, y + dy) != reference) return false
+            }
+        }
+    }
+    return true
+}
+
+private fun artworkImage(fileName: String): BufferedImage = ImageIO.read(
+    listOf(
+        File("src/main/res/drawable-nodpi/$fileName"),
+        File("app/src/main/res/drawable-nodpi/$fileName")
+    ).firstOrNull { it.exists() } ?: error("No se encontró el arte $fileName")
+)
+
 private fun artworkWidth(fileName: String): Int {
     val candidates = listOf(
         File("src/main/res/drawable-nodpi/$fileName"),
@@ -194,6 +246,37 @@ class RouteBackgroundsTest {
         val background = RouteBackgrounds.forZone("ruta3")
         assertEquals(-0.5f, background.startOffset, 1e-6f)
         assertEquals(-0.0906667f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun everyZone_declaresTheSamplingItsArtworkSupports() {
+        // El muestreo al decodificar solo es gratis si el PNG está ampliado con
+        // nearest-neighbor: cada bloque `artScale × artScale` debe ser uniforme.
+        // Se comprueba contra el fichero real, no contra una constante.
+        (RouteBackgrounds.configuredZoneIds + NO_ARTWORK_ZONE).forEach { zoneId ->
+            val background = RouteBackgrounds.forZone(zoneId)
+            val fileName = ARTWORK_FILE_BY_ZONE[zoneId]
+                ?: error("Falta el fichero de arte de \"$zoneId\" en la tabla del test")
+            val image = artworkImage(fileName)
+            if (background.artScale > 1) {
+                assertTrue(
+                    "$zoneId: artScale=${background.artScale} exige un PNG ampliado " +
+                        "${background.artScale}× con nearest-neighbor",
+                    isNearestNeighbourUpscaled(image, background.artScale)
+                )
+            } else {
+                assertFalse(
+                    "$zoneId: artScale=1 pero el PNG es reducible 2× sin pérdida; " +
+                        "declara artScale en RouteBackgrounds para no decodificarlo entero",
+                    isNearestNeighbourUpscaled(image, 2)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun unknownZone_fallsBackToNativeArtwork() {
+        assertEquals(1, RouteBackgrounds.forZone(NO_ARTWORK_ZONE).artScale)
     }
 
     @Test
