@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -317,7 +318,13 @@ fun AppRoot(
     val menuHidden = sceneActive || state.needsStarter ||
         state.isLeadOpen || isSplashShowing || tutorialHidesMenu(state.tutorialPhase)
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Marco del mundo: una sola proyección para el fondo y para el entrenador.
+        // Se deriva del tamaño de **este** Box, que es el mismo que ocupa el fondo,
+        // así que no pueden separarse. La escala sale del ancho y la cámara se
+        // centra en vertical: el encuadre no depende del alto ni de la densidad.
+        val world = with(density) { worldFrame(maxWidth.toPx(), maxHeight.toPx()) }
+
         // Fondo del gimnasio: combate y capa de entrada comparten la escena, de
         // modo que al caducar el cartel el combate arranque sin salto de fondo.
         // Cada mecánica tiene su arte: cueva de roca para Brock, piscina para
@@ -350,6 +357,18 @@ fun AppRoot(
             // Océano del mapa: rellena también el hueco inferior del menú (la
             // zona flotante de la Pokéball), como hiciera el fondo de ruta.
             MapOceanBackdrop(modifier = Modifier.fillMaxSize())
+        }
+
+        // Mundo: entrenador y hierba, en el mismo `Box` y con la misma proyección
+        // que el fondo (`world`), así que no pueden desincronizarse. Va aquí y no
+        // dentro del `Scaffold` porque el `Scaffold` desplaza y recorta su contenido
+        // según la altura del menú; el mundo se mide contra la pantalla.
+        if (!sceneActive && !state.needsStarter && state.contentTab == AppTab.Home) {
+            WorldTrainer(
+                trainerFrameRes = state.trainerFrameRes,
+                showTallGrass = state.isTallGrass,
+                world = world
+            )
         }
 
         Scaffold(

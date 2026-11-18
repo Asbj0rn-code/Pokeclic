@@ -104,13 +104,13 @@ class RouteBackgroundsTest {
             val background = RouteBackgrounds.forZone(zone.id)
             background.startAnchor?.let { anchor ->
                 assertTrue(
-                    "${zone.id}: startAnchor $anchor deja el arte fuera de la pantalla",
-                    // Fracción de pantalla donde cae el borde inferior del arte.
-                    // Por encima del alto del arte medido en pantallas (~1,5 en un
-                    // móvil) la cuenta enrolla y el encuadre vuelve a empezar, así
-                    // que el tope es solo de cordura: cada zona clava su encuadre
-                    // real en su propio test.
-                    anchor in 0f..2f
+                    "${zone.id}: startAnchor $anchor deja el arte fuera de la escena",
+                    // Alturas de cámara donde cae el borde inferior del arte
+                    // respecto al encuadre centrado: por debajo de -0,5 el arte
+                    // empieza ya fuera por arriba, y por encima de ~1,5 la vuelta
+                    // del patrón hace que el encuadre vuelva a empezar. El tope es
+                    // solo de cordura: cada zona clava su encuadre real en su test.
+                    anchor in -0.5f..2f
                 )
             }
             assertTrue(
@@ -191,7 +191,7 @@ class RouteBackgroundsTest {
         // arte; el ancla deja el **eje central horizontal** del arte a su altura.
         val background = RouteBackgrounds.forZone("ruta3")
         assertEquals(-0.5f, background.startOffset, 1e-6f)
-        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+        assertEquals(-0.0906667f, background.startAnchor!!, 1e-6f)
     }
 
     @Test
@@ -267,7 +267,7 @@ class RouteBackgroundsTest {
 
     @Test
     fun ciudadPlateada_startsAtTheBottomOfItsArtwork() {
-        // El borde inferior del arte cae en el centro de la pantalla, donde está el
+        // El borde inferior del arte cae en el centro de la cámara, donde está el
         // entrenador: la ciudad se recorre desde su parte baja hacia arriba.
         assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_plateada").startAnchor!!, 0f)
     }
@@ -350,7 +350,7 @@ class RouteBackgroundsTest {
         // horizontal del arte a la altura del entrenador.
         val background = RouteBackgrounds.forZone("mt_moon")
         assertEquals(-1f, background.startOffset, 1e-6f)
-        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+        assertEquals(-0.0906667f, background.startAnchor!!, 1e-6f)
     }
 
     @Test

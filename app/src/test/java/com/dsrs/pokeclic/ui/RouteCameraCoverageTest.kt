@@ -1,6 +1,7 @@
 package com.dsrs.pokeclic.ui
 
 import kotlin.math.ceil
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,7 +12,7 @@ import org.junit.Test
  * el dibujo cubre la pantalla entera, sin franjas y sin pasarse del tope de
  * repeticiones.
  *
- * No hace falta emulador: `routeCameraScale` y el reparto de columnas son
+ * No hace falta emulador: `worldFrame` y el reparto de columnas son
  * cálculo puro.
  */
 class RouteCameraCoverageTest {
@@ -40,17 +41,18 @@ class RouteCameraCoverageTest {
     )
 
     @Test
-    fun theCameraAlwaysFitsEveryScreen() {
+    fun theCameraCoversTheWidthExactly() {
         screens.forEach { screen ->
-            val scale = routeCameraScale(screen.w, screen.h)
+            val scale = worldFrame(screen.w, screen.h).scale
             assertTrue("${screen.label}: escala no positiva", scale > 0f)
-            assertTrue(
-                "${screen.label}: la cámara no entra a lo ancho",
-                RouteScrollDefaults.CAMERA_WIDTH * scale <= screen.w + 0.01f
-            )
-            assertTrue(
-                "${screen.label}: la cámara no entra a lo alto",
-                RouteScrollDefaults.CAMERA_HEIGHT * scale <= screen.h + 0.01f
+            // La escala sale del ancho: la cámara mide exactamente la pantalla a lo
+            // ancho, sea cual sea su alto. Es lo que fija el encuadre de todos los
+            // móviles.
+            assertEquals(
+                "${screen.label}: la cámara no ocupa el ancho completo",
+                screen.w,
+                RouteScrollDefaults.CAMERA_WIDTH * scale,
+                0.01f
             )
         }
     }
@@ -59,7 +61,7 @@ class RouteCameraCoverageTest {
     fun everyScreenAndArt_coverTheWidthWithoutGaps() {
         screens.forEach { screen ->
             arts.forEach { art ->
-                val scale = routeCameraScale(screen.w, screen.h)
+                val scale = worldFrame(screen.w, screen.h).scale
                 val tileW = art.w * scale
                 val left0 = (screen.w - tileW) / 2f
 
@@ -95,7 +97,7 @@ class RouteCameraCoverageTest {
     fun everyScreenAndArt_coverTheHeightWithoutGaps() {
         screens.forEach { screen ->
             arts.forEach { art ->
-                val scale = routeCameraScale(screen.w, screen.h)
+                val scale = worldFrame(screen.w, screen.h).scale
                 val tileH = art.h * scale
 
                 // La fila superior arranca en -shiftV, con shiftV en [0, tileH):
@@ -115,7 +117,7 @@ class RouteCameraCoverageTest {
     @Test
     fun theCameraKeepsItsProportionOnEveryScreen() {
         screens.forEach { screen ->
-            val scale = routeCameraScale(screen.w, screen.h)
+            val scale = worldFrame(screen.w, screen.h).scale
             val cameraW = RouteScrollDefaults.CAMERA_WIDTH * scale
             val cameraH = RouteScrollDefaults.CAMERA_HEIGHT * scale
             val screenRatio = screen.w / screen.h
