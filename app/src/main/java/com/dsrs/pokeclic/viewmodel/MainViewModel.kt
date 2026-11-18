@@ -128,7 +128,7 @@ class MainViewModel(
         nowMs = nowMs,
         random = random,
         state = { _uiState.value },
-        commit = { block -> mutate(persist = false) { it.block() } }
+        commit = { persist, block -> mutate(persist) { it.block() } }
     )
 
     /** Job del reset de frame; se cancela al programar uno nuevo. */
@@ -657,154 +657,26 @@ class MainViewModel(
         mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
     }
 
-    /**
-     * Golpea al líder. Solo cuenta si está **expuesto**: en fase de ataque no se
-     * le puede hacer daño, que es lo que cierra el exploit de atacar y defender a
-     * la vez. El daño combina la potencia de clic con la ventaja de tipo.
-     *
-     * La primera vez que un golpe fuese a cruzar el umbral de furia (o a matarlo)
-     * sin haber jugado una ronda de furia, [GymCombat.gateFirstRage] frena el daño
-     * en el umbral y devuelve al líder a [GymPhase.ATTACKING]: la furia es
-     * obligatoria al menos una vez por combate.
-     */
-    fun onGymEnemyHit() {
-        val state = _uiState.value
-        val gym = state.gym ?: return
-        if (gym.outcome != GymOutcome.ACTIVE || gym.phase != GymPhase.EXPOSED) return
-        val config = GymCatalog.require(gym.gymId)
+    /** Golpea al líder. Implementado en [GymCombatEngine.onGymEnemyHit]. */
+    fun onGymEnemyHit() = gymEngine.onGymEnemyHit()
 
-        val multiplier = typeDamageMultiplier(state.leadType, config.type)
-        val damage = (state.clickPower * multiplier).roundToLong().coerceAtLeast(1L).toInt()
+    /** Cierra la capa de victoria y cobra la medalla. */
+    fun onGymVictoryDone() = gymEngine.onGymVictoryDone()
 
-        // Un solo `updateGym`: golpe, puerta de furia y victoria se deciden sobre
-        // el estado más reciente.
-        updateGym { current ->
-            if (current.outcome != GymOutcome.ACTIVE || current.phase != GymPhase.EXPOSED) {
-                return@updateGym current
-            }
-            val newLeaderHp = (current.leaderHp - damage).coerceAtLeast(0)
-            val gated = GymCombat.gateFirstRage(current, newLeaderHp)
-            when {
-                gated != null -> gated
-                // El combate se queda en WON: la capa de victoria hunde al Pokémon
-                // del líder y muestra su despedida antes de cobrar la medalla
-                // (`onGymVictoryDone`).
-                newLeaderHp <= 0 -> current.copy(leaderHp = 0, outcome = GymOutcome.WON)
-                else -> current.copy(
-                    leaderHp = newLeaderHp,
-                    rage = GymCombat.isRaging(newLeaderHp, current.leaderMaxHp)
-                )
-            }
-        }
-    }
+    /** Cierra el discurso de furia y devuelve el combate a la acción. */
+    fun onGymRageSpeechDone() = gymEngine.onGymRageSpeechDone()
 
-    /**
-     * Cierra la capa de victoria y cobra la medalla.
-     *
-     * La llama la UI cuando el líder termina su despedida (o directamente si el
-     * gimnasio aún no tiene guion propio), que es lo que separa la victoria del
-     * cierre real del combate.
-     */
-    fun onGymVictoryDone() {
-        val gym = _uiState.value.gym ?: return
-        if (gym.outcome != GymOutcome.WON) return
-        winGym(GymCatalog.require(gym.gymId))
-    }
+    /** Pulsación en el minijuego de anillos. */
+    fun onGymRingTap() = gymEngine.onGymRingTap()
 
-    /**
-     * Cierra el discurso de furia del líder y devuelve el combate a la acción.
-     *
-     * El bucle sigue corriendo durante el discurso, pero no avanza el combate
-     * mientras [GymState.rageSpeech] esté activo; al apagarlo, la siguiente
-     * vuelta retoma la mecánica con la furia ya en marcha.
-     */
-    fun onGymRageSpeechDone() {
-        updateGym { current ->
-            if (current.rageSpeech) current.copy(rageSpeech = false) else current
-        }
-    }
+    /** Clic fallado: resta postura. */
+    fun onGymMiss() = gymEngine.onGymMiss()
 
-    /**
-     * Pulsación en el minijuego de anillos de Misty.
-     *
-     * Juzga el anillo **más cercano** a su convergencia: dentro de la ventana es
-     * acierto y el anillo desaparece **sumando postura**; fuera, fallo, resta
-     * vida, no suma y el anillo también desaparece. Un anillo se cobra una sola
-     * vez, de modo que pulsar repetidamente no permite encadenar aciertos ni
-     * acumula daño sobre el mismo anillo. En fase expuesta no hace nada: entonces
-     * el toque válido es sobre el sprite del líder ([onGymEnemyHit]).
-     */
-    fun onGymRingTap() {
-        val state = _uiState.value
-        val gym = state.gym ?: return
-        if (gym.outcome != GymOutcome.ACTIVE) return
-        if (gym.mechanic != GymMechanic.TIMING_RINGS) return
-        if (gym.phase != GymPhase.ATTACKING) return
-        val config = GymCatalog.require(gym.gymId)
-        val now = nowMs()
+    /** Destruye el proyectil tocado por el jugador. */
+    fun onGymProjectileHit(projectileId: Long) = gymEngine.onGymProjectileHit(projectileId)
 
-        updateGym { current ->
-            val ring = GymCombat.nearestRing(current, now) ?: return@updateGym current
-            val onBeat = GymCombat.isRingOnBeat(ring, current, now)
-            val resolved = GymCombat.resolveRings(current, listOf(ring), onBeat, now)
-            if (onBeat) GymCombat.addPosture(resolved)
-            else applyRingMiss(GymCombat.failPosture(resolved), config.ringMissDamage)
-        }
-    }
-
-    /**
-     * Clic fallado: el toque no acertó a ninguna roca.
-     *
-     * Resta postura, igual que un fallo de anillo o un Voltorb apagado, para que
-     * machacar la pantalla no llene la barra. En fase expuesta no hace nada.
-     */
-    fun onGymMiss() {
-        val gym = _uiState.value.gym ?: return
-        if (gym.outcome != GymOutcome.ACTIVE) return
-        if (gym.phase != GymPhase.ATTACKING) return
-        updateGym { current -> GymCombat.failPosture(current) }
-    }
-
-    /**
-     * Destruye (o resta un toque a) el proyectil tocado por el jugador.
-     *
-     * La lectura y la escritura van dentro de `updateGym` para no pisar un golpe
-     * del jugador que llegue entre el cálculo y la actualización.
-     */
-    fun onGymProjectileHit(projectileId: Long) {
-        if (_uiState.value.gym?.outcome != GymOutcome.ACTIVE) return
-
-        updateGym { current -> GymCombat.breakProjectile(current, projectileId) }
-    }
-
-    /**
-     * Toque en una celda de la cuadrícula de Lt. Surge.
-     *
-     * Si esa celda tiene un Voltorb cargado lo apaga: acierto sin daño. Si está
-     * apagada, la descarga resta vida. En fase expuesta no hace nada: entonces el
-     * toque válido es sobre el sprite del líder ([onGymEnemyHit]).
-     */
-    fun onGymVoltorbTap(cell: Int) {
-        val state = _uiState.value
-        val gym = state.gym ?: return
-        if (gym.outcome != GymOutcome.ACTIVE) return
-        if (gym.mechanic != GymMechanic.VOLTORB_GRID) return
-        if (gym.phase != GymPhase.ATTACKING) return
-        val config = GymCatalog.require(gym.gymId)
-
-        updateGym { current ->
-            if (GymCombat.voltorbAt(current, cell) != null) {
-                GymCombat.defuseVoltorb(current, cell)
-            } else {
-                val shocked = GymCombat.registerShock(
-                    GymCombat.failPosture(current),
-                    cell,
-                    config.voltorbShockDamage
-                )
-                if (shocked.playerHp <= 0) shocked.copy(outcome = GymOutcome.LOST) else shocked
-            }
-        }
-    }
+    /** Toque en una celda de la cuadrícula de Voltorb. */
+    fun onGymVoltorbTap(cell: Int) = gymEngine.onGymVoltorbTap(cell)
 
     private fun startGymCombat(config: Gym) {
         mutate(persist = false) { current ->
@@ -847,29 +719,6 @@ class MainViewModel(
      * avanza la recuperación por tiempo. Al bajar del 25 % de vida la mecánica se
      * acelera (furia). Se detiene al ganar o perder.
      */
-    /** Daño de un anillo fallado; cierra el combate si deja al jugador a 0. */
-    private fun applyRingMiss(state: GymState, damage: Int): GymState =
-        GymCombat.registerImpact(state, damage).withDefeatIfPlayerDown()
-
-    /**
-     * Victoria del gimnasio: cierra el combate y da sus recompensas, pero **no
-     * autoavanza** la zona: la medalla entra en la meta permanente y el gimnasio
-     * en `gymClearedRun` (requisito del botón «Avanzar» en esta run). Si la
-     * barra ya estaba al 100 %, el botón queda disponible inmediatamente.
-     */
-    private fun winGym(config: Gym) {
-        gymEngine.stop()
-        mutate { state ->
-            state.copy(
-                gym = null,
-                medals = state.medals + config.id,
-                gymClearedRun = state.gymClearedRun + config.id,
-                coins = state.coins + config.coinReward,
-                starterBond = if (state.starterSpeciesId != null) state.starterBond + 1 else state.starterBond
-            )
-        }
-    }
-
     // --- Captura (Etapa 3) ---------------------------------------------------
 
     /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
