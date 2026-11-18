@@ -299,6 +299,51 @@ class MapRegionsJsonTest {
         }
     }
 
+    /**
+     * Exportar una región enlazada al catálogo y **sin** prioridad explícita no
+     * puede resolverse sin el catálogo: `effectivePriority` caería al default de
+     * ruta y el fichero quedaría con una prioridad falsa.
+     */
+    @Test
+    fun writeRegions_linkedRegionWithoutExplicitPriority_requiresTheCatalog() {
+        val linked = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "ciudad-verde",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    catalogId = 26
+                )
+            )
+        )
+
+        try {
+            linked.writeRegions()
+            fail("Debía rechazar el export sin catálogo")
+        } catch (expected: MapRegionsDataException) {
+            assertTrue("ciudad-verde" in expected.message!!)
+        }
+    }
+
+    /** La región libre (sin enlace) no necesita catálogo para exportarse. */
+    @Test
+    fun writeRegions_freeRegionWithoutCatalog_stillExports() {
+        val free = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "torre",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    name = "Torre",
+                    type = MapRegionType.SPECIAL
+                )
+            )
+        )
+
+        val parsed = parseRegions(free.writeRegions())
+        assertEquals(2, parsed.regions.single().priority)
+    }
+
     // ─────────────────────── Referencias cruzadas ───────────────────────
 
     @Test

@@ -351,13 +351,26 @@ fun MapEditorScreen(onClose: () -> Unit) {
         }
     }
 
+    /**
+     * Serializa el borrador. `writeRegions` rechaza un export que perdería la
+     * prioridad de una región enlazada sin catálogo: aquí ese rechazo se
+     * muestra como error de I/O en vez de tumbar la pantalla.
+     */
+    fun exportOrNull(): String? = try {
+        store.exportPayload(session.regions, session.catalog)
+    } catch (error: MapRegionsDataException) {
+        showIoError(error.message ?: "no se pudo serializar el mapeo")
+        null
+    }
+
     fun launchExport() {
         val reason = validateRegionsForEditor(session.regions, session.catalog)
         if (reason != null) {
             showIoError("Nada que exportar: $reason")
             return
         }
-        exportPayload = store.exportPayload(session.regions, session.catalog)
+        val payload = exportOrNull() ?: return
+        exportPayload = payload
         exportLauncher.launch("kanto_regions.json")
     }
 
@@ -371,9 +384,11 @@ fun MapEditorScreen(onClose: () -> Unit) {
             showIoError("Nada que copiar: $reason")
             return
         }
-        clipboard.setText(AnnotatedString(store.exportPayload(session.regions, session.catalog)))
+        val payload = exportOrNull() ?: return
+        clipboard.setText(AnnotatedString(payload))
         showIo(isError = false, text = "JSON copiado al portapapeles")
     }
+
 
     // Estado del borrador para la barra superior: prioridad de mensajes
     // I/O puntual > error de autoguardado > pendiente > guardado.
