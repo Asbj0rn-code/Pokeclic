@@ -143,6 +143,13 @@ class MainViewModel(
         startCatching = { catchingEngine.start() }
     )
 
+    /** Animación del entrenador: fotograma actual y vuelta al reposo. */
+    private val animator = TrainerAnimator(
+        scope = viewModelScope,
+        sprites = sprites,
+        commit = { persist, block -> mutate(persist) { it.block() } }
+    )
+
     private val gymEngine = GymCombatEngine(
         scope = viewModelScope,
         nowMs = nowMs,
@@ -151,12 +158,6 @@ class MainViewModel(
         gymIdForZone = { zoneAt(it).gymId },
         commit = { persist, block -> mutate(persist) { it.block() } }
     )
-
-    /** Job del reset de frame; se cancela al programar uno nuevo. */
-    private var resetJob: Job? = null
-
-    /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
-    private var lateralFrameJob: Job? = null
 
     init {
         walkEngine.start()
@@ -184,26 +185,13 @@ class MainViewModel(
         val now = nowMs()
         // Un clic nuevo manda: si quedaba pendiente el segundo fotograma de un
         // lateral anterior, ya no aplica.
-        lateralFrameJob?.cancel()
+        animator.cancelPendingStep()
 
         // Se lee **antes** del update: dentro del lambda de `updateAndGet` el valor
         // se recalcularía en cada reintento de CAS.
         val directionChanged = direction != _uiState.value.trainer.currentDirection
         mutate { state ->
-            val trainer = if (directionChanged) {
-                // Al estrenar dirección se arranca por su fotograma de entrada:
-                // los laterales empiezan en el segundo del ciclo.
-                val total = sprites.frameCount(direction)
-                val first = direction.startFrame().coerceIn(0, (total - 1).coerceAtLeast(0))
-                state.trainer.copy(currentDirection = direction, currentFrame = first)
-            } else {
-                val total = sprites.frameCount(direction)
-                state.trainer.copy(currentFrame = (state.trainer.currentFrame + 1) % total)
-            }
-            val animated = state.copy(
-                trainer = trainer,
-                trainerFrameRes = sprites.frame(trainer.currentDirection, trainer.currentFrame)
-            )
+            val animated = animator.animate(state, direction, directionChanged)
 
             val progressed = when {
                 // Minijuego en curso: la pokéball no interviene en la partida.
@@ -226,10 +214,10 @@ class MainViewModel(
         // El paso de lado dura un solo clic: su segundo fotograma entra cuando el
         // desplazamiento ya está en marcha, no en el mismo instante del toque.
         if (directionChanged && direction.isLateral) {
-            scheduleLateralSecondFrame(direction)
+            animator.scheduleLateralSecondFrame(direction)
         }
         // Un segundo sin pulsar devuelve al entrenador al reposo (front, frame 0).
-        scheduleFrameReset()
+        animator.scheduleReset()
     }
 
     /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
@@ -302,8 +290,7 @@ class MainViewModel(
         if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymEngine.stop()
         catchingEngine.cancel()
-        resetJob?.cancel()
-        lateralFrameJob?.cancel()
+        animator.cancelAll()
         walkEngine.resetActivity()
         gymEngine.reset()
         store.clear()
@@ -689,51 +676,6 @@ class MainViewModel(
      */
     // --- Animación del entrenador -----------------------------------------
 
-    /**
-     * Vuelve al reposo tras [FRAME_RESET_DELAY_MS] sin pulsar: **front** y su
-     * primer fotograma, quieto. Cada pulsación reprograma el plazo.
-     */
-    private fun scheduleFrameReset() {
-        resetJob?.cancel()
-        resetJob = viewModelScope.launch {
-            delay(FRAME_RESET_DELAY_MS)
-            mutate(persist = false) { state ->
-                state.copy(
-                    trainer = state.trainer.copy(
-                        currentDirection = Direction.FRONT,
-                        currentFrame = 0
-                    ),
-                    trainerFrameRes = sprites.frame(Direction.FRONT, 0)
-                )
-            }
-        }
-    }
-
-    /**
-     * Segundo fotograma del paso lateral.
-     *
-     * El paso de lado dura un solo clic, así que sus dos fotogramas caen dentro de
-     * la misma animación: el primero se pinta al tocar y este entra
-     * [LATERAL_SECOND_FRAME_DELAY_MS] después, cuando el fondo ya está deslizando.
-     * Cualquier clic nuevo cancela el plazo.
-     */
-    private fun scheduleLateralSecondFrame(direction: Direction) {
-        lateralFrameJob?.cancel()
-        lateralFrameJob = viewModelScope.launch {
-            delay(LATERAL_SECOND_FRAME_DELAY_MS)
-            mutate(persist = false) { state ->
-                if (state.trainer.currentDirection != direction) return@mutate state
-                val total = sprites.frameCount(direction)
-                val frame = (direction.startFrame() + 1)
-                    .coerceIn(0, (total - 1).coerceAtLeast(0))
-                state.copy(
-                    trainer = state.trainer.copy(currentFrame = frame),
-                    trainerFrameRes = sprites.frame(direction, frame)
-                )
-            }
-        }
-    }
-
     // --- Estado derivado y persistencia -----------------------------------
 
     private fun restoreState(): GameUiState {
@@ -928,15 +870,6 @@ class MainViewModel(
     private fun zoneAt(index: Int): Zone = zones[index.coerceIn(0, zones.lastIndex)]
 
     private companion object {
-        const val FRAME_RESET_DELAY_MS = 1_000L
-
-        /**
-         * Cuánto tarda el segundo fotograma de un paso lateral. Cae dentro de los
-         * ~100 ms que dura el desplazamiento de ese clic, así que se ve el
-         * arranque (frame 1) y luego la zancada (frame 2).
-         */
-        const val LATERAL_SECOND_FRAME_DELAY_MS = 60L
-
         /** Cada especie en posesión suma este % a la potencia de clic. */
         const val PER_OWNED_SPECIES_BONUS = 0.05
 
