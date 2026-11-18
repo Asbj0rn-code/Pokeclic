@@ -269,6 +269,27 @@ data class Projectile(
 }
 
 /**
+ * Geometría de los carriles de rocas, en píxeles de pantalla.
+ *
+ * La mide la capa de UI, que es su layout; la regla de acierto la aplica el
+ * modelo. Se pasa como datos planos para que el modelo no dependa de Compose.
+ */
+data class ProjectileLaneGeometry(
+    val laneLeft: Float,
+    val cellWidth: Float,
+    val spawnY: Float,
+    val impactY: Float,
+    val hitRadius: Float
+)
+
+/** Roca golpeada y el punto donde estaba, para que la UI pinte el estallido. */
+data class ProjectileHit(
+    val projectile: Projectile,
+    val centerX: Float,
+    val centerY: Float
+)
+
+/**
  * Un anillo del minijuego de ritmo ([GymMechanic.TIMING_RINGS]).
  *
  * Nace en [spawnedAtMs] con radio grande y se cierra hasta tocar el círculo fijo
@@ -627,6 +648,32 @@ object GymCombat {
      * Romper rocas **es un acierto**: suma postura. Si el proyectil ya no existe
      * o no estamos en fase de ataque, no cambia nada.
      */
+    /**
+     * Roca que golpea un toque en ([tapX], [tapY]) sobre [lanes] a [nowMs].
+     *
+     * Se mide **dónde estaba la roca al apoyar el dedo**: al caer se movería y el
+     * toque "se escaparía". Gana la más cercana dentro del radio; un toque fuera
+     * de todos los radios es un fallo (`null`).
+     */
+    fun hitProjectile(
+        state: GymState,
+        tapX: Float,
+        tapY: Float,
+        lanes: ProjectileLaneGeometry,
+        nowMs: Long
+    ): ProjectileHit? = state.projectiles
+        .map { projectile ->
+            val centerX = lanes.laneLeft + lanes.cellWidth * (projectile.column + 0.5f)
+            val centerY =
+                lanes.spawnY + (lanes.impactY - lanes.spawnY) * projectile.progressAt(nowMs)
+            val dx = tapX - centerX
+            val dy = tapY - centerY
+            ProjectileHit(projectile, centerX, centerY) to (dx * dx + dy * dy)
+        }
+        .filter { (_, distanceSq) -> distanceSq <= lanes.hitRadius * lanes.hitRadius }
+        .minByOrNull { (_, distanceSq) -> distanceSq }
+        ?.first
+
     fun breakProjectile(state: GymState, projectileId: Long): GymState {
         if (state.phase != GymPhase.ATTACKING) return state
 

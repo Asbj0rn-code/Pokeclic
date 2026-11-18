@@ -188,6 +188,86 @@ class ModelTest {
         assertEquals(true, projectile.hasLanded(3_000L))
     }
 
+    // --- Acierto de rocas: la regla vive en el modelo --------------------------
+
+    private val rockLanes = ProjectileLaneGeometry(
+        laneLeft = 0f,
+        cellWidth = 100f,
+        spawnY = 0f,
+        impactY = 1_000f,
+        hitRadius = 40f
+    )
+
+    private fun rock(column: Int, id: Long = 1L) =
+        Projectile(id = id, column = column, spawnedAtMs = 0L, travelMs = 1_000L)
+
+    private fun rockState(vararg projectiles: Projectile) = GymState(
+        gymId = "brock",
+        leaderName = "Brock",
+        gymType = PokemonType.ROCK,
+        leaderHp = 100,
+        leaderMaxHp = 100,
+        playerHp = 5,
+        maxHp = 5,
+        columns = 4,
+        projectiles = projectiles.toList()
+    )
+
+    @Test
+    fun hitProjectile_tapOnTheRockHitsIt() {
+        val state = rockState(rock(column = 0))
+
+        // A mitad de caída la roca de la columna 0 está en (50, 500).
+        val hit = GymCombat.hitProjectile(state, 50f, 500f, rockLanes, nowMs = 500L)
+
+        assertNotNull(hit)
+        assertEquals(1L, hit!!.projectile.id)
+        assertEquals(50f, hit.centerX, 1e-3f)
+        assertEquals(500f, hit.centerY, 1e-3f)
+    }
+
+    @Test
+    fun hitProjectile_tapOutsideEveryRadius_isAMiss() {
+        val state = rockState(rock(column = 0))
+
+        assertNull(GymCombat.hitProjectile(state, 500f, 500f, rockLanes, nowMs = 500L))
+    }
+
+    @Test
+    fun hitProjectile_measuresWhereTheRockWasAtPressTime() {
+        val state = rockState(rock(column = 0))
+
+        // El mismo toque acierta a 500 ms y falla a 900 ms: la roca se movió.
+        assertNotNull(GymCombat.hitProjectile(state, 50f, 500f, rockLanes, nowMs = 500L))
+        assertNull(GymCombat.hitProjectile(state, 50f, 500f, rockLanes, nowMs = 900L))
+    }
+
+    @Test
+    fun hitProjectile_adjacentColumns_onlyTheOneInRange() {
+        val state = rockState(rock(0, id = 1L), rock(1, id = 2L))
+
+        // A 500 ms: columna 0 en x=50, columna 1 en x=150. A 120 solo llega la 1.
+        val hit = GymCombat.hitProjectile(state, 120f, 500f, rockLanes, nowMs = 500L)
+
+        assertEquals(2L, hit!!.projectile.id)
+    }
+
+    @Test
+    fun hitProjectile_bothInRadius_takesTheNearest() {
+        val wideRadius = rockLanes.copy(hitRadius = 60f)
+        val state = rockState(rock(0, id = 1L), rock(1, id = 2L))
+
+        // A 95 está a 45 de la columna 0 y a 55 de la 1: gana la más cercana.
+        val hit = GymCombat.hitProjectile(state, 95f, 500f, wideRadius, nowMs = 500L)
+
+        assertEquals(1L, hit!!.projectile.id)
+    }
+
+    @Test
+    fun hitProjectile_withoutProjectiles_isAMiss() {
+        assertNull(GymCombat.hitProjectile(rockState(), 50f, 500f, rockLanes, nowMs = 500L))
+    }
+
     // --- Zonas: avance manual -------------------------------------------------
 
     @Test
