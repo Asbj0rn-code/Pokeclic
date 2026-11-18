@@ -123,6 +123,15 @@ class MainViewModel(
      * Motor del combate: reloj, cadencia y colocación de ataques. Escribe por
      * [mutate] sin persistir, igual que el resto del estado transitorio.
      */
+    /** Motor del minijuego de captura: bucle de la barra y cierre del encuentro. */
+    private val catchingEngine = CatchingEngine(
+        scope = viewModelScope,
+        nowMs = nowMs,
+        random = random,
+        state = { _uiState.value },
+        commit = { persist, block -> mutate(persist) { it.block() } }
+    )
+
     private val gymEngine = GymCombatEngine(
         scope = viewModelScope,
         nowMs = nowMs,
@@ -137,12 +146,6 @@ class MainViewModel(
 
     /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
     private var lateralFrameJob: Job? = null
-
-    /** Job del bucle del minijuego de captura. */
-    private var catchingJob: Job? = null
-
-    /** ¿El jugador mantiene pulsado durante la partida de captura? */
-    private var catchingHeld: Boolean = false
 
     /** Momento del último toque en hierba alta; gobierna el temporizador de caminar. */
     private var lastWalkTapMs: Long = 0L
@@ -231,7 +234,7 @@ class MainViewModel(
         if (state.alwaysWilds) {
             state
         } else if (state.isTallGrass) {
-            cancelCatching()
+            catchingEngine.cancel()
             state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, catching = null)
         } else {
             state.copy(isTallGrass = true)
@@ -255,7 +258,7 @@ class MainViewModel(
         // mensaje visible o un paso en curso queda bloqueado.
         if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymEngine.stop()
-        cancelCatching()
+        catchingEngine.cancel()
         mutate { state ->
             state.copy(
                 ownedSpecies = emptySet(),
@@ -290,7 +293,7 @@ class MainViewModel(
         // (ver `onReset`).
         if (!_uiState.value.tutorialPhase.isFreePlay) return
         gymEngine.stop()
-        cancelCatching()
+        catchingEngine.cancel()
         resetJob?.cancel()
         lateralFrameJob?.cancel()
         lastWalkTapMs = 0L
@@ -318,7 +321,7 @@ class MainViewModel(
         val index = zones.indexOfFirst { it.id == zoneId }
         if (index < 0) return
         gymEngine.stop()
-        cancelCatching()
+        catchingEngine.cancel()
         lastWalkTapMs = 0L
         gymEngine.reset()
         mutate { state ->
@@ -619,112 +622,11 @@ class MainViewModel(
 
     // --- Captura (Etapa 3) ---------------------------------------------------
 
-    /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
-    fun onCatchingHold(held: Boolean) {
-        catchingHeld = held
-    }
+    /** Registra la pulsación de la partida en curso. */
+    fun onCatchingHold(held: Boolean) = catchingEngine.onHold(held)
 
-    /**
-     * Cierra el panel de resultado y aplica sus consecuencias: **capturado** suma
-     * la especie (y las monedas, solo la primera vez); **escapado** no cambia
-     * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
-     * encuentro.
-     *
-     * El registro con captura aplica al **resultado final** del minijuego
-     * (fase CAPTURED), es decir, la especie que entra en posesión; el
-     * avistamiento ya se registró en
-     * `spawnEncounter`. Aquí se añade también al historial permanente de la
-     * Pokédex (`caughtSpecies`).
-     */
-    fun onCatchingResultContinue() {
-        val catching = _uiState.value.catching ?: return
-        if (catching.phase == CatchingPhase.PLAYING) return
-        cancelCatching()
-
-        val captured = catching.phase == CatchingPhase.CAPTURED
-        mutate { state ->
-            val encounter = state.encounter ?: return@mutate state.withoutEncounter()
-            if (captured) {
-                val firstTime = encounter.speciesId !in state.rewardedSpecies
-                val reward = if (firstTime) {
-                    SpeciesCatalog.require(encounter.speciesId).coinReward
-                } else {
-                    0L
-                }
-                state.copy(
-                    ownedSpecies = state.ownedSpecies + encounter.speciesId,
-                    rewardedSpecies = state.rewardedSpecies + encounter.speciesId,
-                    coins = state.coins + reward,
-                    caughtSpecies = state.caughtSpecies + encounter.speciesId,
-                    seenSpecies = state.seenSpecies + encounter.speciesId
-                ).withoutEncounter()
-            } else {
-                state.withoutEncounter()
-            }
-        }
-    }
-
-    /** Sale del encuentro y deja la hierba lista para el siguiente. */
-    private fun GameUiState.withoutEncounter(): GameUiState =
-        copy(encounter = null, catching = null, walkProgress = 0f)
-
-    /**
-     * Bucle del minijuego de captura: avanza barra y sprite a 50 ms con la
-     * pulsación registrada. Se detiene al terminar la partida (captura o huida);
-     * el panel de resultado espera el `onCatchingResultContinue` del jugador.
-     */
-    private fun startCatchingLoop() {
-        catchingJob?.cancel()
-        catchingHeld = false
-        catchingJob = viewModelScope.launch {
-            // La Pokébola se lanza y queda clavada en el centro antes de que el
-            // riel empiece a moverse: el estado se queda centrado durante el
-            // vuelo y la pausa de reacción.
-            delay(CatchingDefaults.THROW_MS + CatchingDefaults.REACTION_MS)
-            // `dt` sale del reloj real y no del tick nominal: así el movimiento
-            // no se ralentiza si un frame tarda más de lo previsto.
-            var lastTickMs = nowMs()
-            while (isActive) {
-                delay(CATCHING_TICK_MS)
-                val now = nowMs()
-                val dt = ((now - lastTickMs) / 1000f).coerceIn(0f, MAX_CATCHING_DT_SECONDS)
-                lastTickMs = now
-                if (dt <= 0f) continue
-                var finished = false
-                updateCatching { current ->
-                    val next = CatchingGame.step(
-                        state = current,
-                        held = catchingHeld,
-                        dt = dt,
-                        random = random
-                    )
-                    finished = next.phase != CatchingPhase.PLAYING
-                    next
-                }
-                if (finished) break
-            }
-        }
-    }
-
-    /**
-     * Actualiza el minijuego (estado transitorio, no se persiste).
-     *
-     * Delega en [mutate] para que toda escritura del estado pase por el mismo
-     * sitio y el tutorial se normalice siempre.
-     */
-    private fun updateCatching(block: (CatchingState) -> CatchingState) {
-        mutate(persist = false) { state ->
-            val catching = state.catching ?: return@mutate state
-            state.copy(catching = block(catching))
-        }
-    }
-
-    /** Cancela el bucle de captura y suelta la pulsación que quedara a medias. */
-    private fun cancelCatching() {
-        catchingJob?.cancel()
-        catchingJob = null
-        catchingHeld = false
-    }
+    /** Cierra el panel de resultado y aplica sus consecuencias. */
+    fun onCatchingResultContinue() = catchingEngine.onResultContinue()
 
     /**
      * Suma [amount] clics de avance a la zona actual. El resultado se **capa en
@@ -757,7 +659,7 @@ class MainViewModel(
         if (!state.tutorialAllows(TutorialInteraction.ADVANCE_ZONE)) {
             state
         } else if (state.canAdvanceZone) {
-            cancelCatching()
+            catchingEngine.cancel()
             state.copy(
                 zoneIndex = state.zoneIndex + 1,
                 zoneClicks = 0L,
@@ -796,7 +698,7 @@ class MainViewModel(
                 seenSpecies = it.seenSpecies + species.id
             )
         }
-        startCatchingLoop()
+        catchingEngine.start()
     }
 
     // --- Bucles ------------------------------------------------------------
@@ -1102,3 +1004,7 @@ class MainViewModel(
 
     }
 }
+
+/** Sale del encuentro y deja la hierba lista para el siguiente. */
+internal fun GameUiState.withoutEncounter(): GameUiState =
+    copy(encounter = null, catching = null, walkProgress = 0f)
