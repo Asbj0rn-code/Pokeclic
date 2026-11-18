@@ -65,9 +65,9 @@ class MainViewModelTest {
         zones: List<Zone> = testZones,
         sprites: SpriteRepository = FakeSprites(),
         random: Random = Random.Default
-    ) = MainViewModel(
-        sprites,
-        FakeStore().apply { this.saved = saved },
+    ) = testViewModel(
+        sprites = sprites,
+        store = FakeStore().apply { this.saved = saved },
         zones = zones,
         random = random,
         nowMs = nowMs
