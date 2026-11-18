@@ -128,6 +128,7 @@ class MainViewModel(
         nowMs = nowMs,
         random = random,
         state = { _uiState.value },
+        gymIdForZone = { zoneAt(it).gymId },
         commit = { persist, block -> mutate(persist) { it.block() } }
     )
 
@@ -136,9 +137,6 @@ class MainViewModel(
 
     /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
     private var lateralFrameJob: Job? = null
-
-    /** Job del cartel de arranque del combate del gimnasio. */
-    private var gymIntroJob: Job? = null
 
     /** Job del bucle del minijuego de captura. */
     private var catchingJob: Job? = null
@@ -256,7 +254,6 @@ class MainViewModel(
         // una fila de la hoja de opciones y solo opera en juego libre — con un
         // mensaje visible o un paso en curso queda bloqueado.
         if (!_uiState.value.tutorialPhase.isFreePlay) return
-        gymIntroJob?.cancel()
         gymEngine.stop()
         cancelCatching()
         mutate { state ->
@@ -292,7 +289,6 @@ class MainViewModel(
         // Guard del tutorial: fila de test, solo en juego libre
         // (ver `onReset`).
         if (!_uiState.value.tutorialPhase.isFreePlay) return
-        gymIntroJob?.cancel()
         gymEngine.stop()
         cancelCatching()
         resetJob?.cancel()
@@ -321,7 +317,6 @@ class MainViewModel(
         if (!_uiState.value.tutorialPhase.isFreePlay) return
         val index = zones.indexOfFirst { it.id == zoneId }
         if (index < 0) return
-        gymIntroJob?.cancel()
         gymEngine.stop()
         cancelCatching()
         lastWalkTapMs = 0L
@@ -584,78 +579,22 @@ class MainViewModel(
     // --- Gimnasio (combate clicker) ----------------------------------------
 
     /** Empieza el intento de gimnasio de la zona actual, si está disponible. */
-    fun onEnterGym() {
-        val state = _uiState.value
-        // Guard del tutorial: el gimnasio solo opera en juego libre.
-        if (!state.tutorialPhase.isFreePlay) return
-        // Ignora la entrada si ya hay un combate en curso (incluso perdido: el
-        // reintento explícito es onGymRetry, y salir es onLeaveGym), una capa de
-        // intro abierta o un gimnasio no disponible.
-        if (state.gym != null) return
-        if (state.gymIntro != null) return
-        if (!state.isGymReady) return
-        val gymId = zoneAt(state.zoneIndex).gymId ?: return
-        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.WELCOME) }
-    }
+    fun onEnterGym() = gymEngine.onEnterGym()
 
     /** Desde la bienvenida, abre la explicación del minijuego. */
-    fun onGymIntroWatchTutorial() {
-        if (_uiState.value.gymIntro != GymIntroPhase.WELCOME) return
-        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.TUTORIAL) }
-    }
+    fun onGymIntroWatchTutorial() = gymEngine.onGymIntroWatchTutorial()
 
     /** "Omitir" (bienvenida): salta el tutorial y arma el cartel de arranque. */
-    fun onGymIntroSkip() = beginGymCombatCountdown()
+    fun onGymIntroSkip() = gymEngine.onGymIntroSkip()
 
-    /** "Entendido" (tutorial): cierra la explicación y arma el cartel de arranque. */
-    fun onGymIntroAccepted() = beginGymCombatCountdown()
+    /** "Entendido" (tutorial): cierra la explicación y arma el cartel. */
+    fun onGymIntroAccepted() = gymEngine.onGymIntroAccepted()
 
-    /**
-     * Reintenta el gimnasio actual desde cero (tras una derrota), pasando por
-     * el cartel de arranque para que el jugador se prepare.
-     */
-    fun onGymRetry() {
-        if (_uiState.value.gym == null) return
-        beginGymCombatCountdown()
-    }
+    /** Reintenta el gimnasio actual desde cero (tras una derrota). */
+    fun onGymRetry() = gymEngine.onGymRetry()
 
-    /**
-     * **Abandona el intento sin penalización**; se puede reintentar. También
-     * limpia la capa de intro: si el combate estaba arrancando con el cartel,
-     * dejarlo a medias replicaría un arranque fantasma.
-     */
-    fun onLeaveGym() {
-        gymIntroJob?.cancel()
-        gymIntroJob = null
-        gymEngine.stop()
-        mutate(persist = false) { it.copy(gym = null, gymIntro = null) }
-    }
-
-    /**
-     * Pasa a fase **countdown**: muestra el cartel "que comience el combate"
-     * durante [GYM_COUNTDOWN_MS] y solo entonces arranca el combate real, para
-     * que el jugador no entre por sorpresa.
-     */
-    private fun beginGymCombatCountdown() {
-        val phase = _uiState.value.gymIntro
-        // Desde una derrota no se exige fase: llega con el combate perdido ya
-        // detenido (`onGymRetry` llega sin la capa de intro compuesta).
-        val fromIntro = phase == GymIntroPhase.WELCOME || phase == GymIntroPhase.TUTORIAL
-        val fromRetry = _uiState.value.gym != null
-        // Solo hay un punto de partida válido: la intro o el reintento, nunca ambos.
-        if (fromIntro == fromRetry) return
-
-        gymIntroJob?.cancel()
-        gymIntroJob = viewModelScope.launch {
-            delay(GYM_COUNTDOWN_MS)
-            val state = _uiState.value
-            if (state.gymIntro != GymIntroPhase.COUNTDOWN) return@launch
-            val gymId = zoneAt(state.zoneIndex).gymId
-                ?: return@launch mutate(persist = false) { it.copy(gymIntro = null) }
-            startGymCombat(GymCatalog.require(gymId))
-        }
-        mutate(persist = false) { it.copy(gymIntro = GymIntroPhase.COUNTDOWN) }
-    }
+    /** Abandona el intento sin penalización. */
+    fun onLeaveGym() = gymEngine.onLeaveGym()
 
     /** Golpea al líder. Implementado en [GymCombatEngine.onGymEnemyHit]. */
     fun onGymEnemyHit() = gymEngine.onGymEnemyHit()
@@ -678,47 +617,6 @@ class MainViewModel(
     /** Toque en una celda de la cuadrícula de Voltorb. */
     fun onGymVoltorbTap(cell: Int) = gymEngine.onGymVoltorbTap(cell)
 
-    private fun startGymCombat(config: Gym) {
-        mutate(persist = false) { current ->
-            val maxHp = current.maxHp
-            current.copy(
-                isTallGrass = false,
-                walkProgress = 0f,
-                encounter = null,
-                catching = null,
-                gymIntro = null,
-                gym = GymState(
-                    gymId = config.id,
-                    leaderName = config.leaderName,
-                    gymType = config.type,
-                    leaderHp = config.leaderHp,
-                    leaderMaxHp = config.leaderHp,
-                    playerHp = maxHp,
-                    maxHp = maxHp,
-                    mechanic = config.mechanic,
-                    columns = config.columns,
-                    rows = config.rows,
-                    ringWindowMs = config.ringWindowMs,
-                    postureMax = config.postureHits,
-                    posture = 0,
-                    exposureDurationMs = config.exposureDurationMs,
-                    // El principal efectivo es el elegido o, si no hay, el starter.
-                    leadSpeciesId = current.leadSpeciesId ?: current.starterSpeciesId,
-                    leadName = current.leadName,
-                    leadType = current.leadType
-                )
-            )
-        }
-        gymEngine.start(config)
-    }
-
-    /**
-     * Bucle de combate. En fase de ataque aplica la mecánica del líder —ráfagas
-     * de proyectiles, anillos que se cierran o Voltorb que se cargan—; la postura
-     * solo sube con los aciertos del jugador, nunca por tiempo. En fase expuesta
-     * avanza la recuperación por tiempo. Al bajar del 25 % de vida la mecánica se
-     * acelera (furia). Se detiene al ganar o perder.
-     */
     // --- Captura (Etapa 3) ---------------------------------------------------
 
     /** Registra la pulsación de la partida en curso (pulsar = barra sube). */
@@ -1202,7 +1100,5 @@ class MainViewModel(
         /** HP base del entrenador antes de la mejora de vida. */
         const val BASE_MAX_HP = 5
 
-        /** Duración del cartel "que comience el combate" antes del combate. */
-        const val GYM_COUNTDOWN_MS = 1_000L
     }
 }
