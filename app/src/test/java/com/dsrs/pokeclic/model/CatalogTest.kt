@@ -274,4 +274,13 @@ class CatalogTest {
         )
         assertEquals(listOf(10L, 10L, 10L), SpeciesCatalog.starters.map { it.coinReward })
     }
+
+    /** El ancho del premio no puede volver a `Int` sin que este test lo note. */
+    @Test
+    fun speciesCatalog_rewardIsWideEnoughForCoins() {
+        assertTrue(
+            "coinReward debe ser Long para no desbordar coins",
+            (SpeciesCatalog.require("bulbasaur").coinReward as Any) is Long
+        )
+    }
 }

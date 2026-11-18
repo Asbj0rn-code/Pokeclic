@@ -91,6 +91,86 @@ class GameStateStoreTest {
         assertEquals(0, loaded.starterBond)
     }
 
+    @Test
+    fun load_versionExactlyCurrent_isAccepted() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 5L
+        prefs.values["schema_version"] = 2
+
+        assertEquals(5L, SharedPreferencesGameStateStore(prefs).load()!!.coins)
+    }
+
+    @Test
+    fun load_futureVersion_keepsStoredDataUntouched() {
+        // Rechazar el guardado no puede además borrarlo: la build vieja no
+        // toca datos que no entiende.
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 5L
+        prefs.values["schema_version"] = 3
+        val before = prefs.values.toMap()
+
+        assertNull(SharedPreferencesGameStateStore(prefs).load())
+        assertEquals(before, prefs.values)
+    }
+
+    @Test
+    fun load_saveWithOnlyCoins_loadsDefaults() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 0L
+
+        val loaded = SharedPreferencesGameStateStore(prefs).load()!!
+
+        assertEquals(0, loaded.zoneIndex)
+        assertEquals(0L, loaded.zoneClicks)
+        assertEquals(TutorialPhase.PENDING, loaded.tutorialPhase)
+    }
+
+    @Test
+    fun load_withoutCoins_returnsNullEvenWithVersion() {
+        val prefs = FakePrefs()
+        prefs.values["schema_version"] = 2
+
+        assertNull(SharedPreferencesGameStateStore(prefs).load())
+    }
+
+    @Test
+    fun clear_alsoRemovesTheSchemaVersion() {
+        val prefs = FakePrefs()
+        val store = SharedPreferencesGameStateStore(prefs)
+        store.save(GameSnapshot(coins = 1L))
+        assertTrue(prefs.contains("schema_version"))
+
+        assertTrue(store.clear())
+        assertTrue(prefs.values.isEmpty())
+    }
+
+    @Test
+    fun legacySave_resavedGainsVersionAndKeepsValues() {
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 7L
+        prefs.values["zone_index"] = 1
+        val store = SharedPreferencesGameStateStore(prefs)
+
+        val loaded = store.load()!!
+        store.save(loaded)
+
+        assertEquals(2, prefs.values["schema_version"])
+        assertEquals(loaded, store.load())
+    }
+
+    @Test
+    fun load_negativeValues_areReported() {
+        val warnings = mutableListOf<String>()
+        val prefs = FakePrefs()
+        prefs.values["coins"] = 1L
+        prefs.values["zone_index"] = -2
+
+        SharedPreferencesGameStateStore(prefs) { warnings += it }.load()
+
+        assertEquals(1, warnings.size)
+        assertTrue("negativo" in warnings.single().lowercase())
+    }
+
     // ───────────────── Persistencia del tutorial ─────────────────
 
     @Test

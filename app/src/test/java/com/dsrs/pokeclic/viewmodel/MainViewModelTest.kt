@@ -1294,6 +1294,33 @@ class MainViewModelTest {
         assertEquals(1, vm.uiState.value.zoneIndex)
         assertEquals(3L, vm.uiState.value.zoneClicks)
     }
+
+    @Test
+    fun restore_zoneIndexEqualsSize_resetsToFirstZone() {
+        val state = viewModel(
+            saved = GameSnapshot(zoneIndex = testZones.size, zoneClicks = 2L)
+        ).uiState.value
+
+        assertEquals(0, state.zoneIndex)
+        assertEquals(0L, state.zoneClicks)
+    }
+
+    @Test
+    fun restore_negativeZoneIndex_resetsToFirstZone() {
+        val state = viewModel(
+            saved = GameSnapshot(zoneIndex = -1, zoneClicks = 1L)
+        ).uiState.value
+
+        assertEquals(0, state.zoneIndex)
+        assertEquals(0L, state.zoneClicks)
+    }
+
+    @Test
+    fun restore_zoneClicksExactlyAtRequirement_isKept() {
+        val state = viewModel(saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L)).uiState.value
+
+        assertEquals(3L, state.zoneClicks)
+    }
 }
 
 /** Res que devuelve el repositorio de sprites de prueba para (direcci�n, fotograma). */
