@@ -522,6 +522,15 @@ data class GymState(
 }
 
 /**
+ * Cierra el combate como derrota si el jugador se ha quedado sin vida.
+ *
+ * Vive en el modelo porque es una regla pura: la usan tanto el motor del bucle
+ * como los manejadores de eventos del ViewModel.
+ */
+internal fun GymState.withDefeatIfPlayerDown(): GymState =
+    if (playerHp <= 0) copy(outcome = GymOutcome.LOST) else this
+
+/**
  * Reglas puras del combate de gimnasio, sin reloj ni corrutinas.
  *
  * Están separadas del ViewModel para poder probarlas en la JVM: reciben un
