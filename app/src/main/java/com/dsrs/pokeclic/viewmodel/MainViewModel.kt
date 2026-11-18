@@ -132,6 +132,17 @@ class MainViewModel(
         commit = { persist, block -> mutate(persist) { it.block() } }
     )
 
+    /** Motor de caminata y encuentros salvajes. */
+    private val walkEngine = EncounterEngine(
+        scope = viewModelScope,
+        nowMs = nowMs,
+        random = random,
+        state = { _uiState.value },
+        commit = { persist, block -> mutate(persist) { it.block() } },
+        zoneFor = { zoneAt(it) },
+        startCatching = { catchingEngine.start() }
+    )
+
     private val gymEngine = GymCombatEngine(
         scope = viewModelScope,
         nowMs = nowMs,
@@ -147,11 +158,8 @@ class MainViewModel(
     /** Job del segundo fotograma de un paso lateral; se cancela con cada clic. */
     private var lateralFrameJob: Job? = null
 
-    /** Momento del último toque en hierba alta; gobierna el temporizador de caminar. */
-    private var lastWalkTapMs: Long = 0L
-
     init {
-        startWalkingLoop()
+        walkEngine.start()
     }
 
     // --- Eventos de UI -----------------------------------------------------
@@ -201,13 +209,13 @@ class MainViewModel(
                 // Minijuego en curso: la pokéball no interviene en la partida.
                 state.encounter != null -> animated
                 state.isTallGrass -> {
-                    lastWalkTapMs = now
+                    walkEngine.noteActivity(now)
                     animated
                 }
                 // Cueva: el clic mueve el fondo y suma a la barra, pero además
                 // deja actividad para que el encuentro pueda aparecer caminando.
                 state.alwaysWilds -> {
-                    lastWalkTapMs = now
+                    walkEngine.noteActivity(now)
                     addZoneClicks(animated)
                 }
                 else -> addZoneClicks(animated)
@@ -296,7 +304,7 @@ class MainViewModel(
         catchingEngine.cancel()
         resetJob?.cancel()
         lateralFrameJob?.cancel()
-        lastWalkTapMs = 0L
+        walkEngine.resetActivity()
         gymEngine.reset()
         store.clear()
         // Sin persistir a propósito: tras `store.clear()` un guardado nuevo
@@ -322,7 +330,7 @@ class MainViewModel(
         if (index < 0) return
         gymEngine.stop()
         catchingEngine.cancel()
-        lastWalkTapMs = 0L
+        walkEngine.resetActivity()
         gymEngine.reset()
         mutate { state ->
             state.copy(
@@ -434,7 +442,7 @@ class MainViewModel(
      *
      * La pantalla de Pokédex es una **rama de composición** de su propia
      * pantalla a pantalla completa: se pausa el avance de caminar
-     * (`lastWalkTapMs = 0L`) y, al cerrarla, la Pokébola exige una pulsación
+     * (`walkEngine.resetActivity()`) y, al cerrarla, la Pokébola exige una pulsación
      * nueva para reactivar el temporizador de caminar.
      *
      * Abrirla y cerrarla alimenta el tutorial: son su paso 3. La
@@ -452,7 +460,7 @@ class MainViewModel(
             state.gym != null ||
             state.gymIntro != null
         if (blocked) return
-        lastWalkTapMs = 0L
+        walkEngine.resetActivity()
         mutate {
             it.copy(isOptionsOpen = false, isPokedexOpen = true)
                 .withTutorial(TutorialAction.POKEDEX_OPENED)
@@ -468,7 +476,7 @@ class MainViewModel(
      */
     fun onCloseDex() {
         if (!_uiState.value.tutorialAllows(TutorialInteraction.POKEDEX_CLOSE)) return
-        lastWalkTapMs = 0L
+        walkEngine.resetActivity()
         mutate {
             it.copy(isPokedexOpen = false).withTutorial(TutorialAction.POKEDEX_CLOSED)
         }
@@ -679,54 +687,6 @@ class MainViewModel(
      * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
      * encuentros: caminar ahí no genera spawns ni toca el catálogo.
      */
-    private fun spawnEncounter() {
-        val state = _uiState.value
-        val zone = zoneAt(state.zoneIndex)
-        if (zone.wildSpeciesIds.isEmpty()) return
-        val species = SpeciesCatalog.require(zone.wildSpeciesIds.random(random))
-        val config = CatchingDefaults.configFor(species.captureDifficulty)
-        mutate {
-            it.copy(
-                encounter = Encounter(
-                    speciesId = species.id,
-                    speciesName = species.name,
-                    speciesType = species.type,
-                    speciesDexNumber = species.dexNumber
-                ),
-                catching = CatchingGame.initialState(config),
-                walkProgress = 0f,
-                seenSpecies = it.seenSpecies + species.id
-            )
-        }
-        catchingEngine.start()
-    }
-
-    // --- Bucles ------------------------------------------------------------
-
-    /**
-     * Temporizador de caminar: solo avanza si el jugador ha tocado hace poco y
-     * no hay encuentro ni gimnasio en curso. Deja de tocar → no aparece nada.
-     */
-    private fun startWalkingLoop() {
-        viewModelScope.launch {
-            while (isActive) {
-                delay(WALK_TICK_MS)
-                val state = _uiState.value
-                if ((!state.isTallGrass && !state.alwaysWilds) ||
-                    state.isPokedexOpen || state.encounter != null || state.gym != null ||
-                    // Guard del tutorial: fuera del juego libre no
-                    // hay encuentros (ni experiencia ni capturas).
-                    !state.tutorialPhase.isFreePlay
-                ) continue
-                if (nowMs() - lastWalkTapMs > WALK_ACTIVITY_WINDOW_MS) continue
-
-                val next = state.walkProgress + WALK_TICK_MS / 1000f / ENCOUNTER_SECONDS
-                if (next >= 1f) spawnEncounter()
-                else mutate(persist = false) { it.copy(walkProgress = next) }
-            }
-        }
-    }
-
     // --- Animación del entrenador -----------------------------------------
 
     /**
@@ -976,22 +936,6 @@ class MainViewModel(
          * arranque (frame 1) y luego la zancada (frame 2).
          */
         const val LATERAL_SECOND_FRAME_DELAY_MS = 60L
-        const val WALK_TICK_MS = 100L
-
-        /** Si no se toca en este margen, el temporizador de caminar se para. */
-        const val WALK_ACTIVITY_WINDOW_MS = 1_000L
-
-        /** Segundos de caminar continuo necesarios para que aparezca un salvaje. */
-        const val ENCOUNTER_SECONDS = 3f
-
-        /**
-         * Tick del bucle del minijuego de captura. Apunta a 60 fps para que la
-         * barra y el sprite se muevan suave; el `dt` real corrige la deriva.
-         */
-        const val CATCHING_TICK_MS = 16L
-
-        /** Tope de `dt` por tick: un frame perdido no debe teletransportar nada. */
-        const val MAX_CATCHING_DT_SECONDS = 0.1f
 
         /** Cada especie en posesión suma este % a la potencia de clic. */
         const val PER_OWNED_SPECIES_BONUS = 0.05
