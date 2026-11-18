@@ -19,7 +19,8 @@ import kotlin.math.abs
 private val HORIZONTAL_ARTWORK = mapOf(
     "ruta3" to "background_ruta3.png",
     "mt_moon" to "background_mt_moon.png",
-    "ciudad_celeste" to "background_ciudad_celeste.png"
+    "ciudad_celeste" to "background_ciudad_celeste.png",
+    "ciudad_carmin" to "background_ciudad_carmin.png"
 )
 
 /**
@@ -164,6 +165,7 @@ class RouteBackgroundsTest {
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_celeste"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_carmin"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
     }
@@ -378,6 +380,46 @@ class RouteBackgroundsTest {
         // vertical (`startAnchor`) es un valor de ajuste manual y no se clava aquí:
         // solo lo vigila el rango sano de `everyZone_hasASaneStart`.
         val background = RouteBackgrounds.forZone("ciudad_celeste")
+        assertEquals(-2f, background.startOffset, 1e-6f)
+    }
+
+    @Test
+    fun ciudadCarmin_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_carmin,
+            RouteBackgrounds.forZone("ciudad_carmin").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadCarmin_scrollsSideways() {
+        // Cuarto fondo horizontal. Su arte mide 4608×3840, como el de Ciudad
+        // Celeste: cuatro anchos de cámara por dos altos.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ciudad_carmin").motion.axis
+        )
+    }
+
+    @Test
+    fun ciudadCarmin_rollsItsVerticalSeamOntoAMatchingRowPair() {
+        // El arte de Ciudad Carmín es continuo en horizontal pero **no** en
+        // vertical: la unión row 3839 → row 0 difiere 30,9 por canal, el 99,8 %
+        // de las uniones internas del dibujo son menores, así que en la repetición
+        // vertical se vería una línea. La pareja row 0 → row 1 sí coincide
+        // exactamente, así que `seamCutRow = 1` enrolla el tile por ahí y la unión
+        // desaparece a cualquier altura. Sin esto, la costura entra en pantalla en
+        // cuanto el encuadre o los laterales la suben al marco visible.
+        assertEquals(1, RouteBackgrounds.forZone("ciudad_carmin").seamCutRow)
+    }
+
+    @Test
+    fun ciudadCarmin_startsOnTheLeftFrameOfItsArtwork() {
+        // Con cuatro pantallas de ancho, dejar al entrenador sobre el marco
+        // izquierdo del dibujo pide dos pantallas enteras (-2). El encuadre
+        // vertical (`startAnchor`) es de ajuste manual y solo lo vigila el rango
+        // sano de `everyZone_hasASaneStart`.
+        val background = RouteBackgrounds.forZone("ciudad_carmin")
         assertEquals(-2f, background.startOffset, 1e-6f)
     }
 

@@ -25,10 +25,12 @@ import com.dsrs.pokeclic.model.Direction
  * @param imageRes drawable que se repite. Debe medir, idealmente, un ancho de
  *   pantalla: las columnas horizontales se calculan a partir de su ancho.
  * @param motion clics y direcciones de la zona ([RouteLeg]).
- * @param seamCutRow **0 para el arte normal**: los fondos son patrones continuos,
- *   así que el borde inferior del dibujo coincide con el superior y se repiten sin
- *   costura. Solo el arte antiguo, dibujado como un tramo suelto, necesita aquí la
- *   fila por la que debe cortar el bucle (ver [RouteScrollDefaults.SEAM_CUT_ROW]).
+ * @param seamCutRow **0 cuando el arte es continuo en vertical**: el borde
+ *   inferior del dibujo coincide con el superior y se repite sin costura. Si no
+ *   coincide, aquí va la fila por la que debe cortar el bucle: el renderer enrolla
+ *   el tile para que la unión caiga entre dos filas que sí encajan. Lo usan el
+ *   arte antiguo de ruta ([RouteScrollDefaults.SEAM_CUT_ROW]) y Ciudad Carmín
+ *   (`1`), cuyo borde inferior no encaja con el superior.
  * @param startAnchor fracción de la **altura de cámara** donde cae el **borde
  *   inferior del arte** al entrar en la zona (`0,5` = el centro del arte, que es
  *   la altura del entrenador). `null` arranca por el principio del arte. Al medirse
@@ -108,8 +110,10 @@ internal object RouteBackgrounds {
     val DEFAULT = ZoneBackground(
         imageRes = R.drawable.background_ruta,
         motion = RouteScrollDefaults.MOTION,
-        // Única excepción: este PNG es el arte antiguo, no continuo. Todo arte
-        // nuevo se omite (patrón continuo, sin fila de corte).
+        // Este PNG es el arte antiguo, no continuo en vertical: se enrolla por la
+        // pareja de filas que mejor encaja. El resto del arte nuevo se omite
+        // (`0`) salvo que su borde inferior no coincida con el superior, como el de
+        // Ciudad Carmín.
         seamCutRow = RouteScrollDefaults.SEAM_CUT_ROW
     )
 
@@ -365,6 +369,57 @@ internal object RouteBackgrounds {
             // envuelve el valor módulo el alto del arte, así que por encima de una
             // baldosa vuelve a empezar por arriba.
             startAnchor = 1.3666667f
+        ),
+        // Ciudad Carmín: cuarto fondo **horizontal**, con el mismo tamaño de arte
+        // que Ciudad Celeste (4608×3840: cuatro anchos de cámara por dos altos).
+        // La cámara enseña 1152 px de ancho, así que por pantalla se ve un cuarto
+        // del dibujo y una vuelta completa tarda cuatro pantallas.
+        //
+        // La cuenta del bucle es la de siempre, con el ancho de este arte:
+        //   clics rectos por ancho de arte = 4608 / 76,8 = 60
+        // Los rectos de aquí suman 60 y los laterales se compensan (14 hacia
+        // abajo, 14 hacia arriba): el personaje vuelve a la misma altura en cada
+        // vuelta.
+        // Lo comprueba `horizontalZones_closeTheirLoopAgainstTheRealArtwork`.
+        //
+        // Para reajustar la trayectoria solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja. Si
+        // cambias los clics, deja los rectos en múltiplos de 60 y los dos sentidos
+        // laterales sumando lo mismo.
+        "ciudad_carmin" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_carmin,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 8f),                                  // recto
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT),       // sube
+                    RouteLeg(clicks = 14f),                                 // recto
+                    RouteLeg(clicks = 10f, direction = Direction.RIGHT),     // baja
+                    RouteLeg(clicks = 25f),                                 // recto
+                    RouteLeg(clicks = 4f, direction = Direction.RIGHT),      // baja
+                    RouteLeg(clicks = 6f),                                  // recto
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),       // sube
+                    RouteLeg(clicks = 7f),                                  // recto
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT)        // sube
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // El arte mide cuatro pantallas de ancho, así que poner al entrenador
+            // sobre su **marco izquierdo** pide dos pantallas enteras: -2f lo deja
+            // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro).
+            startOffset = -2f,
+            // El arte es continuo en horizontal, pero **no** en vertical: la unión
+            // row 3839 → row 0 difiere 30,9 por canal y solo 8 de las 3840 uniones
+            // internas del dibujo son peores, así que se vería una línea al
+            // repetirse. La pareja row 0 → row 1 coincide exactamente, así que se
+            // enrolla por ahí: el bucle vertical queda sin costura a cualquier
+            // altura y el encuadre solo se corre una fila de arte.
+            seamCutRow = 1,
+            // Deja la calle principal del dibujo a la altura del entrenador: en el
+            // emulador de referencia se pisa la acera de los edificios y el agua
+            // queda por debajo del encuadre. Es un valor de ajuste manual: el
+            // renderer lo envuelve módulo el alto del arte (dos alturas de cámara),
+            // así que sumar o restar 2f da el mismo encuadre.
+            startAnchor = 1.6066667f
         ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(
