@@ -85,14 +85,18 @@ internal val ButtonShape = CutCornerShape(6.dp)
 /**
  * Tipografía del chasis.
  *
- * El proyecto dibuja su fuente pixelada a mano ([PixelFont]) porque un `Text` de
- * Compose no puede usar glifos pintados en `Canvas`. Mientras no haya un `.ttf`
- * en `res/font`, esto es lo más cerca que se puede estar: **monoespaciada**, con
- * la escala fijada aquí y no repartida por los diecisiete sitios que hasta ahora
- * caían en los valores por defecto de Material 3 (Roboto).
+ * **Monoespaciada a propósito, como sustituta provisional.** Se probó una fuente
+ * pixelada (`pokemon_pixel_font.ttf`) y se descartó por dos motivos medidos: no
+ * tiene glifos para `á é í ó ú ü ñ ¿ ¡`, así que cada acento caía al fallback del
+ * sistema y una misma frase salía en dos tipografías; y su espacio mide 0,125 em,
+ * la mitad de lo normal, lo que pegaba las palabras («SoyelProfesor Oak»).
  *
- * Los tamaños reproducen la escala de M3 para no mover el layout: lo que cambia
- * es la familia y el peso, no el espacio que ocupa cada línea.
+ * La monoespaciada cubre todo el español y ya elimina Roboto, que es lo que el
+ * proyecto documentaba como fuera de lugar. Para sustituirla, la fuente nueva
+ * debe cubrir Latin-1 completo y tener un espacio de 0,2 em o más; después basta
+ * con envolverla en un `FontFamily` y apuntar estos estilos a él.
+ *
+ * Los tamaños reproducen la escala de M3 para no mover el layout.
  */
 internal val RetroTypography = Typography(
     headlineSmall = TextStyle(
