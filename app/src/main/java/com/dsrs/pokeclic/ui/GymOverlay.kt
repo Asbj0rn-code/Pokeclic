@@ -2253,24 +2253,7 @@ fun backGifFor(speciesId: String?): Int? = when (speciesId) {
 }
 
 /** Color representativo del tipo, para el placeholder y el destello de ataque. */
-fun typeColor(type: PokemonType?): Color = when (type) {
-    PokemonType.NORMAL -> Color(0xFFA8A77A)
-    PokemonType.FIRE -> Color(0xFFEE8130)
-    PokemonType.WATER -> Color(0xFF6390F0)
-    PokemonType.GRASS -> Color(0xFF7AC74C)
-    PokemonType.ELECTRIC -> Color(0xFFF7D02C)
-    PokemonType.ROCK -> Color(0xFFB6A136)
-    PokemonType.FLYING -> Color(0xFFA98FF3)
-    PokemonType.POISON -> Color(0xFFA33EA1)
-    PokemonType.BUG -> Color(0xFFA8B820)
-    PokemonType.GROUND -> Color(0xFFE0C068)
-    PokemonType.FIGHTING -> Color(0xFFC03028)
-    PokemonType.PSYCHIC -> Color(0xFFF85888)
-    PokemonType.ICE -> Color(0xFF98D8D8)
-    PokemonType.GHOST -> Color(0xFF705898)
-    PokemonType.DRAGON -> Color(0xFF7038F8)
-    null -> Color(0xFF9E9E9E)
-}
+fun typeColor(type: PokemonType?): Color = RetroTypeColors.of(type)
 
 /**
  * Sustituto del sprite cuando no hay arte: un disco del color del tipo con el

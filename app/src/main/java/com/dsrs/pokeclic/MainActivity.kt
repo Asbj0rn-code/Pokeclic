@@ -20,6 +20,7 @@ import com.dsrs.pokeclic.data.SharedPreferencesGameStateStore
 import com.dsrs.pokeclic.model.DefaultSpriteRepository
 import com.dsrs.pokeclic.ui.AppRoot
 import com.dsrs.pokeclic.ui.PokeBallSplash
+import com.dsrs.pokeclic.ui.RetroTypography
 import com.dsrs.pokeclic.viewmodel.MainViewModel
 
 /**
@@ -56,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme {
+            MaterialTheme(typography = RetroTypography) {
                 val state by mainViewModel.uiState.collectAsStateWithLifecycle()
 
                 // La cortinilla se muestra solo en un arranque en frío: se recuerda
