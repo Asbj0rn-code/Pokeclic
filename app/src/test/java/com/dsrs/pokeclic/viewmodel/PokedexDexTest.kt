@@ -105,9 +105,9 @@ class PokedexDexTest {
         catalog: PokedexCatalog = dexCatalog(),
         loadFailed: Boolean = false,
         store: FakeStore = FakeStore().apply { this.saved = saved }
-    ) = MainViewModel(
-        FakeSprites(),
-        store,
+    ) = testViewModel(
+        sprites = FakeSprites(),
+        store = store,
         zones = zones,
         random = random,
         nowMs = nowMs,

@@ -351,7 +351,8 @@ fun AppRoot(
                 imageRes = routeBackground.imageRes,
                 seamCutRow = routeBackground.seamCutRow,
                 startAnchor = routeBackground.startAnchor,
-                startOffset = routeBackground.startOffset
+                startOffset = routeBackground.startOffset,
+                artScale = routeBackground.artScale
             )
         } else if (showMapOceanBackdrop) {
             // Océano del mapa: rellena también el hueco inferior del menú (la

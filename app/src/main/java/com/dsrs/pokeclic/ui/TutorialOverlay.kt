@@ -184,7 +184,7 @@ fun TutorialOverlay(
     }
 
     val dialogueBox: @Composable () -> Unit = {
-        TutorialDialogueBox(
+        DialogueBox(
             text = shown,
             complete = pageComplete,
             onClick = ::onBoxTap,
@@ -260,44 +260,6 @@ private fun TutorialQuestionButtons(
                 }
             }
             else -> Unit
-        }
-    }
-}
-
-/**
- * Caja de diálogo estilo Pokémon, idéntica a la de la introducción: rectángulo
- * blanco con borde negro grueso, esquinas redondeadas y flecha «▼» al
- * completarse el texto de la página.
- */
-@Composable
-private fun TutorialDialogueBox(
-    text: String,
-    complete: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .padding(12.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(3.dp, Color.Black, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-    ) {
-        Text(
-            text = text,
-            color = Color.Black,
-            textAlign = TextAlign.Start,
-            style = MaterialTheme.typography.titleMedium
-        )
-        if (complete) {
-            Text(
-                text = "▼",
-                color = Color.Black,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
         }
     }
 }
