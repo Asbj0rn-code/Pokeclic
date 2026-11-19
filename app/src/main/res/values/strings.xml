@@ -5,7 +5,6 @@
     <!-- Pantalla principal -->
     <string name="poke_ball_desc">Poké Ball</string>
     <string name="trainer_desc">Trainer</string>
-    <string name="tall_grass_desc">Hierba alta</string>
 
     <!-- Bottom menu -->
     <string name="nav_map">Mapa</string>

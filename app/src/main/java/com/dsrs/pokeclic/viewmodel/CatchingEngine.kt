@@ -48,7 +48,7 @@ internal class CatchingEngine(
     /**
      * Cierra el panel de resultado y aplica sus consecuencias: **capturado** suma
      * la especie (y las monedas, solo la primera vez); **escapado** no cambia
-     * nada. En ambos casos se vuelve a la hierba, lista para el siguiente
+     * nada. En ambos casos se vuelve al juego, lista para el siguiente
      * encuentro.
      */
     fun onResultContinue() {

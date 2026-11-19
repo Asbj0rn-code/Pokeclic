@@ -125,7 +125,6 @@ private const val MENU_FADE_MS = 220
  * @param onPokeBallTouch evento de pulsación sobre la Pokébola: recibe la
  *   dirección en la que debe animarse el entrenador, que la marca el eje por el
  *   que se mueve el fondo.
- * @param onTallGrassToggle entra o sale del modo hierba alta.
  * @param onReset reinicia la run conservando la meta.
  * @param onWipeGame borra toda la partida (provisional, para testear la intro).
  * @param onDebugJumpToZone salta a una zona concreta (provisional, para testear
@@ -156,7 +155,6 @@ fun AppRoot(
     state: GameUiState,
     isSplashShowing: Boolean = false,
     onPokeBallTouch: (direction: Direction) -> Unit,
-    onTallGrassToggle: () -> Unit,
     onReset: () -> Unit,
     onWipeGame: () -> Unit,
     onDebugJumpToZone: (String) -> Unit,
@@ -360,14 +358,13 @@ fun AppRoot(
             MapOceanBackdrop(modifier = Modifier.fillMaxSize())
         }
 
-        // Mundo: entrenador y hierba, en el mismo `Box` y con la misma proyección
+        // Mundo: el entrenador, en el mismo `Box` y con la misma proyección
         // que el fondo (`world`), así que no pueden desincronizarse. Va aquí y no
         // dentro del `Scaffold` porque el `Scaffold` desplaza y recorta su contenido
         // según la altura del menú; el mundo se mide contra la pantalla.
         if (!sceneActive && !state.needsStarter && state.contentTab == AppTab.Home) {
             WorldTrainer(
                 trainerFrameRes = state.trainerFrameRes,
-                showTallGrass = state.isTallGrass,
                 world = world
             )
         }
@@ -419,16 +416,10 @@ fun AppRoot(
                             // avance, la bola no mueve el fondo (el ViewModel
                             // además ignora el toque).
                             if (tutorialPokeBallClickEnabled(state.tutorialPhase)) {
-                                // Modo captura (hierba alta o encuentro en
-                                // curso): el mundo se congela; el clic no mueve
-                                // el fondo ni cuenta para el avance de la zona.
-                                if (
-                                    advancesRouteWorld(
-                                        state.isTallGrass,
-                                        state.encounter != null,
-                                        state.alwaysWilds
-                                    )
-                                ) {
+                                // Encuentro en curso: el mundo se congela; el
+                                // clic no mueve el fondo ni cuenta para el avance
+                                // de la zona.
+                                if (state.encounter == null) {
                                     pokePulses.longValue++
                                 }
                                 // El sprite sigue el eje por el que se acaba de
@@ -487,14 +478,13 @@ fun AppRoot(
                     )
             ) {
                 // En gimnasio (combate o capa de entrada) o captura no se dibuja
-                // la pantalla de fondo (entrenador, hierba, HUD...); queda solo
+                // la pantalla de fondo (entrenador, HUD...); queda solo
                 // la escena encima. La intro es opaca, así que debajo tampoco
                 // se compone nada.
                 if (!sceneActive && !state.needsStarter) {
                     when (state.contentTab) {
                         AppTab.Home -> MainScreen(
                             state = state,
-                            onTallGrassToggle = onTallGrassToggle,
                             onEnterGym = onEnterGym,
                             onAdvanceZone = onAdvanceZone
                         )
@@ -683,20 +673,8 @@ internal fun tutorialPokeBallClickEnabled(phase: TutorialPhase): Boolean =
     phase.isFreePlay
 
 /**
- * ¿Debe este clic de la Pokébola mover el fondo de ruta?
- *
- * En modo captura — hierba alta abierta o encuentro en curso — el mundo se
- * congela: el clic no desplaza el fondo ni cuenta para el avance de la zona
- * (eso ya lo evita `MainViewModel.onPokeBallTouch`, que no suma `zoneClicks`
- * en esos dos estados). Fuera de él, cada pulsación avanza el recorrido.
+ * Radio del desenfoque del fondo de ruta mientras dura la captura.
  */
-internal fun advancesRouteWorld(
-    isTallGrass: Boolean,
-    encounterActive: Boolean,
-    alwaysWilds: Boolean = false
-): Boolean = (!isTallGrass || alwaysWilds) && !encounterActive
-
-/** Radio del desenfoque del fondo de ruta mientras dura la captura. */
 private val RouteCaptureBlurRadius = 8.dp
 
 /** Velo sobre la ruta difuminada: la oscurece para que la UI gane foco. */
@@ -740,7 +718,6 @@ private const val PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
  * vacía y sin monedas el HUD sale corto y el preview engaña.
  */
 private fun previewGameState(
-    isTallGrass: Boolean = false,
     gym: GymState? = null,
     gymIntro: GymIntroPhase? = null,
     needsStarter: Boolean = false,
@@ -760,7 +737,6 @@ private fun previewGameState(
     leadSpeciesId = if (needsStarter) null else "bulbasaur",
     zoneIndex = 1,
     zoneClicks = 4L,
-    isTallGrass = isTallGrass,
     gym = gym,
     gymIntro = gymIntro,
     encounter = encounter,
@@ -830,7 +806,6 @@ private fun AppRootStage(state: GameUiState) {
     AppRoot(
         state = state,
         onPokeBallTouch = { _ -> },
-        onTallGrassToggle = {},
         onReset = {},
         onWipeGame = {},
         onDebugJumpToZone = {},
@@ -875,18 +850,6 @@ private fun AppRootStage(state: GameUiState) {
 @Composable
 private fun AppRootGamePreview() = MaterialTheme {
     AppRootStage(state = previewGameState())
-}
-
-/** Modo hierba alta. */
-@Preview(
-    name = "2 · Hierba alta",
-    device = PREVIEW_DEVICE,
-    showSystemUi = true,
-    showBackground = true
-)
-@Composable
-private fun AppRootTallGrassPreview() = MaterialTheme {
-    AppRootStage(state = previewGameState(isTallGrass = true))
 }
 
 /** Combate de gimnasio: fondo a pantalla completa y HUD del combate. */

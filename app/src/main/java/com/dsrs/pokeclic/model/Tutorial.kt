@@ -281,8 +281,9 @@ fun TutorialPhase.isMessageVisible(messageClosed: Boolean): Boolean = when (this
 
 /**
  * ¿Es **juego libre total**? Sin mensaje visible y sin paso guiado en curso:
- * Pokéball, hierba, gimnasio, opciones y avance funcionan con su comportamiento
- * normal. Válido para `PENDING` (la intro opaca ya aísla), esperas y finales.
+ * Pokéball, encuentros, gimnasio, opciones y avance funcionan con su
+ * comportamiento normal. Válido para `PENDING` (la intro opaca ya aísla), esperas
+ * y finales.
  */
 val TutorialPhase.isFreePlay: Boolean
     get() = this == TutorialPhase.PENDING ||

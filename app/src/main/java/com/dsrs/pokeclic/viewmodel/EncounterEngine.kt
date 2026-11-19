@@ -25,9 +25,9 @@ private const val ENCOUNTER_SECONDS = 3f
  * Motor de caminata y encuentros salvajes.
  *
  * Extraído de [MainViewModel]: el bucle solo avanza si el jugador ha tocado hace
- * poco y no hay encuentro ni gimnasio en curso. Las reglas de la captura viven en
- * [CatchingGame]; este motor decide **cuándo** aparece un salvaje y delega el
- * arranque del minijuego en [startCatching].
+ * poco, la zona tiene fauna y no hay encuentro ni gimnasio en curso. Las reglas de
+ * la captura viven en [CatchingGame]; este motor decide **cuándo** aparece un
+ * salvaje y delega el arranque del minijuego en [startCatching].
  *
  * @param zoneFor resuelve la zona actual sin que el motor conozca el catálogo.
  * @param startCatching arranca el minijuego de captura al abrir un encuentro.
@@ -60,7 +60,7 @@ internal class EncounterEngine(
             while (isActive) {
                 delay(WALK_TICK_MS)
                 val current = state()
-                if ((!current.isTallGrass && !current.alwaysWilds) ||
+                if ((!current.hasWilds) ||
                     current.isPokedexOpen || current.encounter != null || current.gym != null ||
                     // Guard del tutorial: fuera del juego libre no
                     // hay encuentros (ni experiencia ni capturas).
@@ -81,7 +81,7 @@ internal class EncounterEngine(
     /**
      * Abre un encuentro salvaje de la zona actual.
      *
-     * Zonas sin hierba alta (`wildSpeciesIds` vacía, las ciudades) nunca abren
+     * Zonas sin fauna (`wildSpeciesIds` vacía, las ciudades) nunca abren
      * encuentros: caminar ahí no genera spawns ni toca el catálogo.
      */
     private fun spawnEncounter() {
