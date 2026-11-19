@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -441,6 +442,17 @@ fun PokemonBottomMenu(
                 onTap = { position ->
                     if (isExpanded.value) currentGameClick(position) else currentHomeClick()
                 },
+                // Un lector de pantalla no puede arrastrar para expandir la bola.
+                // Cuando la acción nominal (volver a Home) sería un no-op —bola
+                // abierta, o ya en Home— el toque accesible juega; en el mapa
+                // sigue navegando, igual que un toque normal.
+                onAccessibilityClick = {
+                    if (isExpanded.value || !isMapSelected) {
+                        currentGameClick(Offset.Zero)
+                    } else {
+                        currentHomeClick()
+                    }
+                },
                 onDragFinished = { target -> settleTo(target) }
             )
         }
@@ -615,6 +627,8 @@ private fun MenuPokeBall(
     expansionEnabled: Boolean,
     enabled: Boolean,
     onTap: (Offset) -> Unit,
+    /** Toque invocado por un servicio de accesibilidad, no por un dedo. */
+    onAccessibilityClick: () -> Unit,
     onDragFinished: (Boolean) -> Unit
 ) {
     val description = stringResource(R.string.poke_ball_desc)
@@ -735,6 +749,15 @@ private fun MenuPokeBall(
             .semantics {
                 contentDescription = description
                 role = Role.Button
+                // Sin esto el nodo se anuncia como botón pero no expone acción:
+                // TalkBack lo enfoca y el doble toque no hace nada. Con la bola
+                // inerte (tutorial) no se ofrece acción, para no mentir.
+                if (enabled) {
+                    onClick(label = description) {
+                        onAccessibilityClick()
+                        true
+                    }
+                }
             },
         contentAlignment = Alignment.Center
     ) {

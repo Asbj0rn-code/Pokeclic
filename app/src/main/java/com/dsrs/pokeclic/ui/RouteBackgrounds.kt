@@ -51,7 +51,16 @@ internal data class ZoneBackground(
     val motion: RouteBackgroundMotion = RouteScrollDefaults.MOTION,
     val seamCutRow: Int = 0,
     val startAnchor: Float? = null,
-    val startOffset: Float = 0f
+    val startOffset: Float = 0f,
+    /**
+     * Cuánto está ampliado el PNG respecto al arte autorado (1 = tamaño nativo).
+     *
+     * Los ocho fondos verificados son identidad exacta al reducirlos 4× con
+     * nearest-neighbor, así que se decodifican a 1/4 y se dibujan escalados por
+     * este factor: mismo arte, 16 veces menos memoria. El arte antiguo de ruta
+     * (`DEFAULT`) **no** está ampliado y debe quedarse en 1.
+     */
+    val artScale: Int = 1
 )
 
 /**
@@ -129,6 +138,7 @@ internal object RouteBackgrounds {
         // (9 a cada lado), así que el personaje vuelve a la línea central.
         "pueblo_paleta" to ZoneBackground(
             imageRes = R.drawable.background_pallet_town,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 3f),
@@ -156,6 +166,7 @@ internal object RouteBackgrounds {
         // aleja hasta 0,20 alturas de baldosa del centro.
         "bosque_verde" to ZoneBackground(
             imageRes = R.drawable.background_bosque_verde,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 2f),
@@ -184,6 +195,7 @@ internal object RouteBackgrounds {
         // tramo bajo de la ciudad y camina hacia arriba por él.
         "ciudad_verde" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_verde,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 4f),
@@ -220,6 +232,7 @@ internal object RouteBackgrounds {
         // arrancaría en el cuarto izquierdo y con `0f` en el centro.
         "ruta3" to ZoneBackground(
             imageRes = R.drawable.background_ruta3,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 2f),
@@ -263,6 +276,7 @@ internal object RouteBackgrounds {
         // ciudad lo decide el corrimiento lateral que van dejando los tramos.
         "ciudad_plateada" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_plateada,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 8f),
@@ -294,6 +308,7 @@ internal object RouteBackgrounds {
         // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja.
         "mt_moon" to ZoneBackground(
             imageRes = R.drawable.background_mt_moon,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 3f),                              // recto
@@ -346,6 +361,7 @@ internal object RouteBackgrounds {
         // laterales sumando lo mismo.
         "ciudad_celeste" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_celeste,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 14f),                             // recto
@@ -388,6 +404,7 @@ internal object RouteBackgrounds {
         // laterales sumando lo mismo.
         "ciudad_carmin" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_carmin,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 8f),                                  // recto

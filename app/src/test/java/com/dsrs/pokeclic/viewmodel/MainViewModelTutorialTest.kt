@@ -62,11 +62,12 @@ class MainViewModelTutorialTest {
         saved: GameSnapshot? = null,
         store: GameStateStore = storeWith(saved),
         zones: List<Zone> = testZones
-    ) = MainViewModel(
+    ) = testViewModel(
         sprites = FakeSprites(),
         store = store,
         zones = zones,
-        random = Random(42)
+        random = Random(42),
+        nowMs = { System.nanoTime() / 1_000_000L }
     )
 
     /** Toques sobre la Pokéball como clics de zona. */
