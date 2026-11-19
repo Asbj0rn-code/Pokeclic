@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.dsrs.pokeclic.R
+import com.dsrs.pokeclic.viewmodel.MapUiState
 import androidx.compose.material3.MaterialTheme
 
 /**
@@ -83,15 +84,25 @@ private const val MAP_BOTTOM_MODULE_ASPECT = 910f / 114f
  * tamaño, misma posición y funcionalidad completa) y le superpone el marco
  * como capa visual entre el mapa y sus controles flotantes; bajo el hueco del
  * menú dibuja la base amarilla, sobre la que el `Scaffold` compone el menú
- * real. Sin estado: solo compone, no decide nada.
+ * real. Recibe el estado del mapa ya resuelto por el ViewModel: solo compone,
+ * no decide nada.
  */
 @Composable
-fun MapCarcasaScreen(bottomReserved: Dp, modifier: Modifier = Modifier) {
+fun MapCarcasaScreen(
+    bottomReserved: Dp,
+    mapState: MapUiState = MapUiState(),
+    onMapOpened: () -> Unit = {},
+    onMapTap: (u: Float, v: Float) -> Unit = { _, _ -> },
+    modifier: Modifier = Modifier
+) {
     Box(modifier = modifier.fillMaxSize()) {
         // El mapa sigue mandando: se compone primero y ocupa todo el área
         // disponible. La carcasa entra por el slot `frameOverlay`, entre el
         // mapa y sus controles flotantes.
         MapScreen(
+            mapState = mapState,
+            onMapOpened = onMapOpened,
+            onMapTap = onMapTap,
             bottomReserved = bottomReserved,
             frameOverlay = { MapCarcasaFrame() }
         )

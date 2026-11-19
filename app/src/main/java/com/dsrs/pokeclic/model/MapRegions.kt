@@ -219,7 +219,7 @@ data class MapRegionSelection(private val regions: List<MapRegion>) {
  * [KantoRegionMap.regionAt]), ordenadas por categoría CITY > ROUTE >
  * SPECIAL y, dentro de cada categoría, por el orden estable del JSON, de
  * modo que el resultado depende solo del fichero. Sin zonas devuelve `null`
- * (la UI limpia el indicador); nunca devuelve una selección vacía.
+ * (quien la consuma limpia el indicador); nunca devuelve una selección vacía.
  */
 fun KantoRegionMap.selectAt(
     u: Float,

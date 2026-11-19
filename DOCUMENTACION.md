@@ -1,55 +1,83 @@
 # Documentación — Pokeclic
 
-> Documentación técnica del proyecto. Refleja el estado actual del código y el
-> plan de migración pendiente. La app se llama **Pokeclic** (el paquete y el
-> `applicationId` siguen siendo `com.example.myapplication` para no romper
-> instalaciones). Todo el estado vive en un único `StateFlow` y la UI es plana en
-> `ui/`. El catálogo de contenido sigue en código: la migración a datos
-> versionados se detalla en §21.
+> Referencia técnica del proyecto. Refleja el estado del código en la rama de
+> trabajo actual (noviembre de 2026). La app y el paquete son
+> **`com.dsrs.pokeclic`**; el nombre visible sigue siendo **Pokeclic**.
+>
+> La arquitectura es **MVVM**: un `MainViewModel` con la lógica de juego y
+> navegación, un `MapViewModel` para la pantalla del mapa, estado inmutable en
+> `StateFlow` y persistencia versionada. El contenido de juego sigue en código
+> (`Catalogs.kt`); la Pokédex y el mapa de Kanto ya se sirven desde assets JSON.
 
 ---
 
 ## 1. Visión general
 
-### Qué hace la app
+### Qué es
 
-Una app Android (nombre visible **Pokeclic**) cuya pantalla principal muestra un
-Trainer, un HUD de zona y una Pokéball. La **Pokéball del bottom menu** es a la vez
-el acceso a esa pantalla y el elemento interactivo: arrastrándola hacia arriba
-crece y se convierte en la Pokéball de juego. Cada toque en ella:
+Un juego **clicker** para Android basado en la primera generación de Pokémon.
+Se avanza por Kanto pulsando la Pokébola, aparecen Pokémon salvajes mientras se
+camina, se capturan en un minijuego de barra y se desafía a los líderes de
+gimnasio. El objetivo es conseguir las 8 medallas y completar las 151 entradas
+de la Pokédex.
 
-1. Suma potencia de clic al progreso de la zona.
-2. Traduce la posición del toque a una dirección (abajo, derecha, izquierda, arriba).
-3. Reproduce la animación del Trainer correspondiente a esa dirección.
+### Bucle de juego
 
-Si repites la misma dirección, la animación avanza de frame. Si dejas de tocar
-1 segundo, vuelve al frame inicial.
+1. Cada toque en la Pokébola suma `clickPower` al progreso de la zona. El
+   progreso **se capa en el umbral**: llegar al 100 % no avanza solo.
+2. El mismo toque marca actividad de caminata. En zonas con fauna, 3 segundos de
+   toques continuados llenan la barra de encuentro y abren un salvaje.
+3. El encuentro se resuelve en el **minijuego de captura** (riel vertical, barra
+   con gravedad y medidor de progreso). Al capturar: la especie pasa a la run, a
+   la Pokédex y paga monedas **solo la primera vez**.
+4. Con la barra llena aparece el botón **Avanzar**. En zonas con gimnasio el
+   avance exige haber ganado ese gimnasio **en la run actual**.
+5. Los gimnasios son combates clicker con fases excluyentes (ataque / expuesto),
+   furia obligatoria y recompensa en monedas y medalla.
+6. El **reset** conserva la meta permanente (monedas, avistamientos, capturas
+   históricas, medallas, starter y vínculo) y vacía la run. El **borrado total**
+   elimina todo y vuelve a la introducción.
 
-La lógica de juego vive en `MainViewModel`, que expone un único `StateFlow` con el
-estado de juego **y** el de navegación.
+### Pantallas y capas
+
+| Pantalla / capa | Contenido |
+|---|---|
+| **Home** | HUD compacto, entrenador y fondo de ruta animado |
+| **Mapa** | Mapa de Kanto con carcasa, zoom y zonas tocables |
+| **Pokédex** | 151 filas con estado y contadores, dentro de su carcasa |
+| **Gimnasio** | Entrada (cortinilla, discurso y tutorial) + combate |
+| **Captura** | Minijuego a pantalla completa sobre la ruta congelada |
+| **Intro** | Diálogo del Profesor Oak: nombre y starter |
+| **Tutorial** | Diálogos guiados de partida nueva |
+| **Opciones / Principal / Splash** | Hoja modal, selector de principal y cortinilla |
 
 ### Stack técnico
 
 | Elemento | Valor |
 |---|---|
-| Lenguaje | Kotlin (soporte integrado en AGP 9, sin plugin `kotlin.android` propio) |
-| Android Gradle Plugin | 9.4.1 |
+| Lenguaje | Kotlin (soporte integrado en AGP 9, sin plugin `kotlin.android`) |
+| Android Gradle Plugin | 9.1.1 |
 | `compileSdk` / `targetSdk` | 37 |
 | `minSdk` | **29** (Android 10) |
-| Arquitectura | **MVVM** (Model / View / ViewModel) |
+| Arquitectura | **MVVM** (View / ViewModel / Model / Data) |
 | UI | **Jetpack Compose** + Material 3 |
-| Compose BOM | 2024.10.01 (`ui` resuelve a 1.9.0) |
-| Compose Compiler | plugin `org.jetbrains.kotlin.plugin.compose` 2.0.0 |
-| Pantallas | **Composables puros** |
+| Compose BOM | 2024.10.01 |
+| Compose Compiler | plugin `org.jetbrains.kotlin.plugin.compose` 2.2.10 |
+| Estado | `StateFlow` inmutable (`@Immutable`), consumido con `collectAsStateWithLifecycle()` |
 | Contenedor | 1 sola `Activity` (`MainActivity`) + `Scaffold` de Compose |
-| Navegación | `MainViewModel` (estado único: `AppTab`, opciones y selector de principal) |
-| Estado | `StateFlow` (sin `LiveData`), consumido con `collectAsStateWithLifecycle()` |
-| Progreso y monedas | `zoneClicks`/`coins` como `Long` |
-| Posicionamiento | Componente propio `PercentageLayout` (guías + sesgo porcentual) |
-| Bottom menu | Componente propio `PokemonBottomMenu` (barra con hendidura + Pokéball) |
-| Tema | `Theme.Pokeclic`, pantalla completa (edge-to-edge) |
-| Persistencia | `GameStateStore` (interfaz) + `SharedPreferencesGameStateStore` |
-| Recursos gráficos | 16 frames del trainer, Pokéballs, rocas, gimnasio, Oak, GIFs de starters y sprites de combate |
+| Navegación | estado (`AppTab` + flags) en `GameUiState` |
+| Persistencia | `SharedPreferences` con `schema_version` |
+| Contenido | `Catalogs.kt` (código) + assets JSON de Pokédex y mapa |
+| Progreso y monedas | `zoneClicks` / `coins` como `Long` |
+
+### Contenido actual
+
+- **151 especies** en `SpeciesCatalog` y en `assets/pokedex_catalogo.json`.
+- **13 zonas** jugables en `ZoneCatalog`.
+- **3 gimnasios**: Brock (rocas), Misty (anillos) y Lt. Surge (Voltorb).
+- **47 ubicaciones** de Kanto en el catálogo del mapa.
+- **8 fondos de ruta** con arte propio; el resto usa el arte antiguo de ruta.
+- **151 sprites** de Pokédex en `drawable-nodpi/pokedex_0xxx.png`.
 
 ---
 
@@ -58,57 +86,81 @@ estado de juego **y** el de navegación.
 ### Capas y responsabilidades
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  VIEW  (ui/, plano)                                 │
-│  Composables SIN estado. Reciben un estado         │
-│  inmutable y devuelven eventos por lambdas.         │
-│  Cero lógica de negocio y cero ViewModel.           │
-├─────────────────────────────────────────────────────┤
-│  VIEWMODEL  (viewmodel/)                            │
-│  MainViewModel: juego + navegación + combate.       │
-│  Expone un único StateFlow<GameUiState>.            │
-├─────────────────────────────────────────────────────┤
-│  MODEL  (model/)                                    │
-│  GameData (entidades), Combat (reglas),             │
-│  Catalogs (contenido + sprites). Sin Android.       │
-├─────────────────────────────────────────────────────┤
-│  DATA  (data/)                                      │
-│  GameStateStore: contrato + implementación con      │
-│  SharedPreferences. Es el borde Android.            │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  VIEW  (ui/)                                                 │
+│  Composables SIN estado. Reciben estado inmutable y          │
+│  devuelven eventos por lambdas. Sin lógica de negocio.       │
+├──────────────────────────────────────────────────────────────┤
+│  VIEWMODEL  (viewmodel/)                                     │
+│  MainViewModel: juego + navegación + captura + gimnasio.     │
+│  MapViewModel: carga del mapa y hit-testing de zonas.        │
+│  Motores: EncounterEngine, CatchingEngine, GymCombatEngine,  │
+│  TrainerAnimator, GameProjection.                            │
+├──────────────────────────────────────────────────────────────┤
+│  MODEL  (model/)                                             │
+│  Entidades, reglas puras, catálogos y Pokédex.               │
+│  Solo `Catalogs.kt` conoce `R.drawable` (sprites).           │
+├──────────────────────────────────────────────────────────────┤
+│  DATA  (data/)                                               │
+│  GameStateStore (SharedPreferences), PokedexCatalogLoader,   │
+│  KantoMapData (assets). Es el borde Android.                 │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+### Los dos ViewModels
+
+- **`MainViewModel`** es el único dueño del estado de juego y de navegación.
+  Expone un único `StateFlow<GameUiState>` y todos los eventos de UI. La
+  `MainActivity` cablea ese flujo y esos métodos a las lambdas de `AppRoot`.
+- **`MapViewModel`** es el único que toca la capa de datos del mapa: carga el
+  mapeo de Kanto **una vez** en `onScreenShown()` y resuelve el hit-testing en
+  `onTap(u, v)`. Expone `StateFlow<MapUiState>` con los nombres ya resueltos. La
+  pantalla solo convierte el toque a coordenadas normalizadas y reenvía.
+
+### Motores del `MainViewModel`
+
+El ViewModel conserva la superficie de eventos y la persistencia; los bucles y
+reglas con sustancia viven en colaboradores internos:
+
+| Colaborador | Responsabilidad |
+|---|---|
+| `GameProjection` | Recalcula los campos derivados (zona, potencia, gimnasio, Pokédex, tutorial) en cada cambio |
+| `EncounterEngine` | Temporizador de caminata y aparición de salvajes |
+| `CatchingEngine` | Bucle del minijuego de captura y cierre del encuentro |
+| `GymCombatEngine` | Entrada al gimnasio, bucle del combate, ataques, furia, victoria y derrota |
+| `TrainerAnimator` | Fotograma del entrenador, segundo fotograma lateral y vuelta al reposo |
+
+Todos escriben a través de `mutate(persist)`, así que hay **un solo escritor**:
+deriva el estado y decide si se persiste.
 
 ### Reglas de dependencia
 
-- **View → ViewModel**: la `MainActivity` cablea el `StateFlow` y los métodos del
-  ViewModel a las lambdas de los composables. Los composables solo renderizan
-  estado y emiten eventos (`onPokeBallTouch`, `onReset`, ...); no ven el
-  ViewModel.
-- **ViewModel → Model/Data**: usa los tipos y funciones puras de `model/` y el
-  contrato `GameStateStore` de `data/`. Nunca importa `R`, así que la lógica es
-  testeable en la JVM sin instrumentación.
-- **Model → nada**: no depende de Android ni de Compose. `Catalogs.kt` sí conoce
-  `R.drawable` en su implementación de sprites, pero la interfaz que ve el
-  ViewModel (`SpriteRepository`) no.
-- **La UI nunca calcula nada**: el ViewModel entrega `trainerFrameRes`, las
-  opciones `leadOptions`/`starterOptions`, los nombres y las fracciones de barra
-  ya resueltos.
+- **View → ViewModel**: `MainActivity` conecta estado y acciones. Los
+  composables no ven ningún ViewModel.
+- **ViewModel → Model/Data**: usa tipos y reglas puras de `model/` y los
+  contratos de `data/`. `MainViewModel` no importa `R`, así que es testeable en
+  la JVM sin instrumentación.
+- **Model → nada**: no depende de Android ni de Compose, salvo
+  `DefaultSpriteRepository` en `Catalogs.kt`, que traduce `Direction` a
+  `R.drawable`. La interfaz `SpriteRepository` no conoce Android.
+- **La UI no calcula nada**: el ViewModel entrega `trainerFrameRes`, opciones,
+  nombres, progreso, filas de la Pokédex y estado del mapa ya resueltos.
 
 ### Decisiones de diseño y motivo
 
 | Decisión | Motivo |
 |---|---|
-| **Composables sin estado (`state` + lambdas)** | `MainScreen(state = ..., onEnterGym = ...)` no conoce el ViewModel. Se puede previsualizar y testear con estado de mentira, y no se acopla UI con negocio. |
-| **`MainViewModel` con scope de Activity** | La Pokéball del bottom menu vive en `AppRoot` y comparte estado con `MainScreen`; ambos leen el mismo `StateFlow`. |
-| **Un único ViewModel y un único `StateFlow`** | Juego, navegación y overlays comparten fuente de verdad. Elimina la sincronización entre ViewModels y los estados imposibles (dos pantallas abiertas a la vez). |
-| **`StateFlow` en vez de `LiveData`** | Es lo idiomático con Compose; se consume con `collectAsStateWithLifecycle()`. |
-| **`GameUiState` en su propio archivo (`viewmodel/GameUiState.kt`)** | La View importa solo el tipo de estado para los `@Preview`, nunca el ViewModel. |
-| **Actualizaciones con `MutableStateFlow.update {}`** | Lecturas/escrituras atómicas: evita condiciones de carrera entre los bucles de juego y los toques. |
-| **`zoneClicks` y `coins`: `Long`** | En un clicker los contadores crecen sin techo; `Int` desbordaría a los ~2.100 millones. |
-| **Modelo consolidado en 3 archivos** | `GameData`/`Combat`/`Catalogs` agrupan tipos pequeños y estables; menos archivos de una sola clase, misma separación de responsabilidades. |
-| **`SpriteRepository` inyectado por constructor** | El ViewModel no depende de recursos de Android; la dependencia se declara en el borde (Activity). |
-| **`viewModelScope` para reset, combate y pesca** | Sustituye a `Handler`/`Looper`. Los Jobs se cancelan solos al destruir el ViewModel (sin `onCleared`). |
-| **Compose puro** | Las pantallas son composables; no hay layouts XML ni ViewModels por pantalla. |
+| **Composables sin estado (`state` + lambdas)** | Se previsualizan y testean con estado de mentira, y no se acoplan al negocio. |
+| **Dos ViewModels (juego y mapa)** | El mapa tiene su propio ciclo (carga de assets, hit-testing) y no contamina el estado de juego. |
+| **Motores extraídos del ViewModel** | Cada bucle (caminar, capturar, combatir) tiene una responsabilidad y se prueba por separado. |
+| **`GameUiState` `@Immutable`** | Promesa real: los campos se reemplazan con `copy`, nunca se mutan. Compose puede saltarse recomposiciones. |
+| **`StateFlow` en vez de `LiveData`** | Idiomático con Compose; se consume con `collectAsStateWithLifecycle()`. |
+| **Actualizaciones con `updateAndGet`** | Lecturas/escrituras atómicas entre los bucles y los toques. |
+| **`zoneClicks` y `coins`: `Long`** | En un clicker los contadores crecen sin techo. |
+| **Avance de zona manual** | El jugador decide cuándo dejar la zona; el progreso se capa en el umbral. |
+| **Contenido en código, Pokédex y mapa en assets** | El contenido jugable cambia con el código y los tests; la presentación (151 filas, 47 zonas) es dato versionado. |
+| **`viewModelScope` para todos los bucles** | Los Jobs mueren con el ViewModel; no hace falta `onCleared()`. |
+| **Un solo sentido de persistencia** | Todo pasa por `mutate`; el estado transitorio se escribe con `persist = false`. |
 
 ---
 
@@ -121,634 +173,400 @@ Pokeclic/
 │   └── src/
 │       ├── main/
 │       │   ├── AndroidManifest.xml
+│       │   ├── assets/
+│       │   │   ├── kanto_locations.json     # 47 ubicaciones (id, nombre, tipo)
+│       │   │   ├── kanto_regions.json       # geometrías de las zonas del mapa
+│       │   │   └── pokedex_catalogo.json    # 151 especies para la Pokédex
 │       │   ├── java/com/dsrs/pokeclic/
-│       │   │   ├── MainActivity.kt              # Host único: setContent, splash y cableado del único MainViewModel
+│       │   │   ├── MainActivity.kt          # Host: setContent, splash y factorías
 │       │   │   ├── data/
-│       │   │   │   └── GameStateStore.kt        # Interfaz de persistencia + SharedPreferencesGameStateStore
-│       │   │   ├── model/                       # ── MODEL (sin Android) ──
-│       │   │   │   ├── GameData.kt              # AppTab, Direction, TrainerState, Species, Zone, Encounter, opciones, snapshot
-│       │   │   │   ├── Combat.kt                # Tipos, Gym, fases, proyectiles, GymState y reglas puras
-│       │   │   │   └── Catalogs.kt              # SpeciesCatalog, ZoneCatalog, GymCatalog y SpriteRepository
-│       │   │   ├── viewmodel/                   # ── VIEWMODEL ──
-│       │   │   │   ├── GameUiState.kt           # Estado único (juego + navegación + combate)
-│       │   │   │   └── MainViewModel.kt         # Toda la lógica: clics, zonas, captura, gimnasio, reset y pesca
-│       │   │   └── ui/                          # ── VIEW (plano, 9 archivos) ──
-│       │   │       ├── AppRoot.kt               # Shell: Scaffold, pestañas, overlays y previews
-│       │   │       ├── RouteBackground.kt       # Fondo de ruta en bucle (vertical u horizontal) movido por la Pokéball
-│       │   │       ├── MainScreen.kt            # Pantalla principal + GameHud
-│       │   │       ├── PokemonBottomMenu.kt     # Barra, Pokéball, hendidura y controles
-│       │   │       ├── GymOverlay.kt            # Escena del gimnasio, HUD y sprites del combate
-│       │   │       ├── Overlays.kt              # Captura, selector de principal, opciones y mapa
-│       │   │       ├── Intro.kt                 # Introducción del Profesor Oak + GIF animado
-│       │   │       ├── Layout.kt                # PercentageLayout (guías + sesgo porcentual)
-│       │   │       └── PokeBallSplash.kt        # Cortinilla de arranque
+│       │   │   │   ├── GameStateStore.kt    # Contrato + SharedPreferences (schema v2)
+│       │   │   │   ├── KantoMapData.kt      # Carga y validación del mapeo de Kanto
+│       │   │   │   └── PokedexCatalogLoader.kt # Carga única del catálogo de la dex
+│       │   │   ├── dbg/
+│       │   │   │   └── MapEditorContract.kt # Puente con el editor de mapa (solo debug)
+│       │   │   ├── model/                   # ── MODEL ──
+│       │   │   │   ├── GameData.kt          # AppTab, Direction, Species, Zone, Encounter, snapshot
+│       │   │   │   ├── Combat.kt            # Tipos, Gym, fases, proyectiles, anillos, Voltorb
+│       │   │   │   ├── CatchingGame.kt      # Reglas puras del minijuego de captura
+│       │   │   │   ├── Catalogs.kt          # SpeciesCatalog, ZoneCatalog, GymCatalog, sprites
+│       │   │   │   ├── Pokedex.kt           # Catálogo, estados y filas de la Pokédex
+│       │   │   │   ├── PokedexProjector.kt  # Proyección memoizada de las 151 filas
+│       │   │   │   ├── MapRegions.kt        # Zonas del mapa y hit-testing (u, v)
+│       │   │   │   ├── MapRegionsJson.kt    # Parseo y validación de los JSON del mapa
+│       │   │   │   └── Tutorial.kt          # Máquina de estados del tutorial guiado
+│       │   │   ├── viewmodel/               # ── VIEWMODEL ──
+│       │   │   │   ├── GameUiState.kt       # Estado único inmutable
+│       │   │   │   ├── MainViewModel.kt     # Eventos, mutate, persistencia y navegación
+│       │   │   │   ├── GameProjection.kt    # Campos derivados
+│       │   │   │   ├── EncounterEngine.kt   # Caminata y encuentros
+│       │   │   │   ├── CatchingEngine.kt    # Bucle de captura
+│       │   │   │   ├── GymCombatEngine.kt   # Combate de gimnasio
+│       │   │   │   ├── TrainerAnimator.kt   # Animación del entrenador
+│       │   │   │   ├── MapUiState.kt        # Estado de la pantalla del mapa
+│       │   │   │   └── MapViewModel.kt      # Carga y hit-testing del mapa
+│       │   │   └── ui/                      # ── VIEW ──
+│       │   │       ├── AppRoot.kt           # Shell: capas, Scaffold, menú y previews
+│       │   │       ├── MainScreen.kt        # Pantalla principal + HUD + CTA
+│       │   │       ├── Overlays.kt          # Mapa, hoja de opciones y selector de principal
+│       │   │       ├── PokemonBottomMenu.kt # Barra, Pokéball, hendidura y controles
+│       │   │       ├── RouteBackground.kt   # Fondo de ruta en bucle y movimiento
+│       │   │       ├── RouteBackgrounds.kt  # Catálogo de fondos por zona
+│       │   │       ├── WorldFrame.kt        # Proyección del mundo (arte → pantalla)
+│       │   │       ├── WorldTrainer.kt      # Entrenador sobre la proyección del mundo
+│       │   │       ├── Layout.kt            # PercentageLayout (guías + sesgo)
+│       │   │       ├── Intro.kt             # Introducción del Profesor Oak
+│       │   │       ├── TutorialOverlay.kt   # Diálogos del tutorial guiado
+│       │   │       ├── GymIntro.kt          # Entrada al gimnasio (bienvenida/tutorial/cartel)
+│       │   │       ├── GymEntry.kt          # Cortinilla y guion del líder
+│       │   │       ├── GymOverlay.kt        # Escena y HUD del combate
+│       │   │       ├── GymSceneLayouts.kt   # Composición por gimnasio
+│       │   │       ├── GymRageSpeech.kt     # Discurso de furia
+│       │   │       ├── GymVictory.kt        # Despedida y entrega de medalla
+│       │   │       ├── LeaderDialogue.kt    # Marco compartido de diálogos del líder
+│       │   │       ├── CatchingOverlay.kt   # Escena del minijuego de captura
+│       │   │       ├── DexScreen.kt         # Pantalla de Pokédex con carcasa
+│       │   │       ├── PokedexSprites.kt    # Mapa dexNumber → sprite
+│       │   │       ├── MapCarcasa.kt        # Carcasa de la pestaña Mapa
+│       │   │       ├── MapTransform.kt      # Zoom, desplazamiento y (u, v)
+│       │   │       ├── MapRegionBadge.kt    # Indicador de la zona tocada
+│       │   │       ├── RetroTheme.kt        # Colores, tipografía y formas retro
+│       │   │       ├── GameUiComponents.kt  # Botón, moneda y helpers compartidos
+│       │   │       ├── PixelFont.kt         # Fuente 5×7 para el cartel de combo
+│       │   │       ├── PixelArt.kt          # Recorte de margen de sprites
+│       │   │       ├── ModalBlocking.kt     # Aislamiento de input de capas modales
+│       │   │       ├── RockShatterFx.kt     # Estallido de roca
+│       │   │       ├── WaterRingFx.kt       # Acierto/fallo del anillo de Misty
+│       │   │       └── PokeBallSplash.kt    # Cortinilla de arranque
+│       │   ├── keepRules/rules.keep         # Reglas de R8 conservadas
 │       │   └── res/
-│       │       ├── values/
-│       │       │   ├── strings.xml
-│       │       │   ├── colors.xml
-│       │       │   └── themes.xml               # Theme.Pokeclic
-│       │       ├── values-night/themes.xml
-│       │       ├── drawable/                    # Pokéballs, frames del trainer, retratos, medallas y gimnasio
-│       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde, Ciudad Verde y Ruta 3): pixel art sin reescalado por densidad
-│       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
+│       │       ├── values/                  # strings, colors y Theme.Pokeclic
+│       │       ├── values-night/            # Variante nocturna del tema
+│       │       ├── drawable/                # Trainer, líderes, medallas y GIFs
+│       │       ├── drawable-nodpi/          # Fondos, mapas, carcasa, Pokédex y FX
+│       │       └── xml/                     # Backup y extracción de datos
+│       ├── debug/
+│       │   ├── AndroidManifest.xml          # Registra el editor de mapa (solo debug)
+│       │   ├── java/com/dsrs/pokeclic/dbg/  # Editor visual: actividad, pantalla, sesión y almacén
+│       │   └── res/values/strings.xml       # Textos del editor
+│       ├── test/java/com/dsrs/pokeclic/     # 34 suites JVM (modelo, data, VM y UI)
+│       └── testDebug/java/com/dsrs/pokeclic/dbg/ # Tests del editor de mapa
+├── docs/                                    # Guías y documentos de diseño
+├── gradle/libs.versions.toml                # Catálogo de versiones
 ├── build.gradle.kts
-├── settings.gradle.kts                          # rootProject.name = "Pokeclic"
-├── gradle/libs.versions.toml
+├── settings.gradle.kts                      # rootProject.name = "Pokeclic"
 └── gradle.properties
 ```
 
-### Organización actual
+### Tests
 
-- **`model/`**: `GameData.kt`, `Combat.kt` y `Catalogs.kt`. Los dos primeros no
-  dependen de Android; `Catalogs.kt` contiene el contenido provisional y la única
-  implementación que conoce `R.drawable`.
-- **`data/`**: contrato `GameStateStore` y su implementación con
-  `SharedPreferences`.
-- **`ui/`**: 9 archivos planos; cada uno agrupa una pantalla o tema visual.
-- **Tests**: `src/test/` contiene `ModelTest`, `CatalogTest` y
-  `MainViewModelTest`, ejecutables en la JVM. No hay tests de instrumentación.
+No hay tests de instrumentación: todo corre en la JVM con
+`./gradlew testDebugUnitTest`. Suites por área:
+
+| Área | Suites |
+|---|---|
+| Modelo y reglas | `ModelTest`, `CatalogTest`, `CatchingGameTest`, `TutorialTest`, `MapRegionsTest`, `MapRegionsJsonTest`, `PokedexCatalogTest`, `PokedexProjectorTest` |
+| Datos | `GameStateStoreTest`, `KantoMapDataTest`, `PokedexParserTest` |
+| ViewModel | `MainViewModelTest`, `MainViewModelTutorialTest`, `MapViewModelTest`, `PokedexDexTest` |
+| UI y catálogos | `AppRootTest`, `GymLeaderScriptTest`, `GymSceneLayoutsTest`, `GymVictoryScriptTest`, `IntroScriptTest`, `MapTransformTest`, `PixelFontTest`, `PokedexSpritesTest`, `RockShatterFxTest`, `WaterRingFxTest`, `Route*Test`, `WorldFrameTest` |
 
 ---
 
-## 4. Navegación y bottom menu
+## 4. Shell, navegación y menú
 
-### Composición
+### Composición de `AppRoot`
 
-`AppRoot` es el shell de la aplicación. Es un composable **sin estado**: recibe
-`state: GameUiState` y reenvía cada interacción como una lambda.
+`AppRoot` es el shell **sin estado**: recibe `GameUiState`, `MapUiState` y las
+lambdas. Su orden de composición, de abajo a arriba:
 
 ```
-Box
-├── fondo del gimnasio          (solo si state.gym != null)
+BoxWithConstraints
+├── fondo de la escena
+│   ├── gimnasio activo → arte del gimnasio (roca, agua o eléctrico)
+│   ├── si no, Home con fauna o arte propio → RouteScrollingBackground
+│   │   (también detrás del minijuego de captura, con la ruta congelada)
+│   └── si no, pestaña Mapa → MapOceanBackdrop
+├── WorldTrainer (Home, sin escena ni intro)
 ├── Scaffold
-│   ├── bottomBar: PokemonBottomMenu   (se oculta durante el combate)
-│   └── content: Box
-│       ├── when (state.contentTab)
-│       │   ├── AppTab.Home → MainScreen(state, …)
-│       │   └── AppTab.Map  → MapScreen()
-│       ├── GymOverlay / CaptureOverlay (capas de contenido)
-│       └── (el contenido y el menú se omiten durante el combate)
-├── IntroOverlay                (si state.needsStarter)
-├── LeadOverlay                 (si state.isLeadOpen)
-└── OptionsSheet                (si state.isOptionsOpen)
+│   ├── bottomBar: PokemonBottomMenu (con fundido y reglas de ocultación)
+│   └── content:
+│       ├── Home → MainScreen
+│       ├── Map  → MapCarcasaScreen
+│       ├── GymOverlay    (si state.gym != null)
+│       └── CatchingOverlay (si hay encuentro y no hay gimnasio)
+├── GymIntroLayer (si state.gymIntro != null)
+├── IntroOverlay (si needsStarter)
+├── LeadOverlay (si isLeadOpen)
+├── OptionsSheet (si isOptionsOpen)
+└── TutorialLayer (diálogos del tutorial, siempre por encima)
 ```
 
-El menú está fuera del contenido y se mantiene visible en las pestañas normales,
-pero **desaparece durante el combate de gimnasio**, que ocupa toda la pantalla.
-El cambio de pantalla es un `when` sobre el estado: cambiar de pestaña solo
-actualiza `GameUiState.contentTab`, y el progreso no se pierde porque vive en el
-`MainViewModel` con scope de Activity.
+La **Pokédex** es una rama temprana: si `isPokedexOpen`, `AppRoot` compone
+`DexScreen` + el menú real y retorna antes del bloque anterior.
+
+### Capas que toman la pantalla
+
+- **Gimnasio** (`gym != null` o `gymIntro != null`): ocupa todo; no se compone el
+  contenido de fondo ni el menú.
+- **Captura** (`catching != null` con encuentro): escena transparente sobre la
+  ruta congelada; tampoco hay menú.
+- **Intro** (`needsStarter`): opaca; no se compone el juego.
+- **Pokédex**: pantalla propia con su carcasa y el menú encima de la base.
+- **Principal** (`isLeadOpen`), **opciones** y **splash**: el juego queda visible
+  pero el menú no se compone (aislamiento de input).
+
+`Modifier.modalBlocking()` consume los toques de toda capa modal. La Pokébola usa
+un detector que ignora el consumo (`requireUnconsumed = false`), así que la única
+forma de aislarla es **no componerla**; por eso el menú se oculta bajo cualquier
+capa modal.
 
 ### Anatomía del menú
 
 ```
 ┌────────────────────────────────────────────────┐
-│                                                │
 │                  contenido                     │
-│                                                │
 │                                    (Pokéball)  │  ← flota al expandirla
-│                                                │
 ├────────────────────────────────────────────────┤
-│   Mapa              ▄▄▄▄▄▄▄▄          Pokédex   │  ← barra con hendidura
+│   Mapa              ▄▄▄▄▄▄▄▄          Pokédex   │  ← barra de acero
 └────────────────────────────────────────────────┘
 ```
 
 | Parte | Componente | Notas |
 |---|---|---|
-| Barra | `MenuBar` | `Surface` blanco con `rememberBottomMenuNotchShape()` y borde de 1 dp. |
+| Barra | `MenuBar` | `Surface` con `rememberBottomMenuNotchShape()` y borde de 1 dp. |
 | Hendidura | `BottomMenuNotchShape` | `GenericShape` con dos `cubicTo`; la Pokéball se sienta en ella. |
-| Botón lateral | `MenuIconItem` | Icono en círculo + etiqueta; se tiñe con el color primario al seleccionarse. |
-| Pokéball | `MenuPokeBall` | `pokeball_menu.png` + `graphicsLayer` para subir y crecer. |
+| Botón lateral | `MenuIconItem` | Icono en círculo + etiqueta; se tiñe al seleccionarse. |
+| Pokéball | `MenuPokeBall` | `pokeball_menu.png` + `graphicsLayer`. |
 
-Los iconos son **Material Icons de relleno** como placeholder y viven en el
-`private object MenuIcons` de `PokemonBottomMenu.kt`.
+Los iconos son **Material Icons de relleno** y viven en el `private object
+MenuIcons` de `PokemonBottomMenu.kt`.
 
 ### Ajustes (`object BottomMenuDefaults`)
 
-Están fuera del composable para poder iterar sobre el aspecto sin tocar la lógica
-del gesto:
-
 | Constante | Valor | Para qué |
 |---|---|---|
-| `BAR_HEIGHT` | `96.dp` | Alto de la barra blanca. |
-| `POKEBALL_SIZE` | `100.dp` | Diámetro de la Pokéball **en reposo**. |
-| `POKEBALL_BOTTOM_PADDING` | `45.dp` | Posición vertical **en reposo**: borde inferior de la bola al de la barra. |
-| `POKEBALL_OFFSET_X` | `0.dp` | Posición horizontal **en reposo**. |
-| `POKEBALL_EXPANDED_SIZE` | `280.dp` | Diámetro de la Pokéball **expandida**. |
-| `POKEBALL_EXPANDED_BOTTOM` | `55.dp` | Posición vertical **expandida**: borde inferior de la bola al de la barra. |
-| `POKEBALL_EXPANDED_OFFSET_X` | `0.dp` | Posición horizontal **expandida**. |
-| `EXPANDED_SHADOW` | `0.dp` | Sombra de la Pokéball **solo al expandirse**. |
-| `NOTCH_WIDTH` | `75.dp` | Semiancho de la hendidura **en reposo**. |
-| `NOTCH_EXPANDED_WIDTH` | `140.dp` | Semiancho de la hendidura **expandida**: se abre a la vez que la Pokéball. |
-| `NOTCH_DEPTH` | `60.dp` | Fondo de la hendidura, desde el borde superior de la barra. Constante. |
-| `DRAG_SENSITIVITY` | `110.dp` | Recorrido de arrastre para ir de 0 a 1. |
+| `BAR_HEIGHT` | `96.dp` | Alto de la barra. |
+| `POKEBALL_SIZE` | `100.dp` | Diámetro en reposo. |
+| `POKEBALL_BOTTOM_PADDING` | `45.dp` | Posición vertical en reposo. |
+| `POKEBALL_OFFSET_X` | `0.dp` | Posición horizontal en reposo. |
+| `POKEBALL_EXPANDED_SIZE` | `280.dp` | Diámetro expandida. |
+| `POKEBALL_EXPANDED_BOTTOM` | `55.dp` | Posición vertical expandida. |
+| `POKEBALL_EXPANDED_OFFSET_X` | `0.dp` | Posición horizontal expandida. |
+| `EXPANDED_SHADOW` | `0.dp` | Sombra, solo al expandirse. |
+| `NOTCH_WIDTH` | `75.dp` | Semiancho de la hendidura en reposo. |
+| `NOTCH_EXPANDED_WIDTH` | `140.dp` | Semiancho expandida. |
+| `NOTCH_DEPTH` | `60.dp` | Fondo de la hendidura (constante). |
+| `DRAG_SENSITIVITY` | `110.dp` | Recorrido de arrastre de 0 a 1. |
 | `SNAP_THRESHOLD` | `0.20f` | Umbral para quedar arriba / volver abajo. |
-| `TAP_PUNCH_SCALE` | `0.95f` | Escala del "golpe" visual de la Pokéball al tocarla (`1f` = sin efecto). |
+| `TAP_PUNCH_SCALE` | `0.95f` | "Golpe" visual al tocar (`1f` = sin efecto). |
 | `CONTAINER_HEIGHT` | *derivado* | Alto que reserva el `Scaffold`. **No se edita.** |
 
-### Los dos estados se editan por separado
+Tamaño y posición son **absolutos en dp**, no relativos entre sí. El fondo de la
+hendidura debe quedar por debajo de la parte baja de la Pokéball:
 
-Tamaño y posición de la Pokéball son **absolutos en dp**, no relativos entre sí:
-
-```kotlin
-POKEBALL_SIZE            = 100.dp   // en reposo
-POKEBALL_BOTTOM_PADDING  = 45.dp
-POKEBALL_EXPANDED_SIZE   = 280.dp   // expandida, sea cual sea el tamaño en reposo
-POKEBALL_EXPANDED_BOTTOM = 55.dp
+```
+fondo de la Pokéball = BAR_HEIGHT - POKEBALL_BOTTOM_PADDING   → 51 dp
+NOTCH_DEPTH          = ese valor + el hueco que dejes debajo   → 60 dp
 ```
 
-Se puede cambiar cualquiera de los cuatro sin que los demás se muevan. También hay
-desplazamiento horizontal (`POKEBALL_OFFSET_X` y `POKEBALL_EXPANDED_OFFSET_X`) por
-si quieres la bola descentrada.
+El hueco se abre a la vez que la Pokéball: su semiancho interpola entre
+`NOTCH_WIDTH` y `NOTCH_EXPANDED_WIDTH` con el mismo `progress` del gesto.
 
-> **Por qué `POKEBALL_EXPANDED_BOTTOM` y no "cuánto sube".** La escala se aplica
-> alrededor del centro, así que al cambiar el diámetro el centro se mueve solo y
-> un desplazamiento relativo obliga a rehacer la cuenta. Midiendo el **borde
-> inferior respecto al borde inferior de la barra**, el valor significa lo mismo
-> sea cual sea el tamaño. Súbelo para que la bola quede más arriba.
+> **Por qué no lleva sombra la barra.** La sombra de una forma cóncava sangra
+> hacia el interior del hueco y aparece un halo oscuro alrededor de la Pokéball.
+> La separación con el contenido la hace el `border` de 1 dp.
 
-`pokeBallTransform()` es la función que traduce esos dp a los números del
-`graphicsLayer`. Todo lo que se interpola con el `progress` del gesto está ahí
-dentro: el desplazamiento horizontal, el vertical y la escala.
+> **Por qué `MenuBar` recibe el `MutableFloatState`.** Si leyera un `Float`, la
+> suscripción quedaría en `PokemonBottomMenu` y se recompondría el menú entero en
+> cada frame. Leyendo dentro de `MenuBar`, solo se recompone la barra.
 
-`CONTAINER_HEIGHT` es **derivado** (`BAR_HEIGHT` más lo que sobresale la Pokéball)
-para que, al cambiar el tamaño o la posición de la bola, el hueco que reserva el
-`Scaffold` se ajuste solo y no dejes la barra pegada al contenido.
+### Destinos y hoja de opciones
 
-**Las medidas de la hendidura van en dp, no como fracción de la barra.** Así
-`NOTCH_WIDTH` y `NOTCH_DEPTH` se editan por separado: ensanchar el hueco no
-arrastra su fondo. Las dos están topadas en `BottomMenuNotchShape` para que
-ningún valor pueda generar un `path` inválido.
+| Destino | Control | Resultado |
+|---|---|---|
+| **Mapa** | Botón izquierdo | `AppTab.Map`: `MapCarcasaScreen` |
+| **Home** | Pokéball central | `AppTab.Home`: `MainScreen` |
+| **Pokédex** | Botón derecho | Abre `OptionsSheet`; desde su fila *Pokédex* se entra a `DexScreen` |
 
-> **Profundidad y ancho están relacionados.** La Pokéball flota dentro del hueco,
-> así que el fondo de la hendidura debe quedar **por debajo** de su parte baja:
->
-> ```
-> fondo de la Pokéball = BAR_HEIGHT - POKEBALL_BOTTOM_PADDING   → 96 - 45 = 51 dp
-> NOTCH_DEPTH          = ese valor + el hueco que dejes debajo   → 51 + 9 = 60 dp
-> ```
->
-> Con menos de 51 dp la bola queda medio enterrada en la barra blanca (se ve
-> maciza); con mucho más, la barra pierde franja blanca en el centro. El ancho
-> tiene la condición contraria: por debajo de `POKEBALL_SIZE / 2` (50 dp) la
-> bola no cabe suelta.
+`AppTab` solo tiene `Map` y `Home`. Opciones y Pokédex **no son pestañas**: la
+hoja vive en `isOptionsOpen` y la dex en `isPokedexOpen`.
 
-### El hueco se abre a la vez que la Pokéball
+Filas de la hoja de opciones:
 
-La silueta de la barra **no es fija**: su semiancho interpola entre
-`NOTCH_WIDTH` y `NOTCH_EXPANDED_WIDTH` con el mismo `progress` que mueve la
-Pokéball, de modo que el hueco crece con ella y la bola nunca llega a invadir la
-barra.
+| Fila | Acción |
+|---|---|
+| Configuración | Decorativa (sin acción) |
+| Acerca de | Decorativa (sin acción) |
+| Cambiar principal | Abre `LeadOverlay` |
+| Reset | `onReset()` (conserva la meta) |
+| Pokédex (TEST) | `onOpenDex()` |
+| Borrar partida (test) | Confirmación + `onWipeGame()` |
+| Saltos de zona | Solo en builds debug: llenan la barra del gimnasio elegido |
 
-```kotlin
-val shape = rememberBottomMenuNotchShape(
-    width = lerp(NOTCH_WIDTH, NOTCH_EXPANDED_WIDTH, progress.floatValue),
-    depth = NOTCH_DEPTH          // el fondo no cambia durante el gesto
-)
-```
+Mientras la dex está abierta, los destinos del menú la cierran y navegan; la
+Pokébola no se expande y el botón físico **Atrás** vuelve al juego.
 
-Es el mismo modelo de "dos estados editables por separado" que la Pokéball:
-`NOTCH_WIDTH` en reposo, `NOTCH_EXPANDED_WIDTH` expandida, los dos en dp y
-ajustables por separado. Ponlos iguales si prefieres que el hueco no cambie.
-
-> **Coste de animar una forma.** Cada frame del arrastre y del muelle construye
-> una silueta nueva. Es inherente a animar una `Shape` paramétrica, no un
-> descuido: los dos `MenuIconItem` de los lados no se recomponen porque sus
-> parámetros no cambian, así que el coste queda en la `Surface`. Si notaras
-> tirones en un móvil antiguo, la salida sería acortar el muelle, no tocar la
-> forma.
-
-> **Por qué `MenuBar` recibe el estado y no un `Float`.** Si leyera el progreso
-> con un `Float`, la suscripción quedaría en `PokemonBottomMenu` y el menú entero
-> se recompone en cada frame. Pasándole el `MutableFloatState`, la lectura queda
-> dentro de `MenuBar`: solo se recompone la barra, y el resto del menú sigue
-> leyendo el progreso dentro del `graphicsLayer`, que difiere la lectura.
-
-La forma se construye en px (`BottomMenuNotchShape`) porque `GenericShape` no
-tiene `Density`. El composable `rememberBottomMenuNotchShape()` hace la
-conversión de dp y **recuerda** la instancia: sin `remember` se crearía un
-`GenericShape` nuevo en cada recomposición y la `Surface` se redibujaría sin
-motivo.
-
-> **La barra no lleva `Modifier.shadow`, y es a propósito.** La sombra de una
-> forma cóncava no se queda dentro de la silueta: al desenfocarse sangra hacia
-> el interior del hueco, y como la hendidura es justo donde vive la Pokéball,
-> aparecía un halo oscuro alrededor y debajo de ella. La separación con el
-> contenido la hace el `border` de 1 dp, que sí sigue el contorno. Si quieres
-> volumen de nuevo, sube la elevación **con cuidado** y comprueba la hendidura.
-
-### La Pokéball central
-
-Es el control principal del menú y tiene tres comportamientos:
+### Gestos de la Pokébola
 
 | Gesto | Estado | Resultado |
 |---|---|---|
-| Toque | En reposo | `onHomeClick` → pantalla principal |
-| Toque | Expandida | `onPokeBallGameClick(pos)` → `pokePulses++` (fondo de ruta) y `MainViewModel.onPokeBallTouch(...)` |
-| Arrastre arriba y soltar | cualquiera | Se expande y avisa con `onExpandedChange(true)`; además lleva a la pantalla principal |
-| Arrastre abajo y soltar | cualquiera | Vuelve a su sitio con `onExpandedChange(false)` |
+| Toque | En reposo | `onHomeClick` |
+| Toque | Expandida | `onPokeBallGameClick` → clic de juego |
+| Arrastre arriba y soltar | cualquiera | Se expande y va a Home |
+| Arrastre abajo y soltar | cualquiera | Vuelve a su sitio |
 
-**El movimiento** se guía con un `progress` continuo de `0f` a `1f`, que
-interpola los dos estados absolutos: desplazamiento horizontal, vertical y
-escala. Al soltar, un `Animatable` con
-`spring(DampingRatioMediumBouncy, StiffnessLow)` lleva el progreso a `0f` o `1f` y
-avisa con háptica (`LongPress`) cuando cambia de estado.
+Un único `pointerInput` con `awaitEachGesture`: solo consume cuando el dedo
+supera el `touchSlop`, así que un toque limpio no se pierde. El movimiento va en
+`graphicsLayer` (`translationY` y `scale`), de modo que el `Scaffold` solo reserva
+`CONTAINER_HEIGHT` y la bola expandida flota sobre el contenido. La posición que
+recibe el clic sigue siendo local a la Pokébola (los eventos no se transforman).
 
-**Por qué un único `pointerInput`.** `detectVerticalDragGestures` no distingue el
-toque final, y añadir un `clickable` aparte depende del orden de los modificadores
-(consumir o no el evento cambia quién recibe el `up`). Aquí se usa `awaitEachGesture`
-y solo se llama a `change.consume()` cuando el dedo supera el `touchSlop`: un
-toque limpio nunca se consume y llega intacto a la rama del `onTap`.
-
-**Por qué la posición va en `graphicsLayer`.** `translationY` y `scale` no consumen
-espacio de layout, así que el `Scaffold` solo reserva `CONTAINER_HEIGHT` y la
-Pokéball expandida queda flotando sobre el contenido. Además `graphicsLayer` **no**
-transforma las coordenadas de los eventos de puntero, así que el offset que recibe
-`onPokeBallTouch` sigue siendo local a la pokeball y el cálculo de dirección no
-cambia.
-
-**Insets.** El `NavigationBar` de Material aplicaba su propio padding; el menú
-propio lo hace explícito con `navigationBarsPadding()` para que la barra blanca no
-quede bajo la barra de gestos.
-
-### Destinos (`AppTab`) y hoja de opciones
-
-| Destino | Botón del menú | Contenido |
-|---|---|---|
-| **Mapa** | Botón izquierdo (`Icons.Filled.Map`) | `MapScreen`, ocupa todo el espacio bajo el menú |
-| **Principal** | Pokéball central | `MainScreen`: HUD y trainer |
-| **Opciones** | Botón derecho, *Pokédex* (`Icons.Filled.Book`) | `OptionsSheet` (`ModalBottomSheet`, no cambia de pantalla) |
-
-`AppTab` solo tiene `Map` y `Home`: son las pantallas que ocupan la zona de
-contenido. **Opciones no es una pestaña**: es una capa que se dibuja encima y su
-visibilidad vive en `GameUiState.isOptionsOpen`.
-
-> **El botón de Pokédex es un placeholder**: por ahora hace lo mismo que el de
-> Opciones (abre el bottom sheet). El `enum AppTab` no lleva icono ni etiqueta,
-> porque el menú los resuelve por su cuenta.
-
-### Comportamiento
-
-| Acción | Resultado |
-|---|---|
-| Pulsar el destino ya activo | No hace nada (se queda donde está) |
-| Mapa → Principal | Vuelve a la pantalla principal |
-| Principal → Mapa | Muestra el mapa |
-| Botón de Pokédex | Abre la hoja de opciones sin cambiar de pantalla (placeholder) |
-| Pulsar Mapa o Pokédex con la Pokéball expandida | La Pokéball se pliega sola (`settleTo(false)`) antes de navegar |
-| Cualquier botón con la hoja abierta | Cierra la hoja y navega |
-| Expandir la Pokéball desde el mapa | Va a la pantalla principal y se agranda |
-| Atrás con la hoja abierta | Cierra la hoja (comportamiento de `ModalBottomSheet`) |
-| Atrás en Principal | Sale de la app |
-| Rotar con la hoja abierta | El `MainViewModel` conserva `isOptionsOpen = true` |
+En el **mapa** y en la **Pokédex** la Pokébola no se expande: un arrastre
+completado cuenta como toque y vuelve a la aventura.
 
 ---
 
 ## 5. Pantalla principal
 
-### Elementos de la pantalla
+### Elementos
 
-| Elemento | Tamaño | Ubicación | Interactivo |
-|---|---|---|---|
-| HUD | automático | primera fila del `Column`, ancho completo | Botones de gimnasio/avance |
-| Trainer | `WorldDefaults.TRAINER_BOX_ART_SIZE` | proyectado por `WorldFrame`, sobre la línea del arte | No |
-| Fondo de ruta (capa inferior) | pantalla completa | — | No: lo mueve la Pokéball |
-| Poké Ball | — | — | **No está aquí**: vive en el bottom menu |
+| Elemento | Ubicación | Interactivo |
+|---|---|---|
+| HUD compacto | Franja superior, dentro de un `Column` con padding | No |
+| CTA de progresión | Debajo del HUD | Gimnasio / Avanzar |
+| Entrenador | `WorldTrainer`, sobre el mismo `Box` que el fondo | No |
+| Fondo de ruta | Capa inferior, a pantalla completa | No (lo mueve el clic) |
+| Pops `+N` | Capa superior, `PopLayer` | No |
 
-El HUD se mide en `dp` (`object MainLayout` en `ui/MainScreen.kt`). El entrenador
-**no**: se mide en píxeles de arte y lo proyecta `WorldFrame` (ver `ui/WorldFrame.kt`).
+### HUD compacto
 
-### El HUD reserva espacio (no se superpone)
+`GameHud` muestra solo la run:
 
-`MainScreen` es un `Column`: el **HUD** (`GameHud`) ocupa la primera fila con su
-altura natural y el entrenador se dibuja aparte, proyectado por `WorldFrame` sobre
-el mismo `Box` que el fondo. Así el HUD no se superpone al trainer: si crece mucho
-(nombre, monedas, zona, barras, botones…), reduce el espacio restante.
+- **Cartel de zona** a la izquierda (placa crema con el nombre).
+- **Monedas** a la derecha (`CoinPlate`), con pop `+N` cuando aumentan.
+- **Barra EXP** con el contador `zoneClicks / zoneRequirement` superpuesto.
+
+El botón de gimnasio y el de avanzar **no viven dentro del HUD**: están en
+`ProgressionAction`, justo debajo, para que aparecer o desaparecer no cambie la
+altura del panel ni mueva al entrenador. Las acciones de reset y cambio de
+principal se movieron a la hoja de opciones.
+
+### Avance de zona
+
+- `advanceZone()` capa `zoneClicks` en el umbral: nunca hay overshoot.
+- `canAdvanceZone` exige barra llena, que no haya gimnasio pendiente y que no sea
+  la última zona.
+- `isGymReady` exige gimnasio pendiente **en la run** y barra llena.
+- `onAdvanceZone()` solo avanza si `canAdvanceZone`; en la última zona no pasa
+  nada.
 
 ### Fondo de ruta animado
 
-En la pantalla Home de las zonas con fauna (`GameUiState.hasWilds`) y sin escena
-de gimnasio/pesca ni intro abierta, `AppRoot` compone
-`RouteScrollingBackground` (`ui/RouteBackground.kt`) **detrás** del contenido:
-el arte de la zona se repite en bucle y se desplaza con las pulsaciones de la
-Pokéball. En ese estado el `Scaffold` usa `containerColor = Color.Transparent`,
-así el arte se ve también en el hueco de la barra.
+En Home, si la zona tiene fauna o arte propio, `AppRoot` compone
+`RouteScrollingBackground` detrás del `Scaffold` transparente. La **misma**
+instancia de `RouteBackground.motion` mueve el dibujo y decide la dirección del
+entrenador, así que no pueden desincronizarse.
 
-Cada zona saca su **arte** y su **trayectoria** del catálogo `RouteBackgrounds`
-(`ui/RouteBackgrounds.kt`), indexado por `Zone.id`: la **misma** instancia de
-`ZoneBackground.motion` mueve el dibujo y decide la dirección del entrenador, así
-que no pueden desincronizarse. Las zonas sin entrada propia usan
-`RouteBackgrounds.DEFAULT`. Tienen arte propio **Pueblo Paleta**
-(`background_pallet_town.png`, 2176×3072, `startAnchor = 0,6`), **Bosque Verde**
-(`background_bosque_verde.png`, 1152×1920, `startAnchor = 0,5` y la imagen
-corrida a la derecha con `startOffset = -0,08`, 8 % del ancho de pantalla),
-**Ciudad Verde** (`background_ciudad_verde.png`, 2176×3072, `startAnchor = 0,5`),
-**Ciudad Plateada** (`background_ciudad_plateada.png`, 4608×3840, `startAnchor = 0,5`),
-**Ruta 3** (`background_ruta3.png`, 1152×1920, el primer fondo horizontal) y
-**Ciudad Celeste** (`background_ciudad_celeste.png`, 4608×3840, fondo horizontal
-que arranca en su **borde izquierdo** con `startOffset = -2` —el arte mide cuatro
-pantallas de ancho— y deja su borde inferior un 15 % de pantalla por debajo del
-borde inferior con `startAnchor = 1,15`).
-Las cuatro verticales arrancan por el final de su dibujo: el entrenador empieza
-pisando su borde inferior y camina hacia arriba. La Ruta 3 arranca **pegada al
-marco izquierdo** de su arte (`startOffset = -0,5`) y **sobre su eje central
-horizontal** (`startAnchor = 0,057`, que deja el borde inferior del arte detrás del
-HUD); camina de izquierda a derecha. El resto sigue con el de ruta y arranca por el
-principio, centrado.
-
-Bosque Verde también tiene **trayectoria propia**, y se escribe solo con clics y
-dirección: 2 recto · 1 derecha · 2 recto · 3 derecha · 5 recto · 5 izquierda ·
-5 recto · 5 derecha · 4 recto · 4 izquierda · 8 recto. No hay magnitudes
-laterales: un clic de lado recorre lo mismo que un clic recto. Como los dos
-sentidos suman 9 clics, el zigzag vuelve solo a la línea central en cada vuelta y
-no se aleja más de 0,16 alturas de baldosa.
-
-Ciudad Verde también tiene **trayectoria propia**: 4 recto · 1 derecha · 13
-recto · 7 izquierda · 13 recto · 6 derecha · 10 recto. Los rectos suman 40 clics,
-una vuelta exacta al arte de 3072 px, y los laterales están balanceados (7 a cada
-lado), así que el personaje vuelve a la línea central en cada vuelta.
-
-Ciudad Plateada tiene **trayectoria propia**: 8 recto · 23 izquierda · 12 recto ·
-40 derecha · 12 recto · 15 izquierda · 8 recto · 2 izquierda · 10 recto. Su arte
-mide 3840 px de alto (dos altos de cámara), así que una vuelta completa al dibujo
-pide **50 clics rectos** (3840 × 25 / 1920); los rectos suman exactamente 50 y los
-laterales están balanceados (40 a cada lado). El ciclo completo dura 130 clics: el
-fondo recorre la ciudad de lado (del lado del Mart al del gimnasio) y vuelve a la
-línea central. Mientras los rectos sumen múltiplos de 50 y los dos sentidos
-laterales sumen lo mismo, la trayectoria se puede reescribir tramo a tramo.
-Además el arte es **cuatro veces más ancho** que la cámara (4608 px), así que la
-pantalla enseña solo su franja central: qué parte de la ciudad se ve depende del
-corrimiento lateral acumulado.
-
-La Ruta 3 es la primera zona **horizontal** (`RouteScrollAxis.HORIZONTAL`): el
-marco está girado 90° a la derecha, así que la trayectoria se escribe igual que en
-las verticales. Su bucle dura **dos vueltas**: la primera sube (0 → +7 → 0) y la
-segunda baja (0 → -3 → 0). Cierra porque el superciclo suma 30 clics rectos (dos
-anchos del arte: 30 × 76,8 px = 2304 px) y los laterales están balanceados (10
-hacia arriba y 10 hacia abajo). Si una de las dos sumas deja de cuadrar, cada ciclo
-empieza en otro píxel o a otra altura.
-
-Ciudad Celeste es el fondo horizontal con el arte más grande del catálogo
-(4608×3840: cuatro anchos de cámara por dos altos). Su trayectoria es **14 recto ·
-16 derecha · 15 recto · 18 izquierda · 18 recto · 2 derecha · 13 recto**: cruza la
-ciudad, cambia de calle, vuelve a la avenida, baja a la de abajo y regresa. El
-bucle cierra porque los rectos suman **60 clics**, una vuelta exacta al ancho del
-arte (4608 / 76,8 = 60), y los laterales están balanceados (18 hacia un lado y 18
-hacia el otro). El ciclo completo dura 96 clics y el personaje vuelve a la línea
-central en cada vuelta. Al retocarla rige la misma cuenta que en las otras
-horizontales: los rectos, en múltiplos de 60, y los dos sentidos laterales sumando
-lo mismo. Un clic de desbalance son 0,04 alturas de baldosa por vuelta, que no se
-corrigen solas: el personaje se va quedando cada vez más corrido.
-
-En un fondo horizontal, cada tramo se lee así (el arte siempre va al revés que el
-entrenador):
-
-| Tramo | Entrenador | Sprite | Arte |
-|---|---|---|---|
-| `BACK` (recto) | camina a la derecha | mira a la derecha | se corre a la izquierda |
-| `LEFT` (lateral) | sube por la pantalla | mira hacia arriba | baja |
-| `RIGHT` (lateral) | baja por la pantalla | mira hacia abajo | sube |
+Zonas con arte y trayectoria propios (`RouteBackgrounds.byZone`):
+**Pueblo Paleta**, **Bosque Verde**, **Ciudad Verde**, **Ciudad Plateada**,
+**Ruta 3**, **Mt.Moon**, **Ciudad Celeste** y **Ciudad Carmín**. Las cuatro
+últimas son **horizontales** (`axis = HORIZONTAL`). Las demás usan `DEFAULT`
+(`background_ruta.png`).
 
 | Aspecto | Decisión |
 |---|---|
-| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: **un clic = un paso** de `TILES_PER_CLICK = 1/25` baldosa, sin inercia. La fase es **por zona** (`remember(state.zoneId)`): al cambiar de zona el contador vuelve a cero y su trayectoria arranca por el primer clic |
-| Frenado | No hay inercia: el paso se consume en `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) y el fondo se para en seco al soltar |
-| Eje de avance | `RouteBackgroundMotion.axis`: `VERTICAL` (por defecto) sube al entrenador por la pantalla y los laterales lo corren a izquierda o derecha. `HORIZONTAL` es el mismo marco girado 90° a la derecha: el recto camina a la derecha, `LEFT` sube y `RIGHT` baja |
-| Dirección vertical | **Hacia abajo** (`DIRECTION = -1f`): el contenido entra por arriba de la pantalla. Solo afecta al avance recto de los fondos verticales; los laterales y el fondo horizontal sacan el signo de `lateralDistanceAt` |
-| Trayectoria | Tramos `RouteLeg` de **un solo eje**, escritos en el marco del eje: recto = avanzar, laterales = correrse. Un tramo solo declara clics y dirección; la distancia sale de `clics × TILES_PER_CLICK` en cualquiera de los dos ejes |
-| Ejes infinitos | El vertical repite el arte en bucle y el lateral lo repite **como loseta**: al borde derecho de una columna le sigue el borde izquierdo del arte, sin reflejarlo. Así **ningún eje tiene tope ni tiene que volver a cero**: un ciclo con más clics a un lado deja al personaje cada vez más corrido, igual que uno recto lo deja cada vez más arriba |
-| Punto de partida vertical | `ZoneBackground.startAnchor`: fracción de la pantalla donde cae el **borde inferior del arte** al entrar en la zona (`0,5` = el centro, que es donde está el entrenador). `null` arranca por el principio del arte. Solo mueve el punto de vista, no la trayectoria |
-| Punto de partida lateral | `ZoneBackground.startOffset`: posición lateral del personaje al entrar, en anchos de pantalla y con el signo de `lateralDistanceAt` (positivo = personaje a la derecha, imagen a la izquierda) |
-| Bucle sin costura | Los fondos son patrones continuos (`seamCutRow = 0`). Solo el arte antiguo de ruta se enrolla por `SEAM_CUT_ROW = 1269` para que la unión caiga en la pareja de filas 1268\|1269. **Ninguna copia se refleja en vertical** |
-| Escalado | Ancho completo y altura por repetición: `FilterQuality.None` al ampliar (pixel art) y `Medium` al reducir; independiente de la resolución |
+| Fuente del movimiento | Contador efímero `pokePulses` de `AppRoot`: un clic = un paso de `TILES_PER_CLICK = 1/25` baldosa |
+| Fase | **Por zona** (`remember(state.zoneId)`): al cambiar de zona vuelve a cero |
+| Frenado | Sin inercia: `MAX_STEP_NANOS = 100 ms` (mínimo `MIN_STEP_NANOS = 30 ms`) |
+| Eje | `RouteBackgroundMotion.axis`: `VERTICAL` (por defecto) u `HORIZONTAL` (marco girado 90°) |
+| Trayectoria | Tramos `RouteLeg` de un solo eje; alternar recto y lateral cambia la orientación |
+| Ejes infinitos | El arte se repite en bucle y las columnas se dibujan contiguas como losetas |
+| Arranque | `startAnchor` (vertical) y `startOffset` (lateral) |
+| Bucle sin costura | `seamCutRow = 0` si el arte es continuo; si no, la fila de corte |
+| Escalado | `FilterQuality.None` al ampliar; independiente de la resolución |
+| Memoria | Los ocho fondos verificados declaran `artScale = 4`: se decodifican a 1/4 y se escalan, con 16× menos memoria |
 
-El recorrido se mide en **baldosas** (repeticiones del arte), no en px ni dp, así
-el ritmo es el mismo en cualquier pantalla. La fase vive normalizada en `[0f, 1f)`
-y se actualiza dentro del bucle de frames (`withFrameNanos`): una pulsación
-**no recompone ni redibuja** la capa, solo cambia la posición. Es estado efímero
-de UI: no toca el ViewModel ni el save.
+El recorrido se mide en **baldosas**, no en px ni dp. La fase vive normalizada
+en `[0f, 1f)` y se actualiza dentro de `withFrameNanos`: una pulsación no
+recompone ni redibuja la capa.
 
-#### Cómo añadir la animación de una zona nueva
+### Dirección del entrenador
 
-1. Deja el PNG en `res/drawable-nodpi/`, idealmente de un ancho de pantalla. Para
-   que el bucle no muestre costura tiene que ser **continuo en los dos ejes**:
-   borde inferior = superior y borde derecho = izquierdo (el bosque tiene una unión
-   suave en horizontal; el arte viejo de ruta necesitó `seamCutRow` en vertical).
-2. Añade la entrada a `RouteBackgrounds.byZone` con el `Zone.id` del catálogo:
-   arte + una lista de `RouteLeg(clicks, direction)`. Alternar recto con laterales
-   es lo que hace que el entrenador cambie de orientación. Para un fondo
-   **horizontal**, pasa `axis = RouteScrollAxis.HORIZONTAL`: se escribe igual, pero
-   el marco está girado 90° (recto = derecha, `LEFT` = arriba, `RIGHT` = abajo).
-3. Opcional: `startAnchor` (por dónde arranca el arte en vertical) y `startOffset`
-   (corrimiento lateral inicial, en anchos de pantalla).
+La Pokébola **ya no elige la dirección según el lado que se toca**. El clic
+avanza el fondo y el eje del tramo decide la animación:
 
-No hay que tocar la pantalla, ni el ViewModel, ni el sprite: `AppRoot` pide el
-fondo con `forZone(state.zoneId)` y le pasa el resultado a
-`RouteScrollingBackground`. Una zona sin entrada usa `DEFAULT`.
-
-`RouteBackgroundsTest` lo comprueba en **cada** zona: que el arte exista, que el
-fondo avance por su eje, que haya al menos un tramo recto y que las verticales
-alternen además laterales, que cada tramo recorra `clics × 1/25` baldosa y que el
-id de la entrada sea una zona real (un id mal escrito caería en `DEFAULT` sin
-avisar). `RouteScrollShiftTest` comprueba la traducción del recorrido al dibujo:
-qué eje se mueve y con qué fase.
-
-### Capas del entrenador
-
-El entrenador es una **sola imagen** anclada en coordenadas de arte. Se apila en un
-`Box` alineado arriba y centrado y se desplaza hasta
-`WorldDefaults.TRAINER_CENTER_ART_Y` con el marco del mundo (`WorldFrame`), de modo
-que comparte proyección con el fondo de ruta y no puede desalinearse.
-
-El sprite se dibuja con `PixelImage` (`FilterQuality.None`) para preservar el pixel
-art, y su tamaño llega ya convertido desde `WorldFrame`: siempre mide la misma
-fracción del ancho de pantalla, sea cual sea la densidad del móvil.
-
-### Estado expuesto
-
-`GameUiState` vive en su propio archivo (`viewmodel/GameUiState.kt`), separado del
-ViewModel para que la View pueda importar el tipo de estado sin arrastrar el
-ViewModel (por ejemplo en los `@Preview`). Es **inmutable** y agrupa juego,
-navegación y combate:
-
-```kotlin
-data class GameUiState(
-    // meta permanente: playerName, coins, seenSpecies, rewardedSpecies,
-    //                 medals, starterSpeciesId, starterBond
-    // run: ownedSpecies, leadSpeciesId, zoneIndex, zoneClicks
-    // encuentros: walkProgress, encounter
-    // combate: gym
-    // visual: trainer, trainerFrameRes
-    // navegación: contentTab, isOptionsOpen, isLeadOpen
-    // derivados: zoneName, zoneRequirement, clickPower,
-    //            maxHp, leadName, leadType, isGymReady, gymLeaderName,
-    //            needsStarter, leadOptions, starterOptions
-)
-```
-
-- `zoneClicks` y `coins` son **`Long`**: en un clicker los contadores crecen sin
-  techo y con `Int` desbordarían a los ~2.100 millones.
-- `trainerFrameRes` es el `R.drawable` ya resuelto, para que la View no tenga que
-  conocer el mapa de frames.
-- `leadOptions`/`starterOptions` llegan como listas de `LeadOption`/`StarterOption`
-  resueltas; la UI no consulta catálogos.
-- `zoneProgress` e `isLeadCandidate()` son derivaciones **puras** del propio estado.
-
-El composable `MainScreen` **no** conoce el ViewModel: recibe `GameUiState` y las
-lambdas. La `MainActivity` es quien conecta estado y acciones.
-
-### Potencia de clic y progreso
-
-Cada toque de la Pokéball suma `clickPower` al `zoneClicks`. `clickPower` se deriva
-en el ViewModel como `(1 + bonus).roundToLong().coerceAtLeast(1L)`, donde el bonus
-suma un 5 % por cada especie en posesión (starter incluido) y un 2 % extra por
-nivel de vínculo cuando el starter está equipado. El progreso de zona se muestra
-en el HUD y se calcula con `zoneProgress`; no hay un texto "Clicks: N".
-
-### Actualizaciones atómicas
-
-Todas las mutaciones usan `MutableStateFlow.update {}`, que es una
-compare-and-set atómica. Es lo que evita condiciones de carrera entre los bucles
-de juego (caminar, combate o pesca) y los toques, que corren en corrutinas
-distintas:
-
-```kotlin
-_uiState.update { state ->
-    state.copy(zoneClicks = state.zoneClicks + state.clickPower)
-}
-```
-
-### Detección de dirección
-
-La Poké Ball se divide en 4 cuadrantes de 90°:
-
-```kotlin
-val center = sizePx / 2f
-val angle = Math.toDegrees(atan2(touchY - center, touchX - center))
-
-return when {
-    angle >= -45.0 && angle < 45.0 -> Direction.RIGHT    // 0° ± 45°
-    angle >= 45.0 && angle < 135.0 -> Direction.FRONT   // 90° ± 45°
-    angle >= 135.0 || angle < -135.0 -> Direction.LEFT  // 180° ± 45°
-    else -> Direction.BACK                              // -90° ± 45°
-}
-```
-
-- `atan2` devuelve `[-π, π]`: 0° = derecha, 90° = **abajo** (en pantalla +Y es
-  hacia abajo), ±180° = izquierda, -90° = arriba.
-- Por eso `FRONT` corresponde a tocar **abajo** y `BACK` a tocar **arriba**.
-- Las coordenadas son relativas al centro de la pokeball, no a la pantalla.
-
-### Reglas de animación
-
-| Situación | Frame resultante | Temporizador |
+| Fondo | Tramo | Entrenador |
 |---|---|---|
-| Cambia la dirección | 0 de la nueva dirección | Se cancela |
-| Misma dirección | `(actual + 1) % 4` | Se programa reset a 1 s |
-| Pasa 1 s sin tocar | Vuelve a 0 | — |
+| Vertical | recto | `BACK` |
+| Vertical | lateral derecha | `RIGHT` |
+| Vertical | lateral izquierda | `LEFT` |
+| Horizontal | recto | `RIGHT` |
+| Horizontal | `LEFT` | sube (mira hacia arriba) |
+| Horizontal | `RIGHT` | baja (mira hacia abajo) |
 
-> **Nota de comportamiento:** al cambiar de dirección el Trainer queda en el
-> frame 0 de esa dirección; la rama `if (directionChanged)` de
-> `MainViewModel.onPokeBallTouch()` controla ese reinicio.
-
-El temporizador usa `viewModelScope` y cancela el `Job` anterior, de forma que
-no se acumulan resets:
-
-```kotlin
-private fun scheduleFrameReset() {
-    resetJob?.cancel()
-    resetJob = viewModelScope.launch {
-        delay(FRAME_RESET_DELAY_MS)   // 1000 ms
-        _uiState.update { state ->
-            state.copy(
-                trainer = state.trainer.copy(currentFrame = 0),
-                trainerFrameRes = sprites.frame(state.trainer.currentDirection, 0)
-            )
-        }
-    }
-}
-```
+`TrainerAnimator` arranca cada dirección por su `startFrame()` (los laterales
+empiezan en el segundo fotograma), encadena el ciclo y vuelve a `FRONT` frame 0
+tras 1 segundo sin pulsar. El paso lateral programa su segundo fotograma a 60 ms.
 
 ### Feedback del clic
 
-Cada incremento real de `zoneClicks` (delta > 0) agrega un **pop flotante**
-"+N" (`RetroPop` → `PopLayer` en `MainScreen`): sube 48 dp, se desvanece y se
-autoelimina a los 640 ms. Es el **único** feedback del clic: no hay flash de
-pantalla ni sacudida del sprite (se retiraron porque el parpadeo blanco
-resultaba molesto).
+Cada incremento real de `zoneClicks` genera un **pop flotante** `+N` que sube,
+se desvanece y se autoelimina. Es el **único** feedback: no hay flash de pantalla
+ni sacudida del sprite. Con la barra llena o un encuentro abierto el delta es 0 y
+no se genera.
 
-El pop solo aparece cuando el clic suma avance real: con la barra de zona llena
-(`zoneClicks` se capa en el umbral) o con un encuentro abierto, el delta es 0 y no
-se genera.
+### Clic y captura
 
-### Captura del toque
+`onPokeBallTouch(direction)` es el punto de entrada: si el tutorial no está en
+juego libre, no hace nada. Si hay un encuentro, la Pokébola no interviene en la
+partida (el minijuego tiene su propio control). Si no, marca actividad de
+caminata y suma `clickPower`. Con la barra de zona llena, el delta es 0 porque el
+progreso se capa.
 
-El toque lo captura la Pokéball del bottom menu. `AppRoot` (sin estado) lo
-reenvía a la lambda `onPokeBallTouch`, que la `MainActivity` conectó al ViewModel,
-con el tamaño real en px calculado a partir de `BottomMenuDefaults.POKEBALL_SIZE`:
+`clickPower` se deriva en `GameProjection`:
 
-```kotlin
-val pokeBallSizePx = with(LocalDensity.current) { BottomMenuDefaults.POKEBALL_SIZE.toPx() }
-
-PokemonBottomMenu(
-    onPokeBallGameClick = { offset ->
-        pokePulses.longValue++      // empujón del fondo de ruta (efímero de UI)
-        onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)
-    },
-    // ...
-)
 ```
-
-`pokePulses` es un contador `Long` recordado en `AppRoot`; solo alimenta a
-`RouteScrollingBackground`, nunca al ViewModel. `offset` es la posición local
-dentro de la Pokéball, que es lo que necesita
-`directionFrom`. Sigue siendo válida aunque esté escalada y desplazada, porque
-`graphicsLayer` no transforma las coordenadas de puntero.
+clickPower = (1 + 0.05 × especies en posesión + 0.02 × vínculo si el starter
+              está equipado).roundToLong().coerceAtLeast(1)
+```
 
 ---
 
 ## 6. Posicionamiento porcentual (`PercentageLayout`)
 
-Este es el componente que permite **mover elementos con valores porcentuales
-que funcionan en cualquier tamaño de pantalla**. Implementa guías y bias
-porcentual sin depender de ConstraintLayout.
+Componente propio para mover elementos con valores porcentuales en cualquier
+pantalla, sin `ConstraintLayout`.
 
 ### Uso
 
 ```kotlin
-PercentageLayout {                                   // zona 10 % … 90 % de la altura
+PercentageLayout {
     Image(..., Modifier.size(180.dp).anchorVertically(bias = 0.50f))
     Text(..., Modifier.anchorVertically(bias = 0.35f))
     Image(..., Modifier.size(80.dp).anchor(verticalBias = 0.80f, horizontalBias = 0.90f))
 }
 ```
 
-### API
-
 | Modifier | Efecto |
 |---|---|
-| `Modifier.anchorVertically(bias)` | Sesgo vertical dentro de la zona de contenido. `0f` = pegado arriba, `0.5f` = centrado, `1f` = pegado abajo. |
-| `Modifier.anchor(verticalBias, horizontalBias)` | Ambos a la vez. |
+| `Modifier.anchorVertically(bias)` | Sesgo vertical dentro de la zona. `0f` arriba, `0.5f` centro, `1f` abajo. |
+| `Modifier.anchor(verticalBias, horizontalBias)` | Ambos sesgos en un solo anclaje. |
 
-`bias` es el equivalente a `app:layout_constraintVertical_bias` de
-ConstraintLayout: `0f` arriba, `0.5f` centro, `1f` abajo.
-
-### Parámetros de `PercentageLayout`
+### Parámetros (`ContentZoneDefaults`)
 
 | Parámetro | Por defecto | Significado |
 |---|---|---|
-| `topPercent` | `0.10f` | Guía superior inicial (fracción de la altura). |
-| `bottomPercent` | `0.90f` | Guía inferior inicial. |
-| `maxTopPercent` | `0.30f` | La guía superior nunca sube más. |
-| `minBottomPercent` | `0.70f` | La guía inferior nunca baja de aquí. |
+| `TOP` | `0.10f` | Guía superior (fracción de la altura). |
+| `BOTTOM` | `0.90f` | Guía inferior. |
+| `MAX_TOP` | `0.30f` | La guía superior nunca sube más. |
+| `MIN_BOTTOM` | `0.70f` | La guía inferior nunca baja de aquí. |
 | `applyInsets` | `true` | Corrige las guías con barras del sistema y notch. |
 
 ### Cómo funciona
 
 1. Los hijos se miden con `Constraints(maxWidth = ancho del padre)` y altura
-   libre, para que `Modifier.size(...)` y `fillMaxWidth()` funcionen.
-2. Se calculan las guías **sobre la altura real del contenedor**, no sobre
-   valores fijos:
+   libre.
+2. Las guías se calculan sobre la altura real del contenedor:
 
 ```kotlin
 val topLimit    = (height * topPercent    + topInsetPx).coerceAtMost(height * maxTopPercent)
@@ -763,520 +581,199 @@ val x = ((width  - placeable.width)  * anchor.horizontalBias).roundToInt()
 val y = (topLimit + (zoneHeight - placeable.height) * anchor.verticalBias).roundToInt()
 ```
 
-El `coerceAtMost` / `coerceAtLeast` evita que el contenido se solape en pantallas
-con barras muy altas.
+El inset superior suma y el inferior resta; la composición es idéntica en
+cualquier móvil.
 
-### Inset automático
+### Limitaciones
 
-```kotlin
-val bars  = WindowInsets.systemBars.asPaddingValues()
-val cutout = WindowInsets.displayCutout.asPaddingValues()
-val topDp = maxOf(bars.calculateTopPadding(), cutout.calculateTopPadding())
-```
-
-El inset superior (barra de estado o notch) **suma**, el inferior (barra de
-navegación o barra de gestos) **resta**. El resultado es que la composición es
-idéntica en cualquier móvil.
-
-### Valores actuales de la pantalla principal
-
-El cromo de la pantalla principal vive en `object MainLayout`
-(`ui/MainScreen.kt`); el mundo (entrenador) se mide en píxeles de arte en
-`WorldDefaults` (`ui/WorldFrame.kt`):
-
-```kotlin
-object MainLayout {
-    val HUD_PADDING = 16.dp              // margen del HUD
-}
-
-internal object WorldDefaults {
-    const val TRAINER_CENTER_ART_Y = 780.8f   // centro del sprite, en px de arte
-    const val TRAINER_BOX_ART_SIZE = 224f     // lado del recuadro del entrenador
-}
-```
-
-> La Pokéball **no** se posiciona desde aquí: la dibuja el bottom menu. Sus
-> ajustes están en `ui/PokemonBottomMenu.kt`.
-
-**Para mover el entrenador, cambia `WorldDefaults.TRAINER_CENTER_ART_Y`; para
-mover el cromo, su `BIAS`.**
-
-### Mover el entrenador
-
-El entrenador se proyecta con `WorldFrame`: su centro cae en
-`TRAINER_CENTER_ART_Y` (px de arte), así que la posición es la misma fracción del
-arte en cualquier móvil. No usa `dp` ni porcentajes de pantalla.
-
-### Posicionar en ambas dimensiones a la vez
-
-Para elementos de cromo que necesitan sesgo vertical **y** horizontal usa
-`anchor(...)`:
-
-```kotlin
-Modifier.anchor(
-    verticalBias = 0.9f,
-    horizontalBias = 0.1f
-)
-```
-
-> **Usa `anchor(...)` cuando necesites las dos posiciones.** `anchorVertically`
-> solo fija el sesgo vertical; `anchor()` mete ambos sesgos en un único dato de
-> anclaje.
-
-### Por qué no se usa `constraintlayout-compose`
-
-El componente propio cubre el caso actual (guías + bias + insets) sin añadir una
-dependencia ni otro sistema de medidas. Si en el futuro hiciera falta un grafo de
-restricciones complejo, habría que reconsiderarlo.
-
-> **Aviso importante (Compose UI 1.9):** si añades layouts personalizados,
-> ten en cuenta que `MeasurePolicy.measure` recibe `List<Measurable>` (no un
-> `Measurable` suelto) y que `ParentDataModifier` expone
-> `Density.modifyParentData(parentData): Any` en lugar de `modifierParentData`.
-
-### Limitaciones conocidas
-
-- Un elemento solo admite **un** `AnchorData`; si encadenas dos anclas, gana la
-  última. Usa `anchor(verticalBias, horizontalBias)` para ambos ejes.
-- Los sesgos **no se recortan**: un valor fuera de `0f..1f` coloca el elemento
-  fuera de la zona de contenido. Se dibuja igualmente, pero deja de estar
-  protegido por los límites ni los insets.
-- La altura se deja sin límite (`maxHeight = Infinity`), por lo que un
-  `fillMaxHeight()` dentro de `PercentageLayout` produciría una altura
-  indeterminada. Usa siempre `Modifier.size(...)` o tamaño intrínseco.
-- Solo hay anclaje **porcentual**; para márgenes fijos usa `Modifier.padding`
-  o `Modifier.offset`.
+- Un elemento solo admite **un** `AnchorData`; usa `anchor(...)` para ambos ejes.
+- Los sesgos **no se recortan**: fuera de `0f..1f` el elemento queda fuera de la
+  zona.
+- La altura se deja libre (`maxHeight = Infinity`): no uses `fillMaxHeight()`
+  dentro; usa `size(...)` o tamaño intrínseco.
+- Solo hay anclaje porcentual; para márgenes fijos usa `padding` u `offset`.
 
 ---
 
 ## 7. Pantalla de mapa
 
-`MapScreen` es un **composable sin estado y sin lógica**: solo muestra un texto
-centrado. Ocupa todo el espacio del contenido, es decir, la pantalla completa por
-debajo del bottom menu.
+La pestaña **Mapa** es una pantalla real, no un placeholder. Se compone como
+`MapCarcasaScreen` → `MapScreen`, con la carcasa entre el mapa y los controles.
 
-Para darle contenido, añade los composables dentro de `PercentageLayout` para
-que se comporten igual que en la pantalla principal.
+### Capas
+
+1. **Océano** (`MapOceanBackdrop`, `#0185DB`) detrás de todo, también bajo el
+   hueco del menú.
+2. **Mapa** (`MapScreen`): `mapa_kanto.png` con `ContentScale.Fit`.
+3. **Carcasa** (`MapCarcasaFrame`): cabecera, marco y módulo inferior.
+4. **Controles flotantes**: indicador de zona y botón de restaurar vista (botón
+   del editor solo en debug).
+
+La carcasa está separada del diseño original de 910 × 1728 px:
+
+| Pieza | Asset | Tamaño | Comportamiento |
+|---|---|---|---|
+| Cabecera | `mapa_cabecera.webp` | 910×138 | Escala proporcional al ancho |
+| Marco | `mapa_marco.9.png` | 912×1256 | NinePatch; solo se estira el centro |
+| Módulo inferior | `mapa_modulo_inferior.webp` | 910×114 | Proporción nativa |
+| Base del menú | `mapa_base_menu.webp` | 910×222 | Recorte centrado tras el menú real |
+
+El amarillo `#FDC702` es el respaldo medido del asset.
+
+### Datos del mapa
+
+Dos assets, separando **nombres** de **geografía**:
+
+- `assets/kanto_locations.json`: catálogo de **47 ubicaciones** con `id`
+  numérico estable, nombre y tipo (`CITY`, `ROUTE`, `SPECIAL`).
+- `assets/kanto_regions.json`: geometrías normalizadas `(u, v)` sobre la imagen
+  original. Cada región es un **círculo**, un **rectángulo** o un **polígono**, y
+  referencia al catálogo por `catalogId` o incrusta `name`/`type` si es nueva.
+
+Los solapes se resuelven por prioridad: ciudad (3) > especial (2) > ruta (1). En
+empate gana la primera del JSON. `selectAt` devuelve la región principal y las
+demás que contienen el punto.
+
+`KantoMapData.parseKantoMapData()` valida los dos documentos y sus referencias.
+La carga de Android (`loadKantoMapData`) **nunca lanza**: un fallo deja el mapa
+sin zonas y el juego sigue funcionando; el diagnóstico queda en Logcat con la
+etiqueta `KantoMap`.
+
+### `MapViewModel`
+
+- `onScreenShown()` carga el mapeo **una vez** y limpia la selección anterior.
+- `onTap(u, v)` hace el hit-testing y entrega `MapUiState(primaryName,
+  otherNames)` con los nombres ya resueltos.
+- Si el enlace al catálogo está roto, usa el id técnico como último recurso.
+
+### Interacción
+
+- **Pellizco** para zoom y **arrastre** para desplazar; la rotación se descarta.
+- **Doble toque**: amplía a 2× anclado al punto; si ya está ampliado, restaura.
+- **Toque simple**: envía `(u, v)` al ViewModel; fuera de toda zona el indicador
+  desaparece.
+- **Botón de restaurar** (`Replay`): vuelve a la vista completa con animación.
+- Límites: `MapFitZoom = 1`, `MapMaxZoom = 5`, `MapDoubleTapZoom = 2`.
+
+El indicador (`MapRegionBadge`) está fijo en la esquina superior derecha del área
+visible, con márgenes de zona segura y ancho máximo del 70 % del contenedor.
+
+### Editor de mapa (solo debug)
+
+En compilaciones depurables aparece un botón de llave que abre
+`MapEditorActivity` (vive en el source set `debug` y en el manifiesto de debug).
+El puente está en `dbg/MapEditorContract.kt`: un `Intent` por acción, sin tipos
+del editor en `main`. En release la triple barrera (botón, actividad y captura de
+`ActivityNotFoundException`) lo deja inofensivo.
 
 ---
 
-## 8. Menú de opciones
+## 8. Pokédex
 
-`OptionsSheet` (`ui/Overlays.kt`) es un `ModalBottomSheet` de **Material 3**,
-100 % Compose. Se dibuja dentro del árbol de `AppRoot`.
+Pantalla propia a pantalla completa (`isPokedexOpen`), con la **carcasa** de la
+consola y el menú real encima de la base.
 
-- **Visibilidad**: la manda `GameUiState.isOptionsOpen`. `AppRoot` hace
-  `if (state.isOptionsOpen) OptionsSheet(onDismiss = onCloseOptions)`.
-- **Apertura**: `rememberModalBottomSheetState(skipPartiallyExpanded = true)`, así
-  que se abre directamente al contenido.
-- **Cierre**: `onDismissRequest` (arrastre hacia abajo, toque fuera o botón atrás)
-  llama a `onDismiss`, que ejecuta `MainViewModel.onCloseOptions()`.
-- **Estado persistente**: `MainViewModel` tiene scope de Activity, así que
-  `isOptionsOpen` sobrevive a la rotación.
+### Estructura visual
 
-Contenido actual (`OptionsContent`): título, separador y dos `ListItem`
-decorativos (*Configuración* y *Acerca de*) sin acción asociada.
-
----
-
-## 9. Recursos
-
-### Drawables
-
-| Archivo | Uso |
-|---|---|
-| `pokeball_menu.png` | Pokéball del bottom menu (100 dp en reposo, escala hasta 280 dp) |
-| `pokeball_splash_top.png`, `pokeball_splash_bottom.png` | Cortinilla de arranque |
-| `front0-3.png` | Frames "front" (toque abajo) |
-| `right0-3.png` | Frames "right" (toque derecha) |
-| `left0-3.png` | Frames "left" (toque izquierda) |
-| `back0-3.png` | Frames "back" (toque arriba) |
-| `profesor_oak.png` | Retrato de la introducción |
-| `brock.png` | Retrato de Brock para el discurso de entrada al gimnasio |
-| `brock_surprised.png` | Brock sorprendido, mientras escucha lo del Team Rocket |
-| `brock_angry.png` | Brock enfadado, en el discurso de furia a mitad de combate |
-| `brock_happy.png` | Brock sonriente, en la despedida al ganar el gimnasio |
-| `medalla_roca.png` | Medalla Roca, que Brock entrega al perder |
-| `misty_happy.png`, `misty_happy2.png` | Misty de siempre, boca abierta y cerrada: se alternan mientras habla |
-| `misty_surprised.png` | Misty sorprendida, mientras escucha lo del Team Rocket |
-| `misty_smiling.png` | Misty con media sonrisa, al negarse a regalar la medalla |
-| `misty_angry.png` | Misty enfadada, en el discurso de furia a mitad de combate |
-| `misty_sad.png` | Misty apenada, al perder el combate |
-| `medalla_cascada.png` | Medalla Cascada, que Misty entrega al perder |
-| `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados de la intro |
-| `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principal visto de espaldas en el gimnasio |
-| `golem.gif` | Enemigo de Brock |
-| `rock.png` | Proyectil del gimnasio |
-| `rock_gym.png` | Fondo del gimnasio de roca (`drawable-nodpi`, 1536×2304 pixel art) |
-| `water_gym.png` | Fondo del gimnasio de agua (`drawable-nodpi`, 1536×2304 pixel art) |
-| `rock_shatter.png` | Estallido al romper un proyectil (`drawable-nodpi`, sprite sheet 320×240: 13 frames de 64×80) |
-| `hydro_burst.png` | Acierto del anillo de Misty (`drawable-nodpi`, sprite sheet 1040×1040: 25 frames de 208×208) |
-| `hydro_implode.png` | Fallo del anillo de Misty (`drawable-nodpi`, sprite sheet 1248×1248: 31 frames de 208×208) |
-| `background_ruta.png` | Fondo de ruta animado (`drawable-nodpi`, 1080×1920 pixel art) |
-| `background_bosque_verde.png` | Fondo animado de Bosque Verde (`drawable-nodpi`, 1152×1920 pixel art) |
-| `background_pallet_town.png` | Fondo animado de Pueblo Paleta (`drawable-nodpi`, 2176×3072 pixel art) |
-| `background_ciudad_verde.png` | Fondo animado de Ciudad Verde (`drawable-nodpi`, 2176×3072 pixel art) |
-| `background_ciudad_plateada.png` | Fondo animado de Ciudad Plateada (`drawable-nodpi`, 4608×3840 pixel art) |
-| `background_ruta3.png` | Fondo animado de Ruta 3, en bucle horizontal (`drawable-nodpi`, 1152×1920 pixel art) |
-| `background_ciudad_celeste.png` | Fondo animado de Ciudad Celeste, en bucle horizontal (`drawable-nodpi`, 4608×3840 pixel art) |
-| `ic_launcher_background.xml`, `ic_launcher_foreground.xml` | Icono adaptativo |
-
-Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
-
-### Cómo añadir una imagen nueva
-
-1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
-   solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `miBoton.png` → `mi_boton.png`). Si
-   es pixel art que no debe reescalarse por densidad, va en `res/drawable-nodpi/`
-   (así viven los fondos `background_*.png`).
-2. Añade su `contentDescription` en `strings.xml` si aporta información.
-3. Añade el composable en la pantalla correspondiente.
-4. Declara tamaño y posición en el `object` de configuración de esa pantalla.
-
-> **Aviso de tamaño:** los `@Preview` no son un medidor de rendimiento, pero sí de
-> legibilidad. Los fondos de gimnasio (`rock_gym.png`, `water_gym.png`,
-> `electric_gym.jpg`) van en `drawable-nodpi` para que la densidad no los reescale;
-> roca y agua pasaron de varios MB en JPG a ~40 KB y ~29 KB en PNG.
-
-### Strings (`res/values/strings.xml`)
-
-La lista completa vive en el recurso; los grupos son:
-
-| Grupo | Claves representativas | Uso |
+| Pieza | Asset | Notas |
 |---|---|---|
-| App y navegación | `app_name`, `nav_*`, `map_placeholder` | Nombre, menú y mapa |
-| Pantalla principal | `trainer_desc`, `hud_*` | Trainer y HUD |
-| Acciones | `action_reset`, `action_gym`, `action_wipe` | Botones del HUD |
-| Captura | `catch_*` | Overlay de encuentro |
-| Starter y principal | `starter_type`, `lead_*` | Intro y selector de principal |
-| Gimnasio | `gym_*` | HUD, fases y resultado del combate |
-| Introducción | `intro_*` | Diálogo del Profesor Oak |
-| Opciones | `options_*` | Hoja de opciones |
+| Cabecera | `pokedex_cabecera.webp` (941×280) | Sin controles dibujados: los contadores se superponen |
+| Marco | `pokedex_marco.9.png` (943×1106) | NinePatch; la lista vive solo en el interior declarado |
+| Base | `pokedex_base.webp` (941×288) | Detrás del espacio del menú |
+| Respaldo | — | Rojo `#FA1B1C` a pantalla completa, sin franjas |
 
-### Temas
+La lista es una `LazyColumn` de 151 filas. Cada fila muestra número, sprite,
+nombre, tipo y una Pokéball que codifica el estado. El sprite se recorta con
+`opaqueBounds()` y se normaliza a un recuadro de 88×72 dp, con
+`FilterQuality.None`.
 
-`Theme.Pokeclic` hereda de `Theme.MaterialComponents.DayNight.NoActionBar`:
+### Estados
 
-| Atributo | Valor | Motivo |
+| Estado | Cuándo | Presentación |
 |---|---|---|
-| `windowFullscreen` | `true` | Sin barra de estado |
-| `statusBarColor` / `navigationBarColor` | `transparent` | Edge-to-edge |
-| `windowLayoutInDisplayCutoutMode` | `shortEdges` | Contenido hasta los bordes en pantallas con notch |
+| `UNKNOWN` | Nunca conocida | Número y recuadro con «?»; sin nombre, tipo ni sprite |
+| `SEEN` | Vista y no capturada | Sprite y Pokéball gris tenue |
+| `REGISTERED` | Capturada en una run anterior, no poseída ahora | Pokéball sin color a opacidad plena y etiqueta «Registrado» |
+| `CAUGHT` | Poseída ahora o starter elegido | Pokéball a color |
+
+`caughtSpecies ⊆ seenSpecies` se mantiene por construcción. Los contadores:
+
+- **Avistados**: toda especie conocida (`SEEN + REGISTERED + CAUGHT`).
+- **Capturados**: capturadas alguna vez (`CAUGHT + REGISTERED`); no bajan al
+  resetear la run.
+
+### Flujo de datos
+
+```
+assets/pokedex_catalogo.json
+  → PokedexCatalogLoader.load(context)   (una vez por proceso, nunca lanza)
+  → MainViewModel(pokedexLoad)
+  → GameProjection → PokedexProjector.project(...)  (memoizado por historial)
+  → GameUiState.dexEntries / dexSeenCount / dexCaughtCount / dexLoadFailed
+  → DexScreen(state.toDexUiState(), ...)
+```
+
+`PokedexCatalog` valida en su `init`: números consecutivos desde 1, ids únicos
+con formato `[a-z0-9_]+`, nombre y tipo no vacíos. Un fallo de carga muestra un
+mensaje en la pantalla y **no bloquea el juego**.
+
+### Apertura y cierre
+
+`onOpenDex()` solo entra si el tutorial lo permite y no hay starter pendiente,
+selector, encuentro, gimnasio ni capa de entrada. Al abrir se pausa el
+temporizador de caminar (`walkEngine.resetActivity()`); al cerrar hace falta una
+pulsación nueva para reactivarlo. El **Atrás** físico también cierra, con los
+mismos guards.
+
+### Extender la Pokédex
+
+- Añade o corrige la entrada en `pokedex_catalogo.json` (orden = número).
+- Añade el sprite `pokedex_0xxx.png` en `drawable-nodpi/` y su entrada en
+  `PokedexSprites.kt`.
+- `PokedexParserTest` cruza el catálogo de la dex con `SpeciesCatalog` y avisa si
+  divergen en nombre, tipo o número.
 
 ---
 
-## 10. Dependencias
+## 9. Juego: estado y persistencia
 
-Definidas en `gradle/libs.versions.toml` (version catalog).
+### `GameUiState`
 
-### Plugins
-
-| Plugin | Versión |
-|---|---|
-| `com.android.application` | 9.4.1 |
-| `org.jetbrains.kotlin.plugin.compose` | 2.0.0 |
-
-> AGP 9 trae el soporte de Kotlin integrado. **No** apliques
-> `org.jetbrains.kotlin.android`: entra en conflicto con la versión que ya está
-> en el classpath. El `jvmTarget` se configura en `app/build.gradle.kts` con
-> `tasks.withType<KotlinCompile> { compilerOptions.jvmTarget... }`.
-
-### Librerías
-
-| Grupo | Uso |
-|---|---|
-| `androidx.appcompat`, `com.google.android.material` | `AppCompatActivity` y el tema `MaterialComponents.DayNight` |
-| `androidx.core-ktx` | Utilidades base |
-| `androidx.lifecycle.viewmodel-ktx` | `ViewModel`, `viewModelScope`, `viewModelFactory` |
-| `androidx.lifecycle.runtime-compose` | `collectAsStateWithLifecycle()` |
-| `androidx.activity-compose` | `setContent {}` y `by viewModels()` |
-| `androidx.compose.ui`, `ui-graphics`, `ui-tooling-preview` | UI, dibujo y previews |
-| `androidx.compose.material3` | Componentes Material 3 (`ModalBottomSheet`, `Scaffold`…) |
-| `androidx.compose.material-icons-extended` | Iconos de relleno del menú |
-| `androidx.compose.ui.tooling` (`debugImplementation`) | Inspector y previews en debug |
-| `junit` (`testImplementation`) | Tests unitarios de `ModelTest` |
-
-Compose se coordina con el BOM `2024.10.01`.
-
-### Build release
+Es **inmutable** (`@Immutable`) y agrupa juego, navegación y derivados:
 
 ```kotlin
-optimization {
-    enable = true
-    packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
-}
+data class GameUiState(
+    // meta permanente: playerName, coins, seenSpecies, rewardedSpecies,
+    //                 caughtSpecies, medals, starterSpeciesId, starterBond
+    // run: ownedSpecies, leadSpeciesId, gymClearedRun, zoneIndex, zoneClicks
+    // encuentros: walkProgress, encounter, catching
+    // gimnasio: gym, gymIntro
+    // tutorial: tutorialPhase, tutorialMessageClosed
+    // visual: trainer, trainerFrameRes
+    // navegación: contentTab, isOptionsOpen, isLeadOpen, isPokedexOpen
+    // derivados: zoneName, zoneId, zoneRequirement, ownedCount, clickPower,
+    //            maxHp, leadName, leadType, isGymReady, gymLeaderName, gymId,
+    //            gymMechanic, canAdvanceZone, hasWilds, needsStarter,
+    //            leadOptions, starterOptions, dexEntries, dexSeenCount,
+    //            dexCaughtCount, dexLoadFailed
+)
 ```
 
-`material-icons-extended` aporta muchos iconos; la optimización de release es
-lo que permite que R8 elimine los que no se usan.
-
----
-
-## 11. Ciclos de vida y flujos
-
-### Arranque
-
-1. `MainActivity.onCreate()` crea **un único** `MainViewModel` con scope de
-   Activity mediante `viewModelFactory { initializer { ... } }`, porque pide un
-   `SpriteRepository` y un `GameStateStore`.
-2. `setContent { MaterialTheme { ... } }`. Dentro del `setContent` se recoge el
-   único estado con `collectAsStateWithLifecycle()` y se pasa a `AppRoot` junto
-   con las lambdas.
-3. `AppRoot` dibuja el `Scaffold` y, como `contentTab` empieza en `AppTab.Home`,
-   compone `MainScreen(state = state, onEnterGym = ...)`.
-4. `PokeBallSplash` se dibuja encima y se retira al terminar la animación.
-5. Cambiar de pestaña es cambiar `GameUiState.contentTab`, y Compose recompone el
-   `when`.
-
-### Toque
-
-```
-MenuPokeBall (toque sin arrastrar, ya expandida)
-  → AppRoot.onPokeBallGameClick(offset)
-      → pokePulses++                                        // empujón del fondo de ruta
-      → onPokeBallTouch(offset.x, offset.y, pokeBallSizePx)   ← lambda que cableó MainActivity
-          → MainViewModel.onPokeBallTouch(x, y, sizePx)
-              → directionFrom(...)          // lógica de negocio
-              → _uiState.update { ... }     // progreso + trainer + drawable (atómico)
-              → scheduleFrameReset()        // si no cambió la dirección
-  → el StateFlow emite → recomposición de MainScreen
-```
-
-`MainScreen` solo reacciona al estado que ya calculó el ViewModel; no sabe que
-existe la Pokéball.
-
-### Arrastre de la Pokéball
-
-```
-MenuPokeBall.pointerInput (awaitEachGesture)
-  → progress += deltaVertical / DRAG_SENSITIVITY      // 0f..1f, continuo
-  → graphicsLayer: translationY y escala proportionales al progreso
-  → al soltar: si supera el umbral se queda expandido
-      → onExpandedChange(expanded)
-          → MainViewModel.onPokeBallExpanded(expanded) → AppTab.Home si expandida
-      → spring(Muelle) lleva progress a 1f o 0f
-```
-
-### Rotación
-
-- El único `MainViewModel` de Activity sobrevive: no se pierden el progreso ni el
-  destino visible.
-- `GameUiState` conserva `contentTab`, `isOptionsOpen` e `isLeadOpen` (la hoja o el
-  selector siguen abiertos y el botón marcado) sin `rememberSaveable`.
-
-### Destrucción
-
-- Los Jobs de reset de frame, caminar, combate y pesca mueren con `viewModelScope`.
-  **No hace falta `onCleared()`**.
-- Solo hay una composición, la de `setContent`.
-
----
-
-## 12. Guía rápida: mover elementos
-
-### Mover un elemento de cromo
-
-`ui/MainScreen.kt` → `object MainLayout` guarda el único ajuste de cromo de la
-pantalla:
-
-```kotlin
-val HUD_PADDING = 16.dp
-```
-
-Para anclar un elemento suelto dentro de la zona de contenido, usa `anchor(...)`
-con `verticalBias`/`horizontalBias` en el rango `0f` (arriba) a `1f` (abajo). El
-layout no recorta valores fuera de ese rango.
-
-El **entrenador** no se mueve con un sesgo: su posición es
-`WorldDefaults.TRAINER_CENTER_ART_Y`, en píxeles de arte, y la proyecta
-`WorldFrame`.
-
-### Mover o redimensionar la Pokéball del menú
-
-`ui/PokemonBottomMenu.kt` → `object BottomMenuDefaults`. Los dos estados se
-editan por separado, y todo en dp:
-
-| Quiero… | Cambio |
-|---|---|
-| Cambiar su tamaño en reposo | `POKEBALL_SIZE` |
-| Cambiar su sitio en reposo | `POKEBALL_BOTTOM_PADDING` (vertical) y `POKEBALL_OFFSET_X` (lateral) |
-| Cambiar su tamaño expandida | `POKEBALL_EXPANDED_SIZE` |
-| Cambiar su sitio expandida | `POKEBALL_EXPANDED_BOTTOM` (súbelo para que quede más alta) y `POKEBALL_EXPANDED_OFFSET_X` |
-| Que proyecte sombra al expandirse | `EXPANDED_SHADOW` (`0.dp` = sin sombra) |
-| Que el hueco no cambie de ancho | `NOTCH_EXPANDED_WIDTH` = `NOTCH_WIDTH` |
-| Que el hueco se abra más al expandir | `NOTCH_EXPANDED_WIDTH` (súbelo; el tope es la mitad del ancho de la barra) |
-| Que el gesto cueste más o menos | `DRAG_SENSITIVITY` y `SNAP_THRESHOLD` |
-| Cambiar la respuesta visual al toque | `TAP_PUNCH_SCALE` (`1f` = sin "golpe") |
-
-Los dos tamaños son independientes: puedes tener 100 dp en reposo y 320 dp
-expandida sin que nada se recalcule a mano.
-
-> `CONTAINER_HEIGHT` **no se edita**: se deriva de `BAR_HEIGHT` y de cuánto
-> sobresale la Pokéball, así que el hueco que reserva el `Scaffold` se ajusta
-> solo. La Pokéball se dibuja con `graphicsLayer`, que no la recorta al
-> expandirse, así que subirla mucho no la corta: solo se superpone más al
-> contenido de la pantalla.
-
-### Mover toda la zona de contenido
-
-`ui/Layout.kt` → `object ContentZoneDefaults`:
-
-```kotlin
-const val TOP    = 0.10f   // más alto → la zona empieza más abajo
-const val BOTTOM = 0.90f
-const val MAX_TOP    = 0.30f   // tope de seguridad superior
-const val MIN_BOTTOM = 0.70f   // tope de seguridad inferior
-```
-
-### Cambiar tamaños fijos
-
-`MainLayout.HUD_PADDING` para el margen superior del HUD,
-`WorldDefaults.TRAINER_BOX_ART_SIZE` para el lado del entrenador (en px de arte) y
-`BottomMenuDefaults.POKEBALL_SIZE` para la Pokéball del menú.
-
-### Añadir un elemento nuevo a la pantalla principal
-
-```kotlin
-PercentageLayout {
-    // ...elementos existentes...
-
-    Text(
-        text = "Hola",
-        modifier = Modifier.anchorVertically(bias = 0.30f)   // elige la posición
-    )
-}
-```
-
-### Posicionar en horizontal
-
-```kotlin
-Modifier.anchor(verticalBias = 0.5f, horizontalBias = 0.25f)   // 0f = pegado a la izquierda
-```
-
-### Ajustar el entrenador
-
-| Quiero… | Cambio |
-|---|---|
-| Subir o bajar el entrenador | `WorldDefaults.TRAINER_CENTER_ART_Y` (px de arte) |
-| Cambiar su tamaño | `WorldDefaults.TRAINER_BOX_ART_SIZE` (px de arte) |
-| Cambiar sus fotogramas | `SpriteRepository` en `Catalogs.kt` |
-
-El entrenador se dibuja con `PixelImage` (`FilterQuality.None`) para no ablandar el
-pixel art, y su recuadro se proyecta con `WorldFrame`.
-
-### Previsualizar como en el dispositivo
-
-Los `@Preview` deben reproducir el montaje **real**, no la pantalla suelta; si no,
-el preview y el emulador difieren (el entrenador salía en otro sitio y el HUD
-parecía más corto):
-
-- **Dispositivo**: `device = "spec:width=411dp,height=914dp,dpi=420"` (el AVD de
-  pruebas, `Medium_Phone`: 1080×2400 px @ 420 dpi) y `showSystemUi = true`. Está
-  centralizado en la constante `PREVIEW_DEVICE`.
-- **Con bottom menu**: `MainScreen` se previsualiza dentro de un `Scaffold` con el
-  `PokemonBottomMenu` real (helper `MainScreenStage`), porque en la app el menú
-  reserva `CONTAINER_HEIGHT` y eso desplaza al entrenador.
-- **Estado realista**: usar `previewGameState(...)`, **no** `GameUiState()` en
-  blanco (vacío deja el HUD corto y el preview engaña).
-- El montaje **completo** (con overlays) tiene sus previews en `AppRoot`:
-  `AppRootGamePreview`, `AppRootGymPreview` y `AppRootIntroPreview`.
-
-> Los insets del sistema pueden no reproducirse en el preview aunque pongas
-> `showSystemUi = true`; por eso `PercentageLayout` puede verse unos dp más arriba
-> que en el dispositivo.
-
----
-
-## 13. Extensibilidad
-
-### Añadir una nueva pestaña con pantalla
-
-El menú tiene **tres huecos fijos** (izquierda, centro, derecha), así que una
-pestaña nueva no siempre cabrá sin reordenar el menú.
-
-1. Crea `ui/NuevaScreen.kt` con su composable (sin estado propio).
-2. Añade la entrada al `enum class AppTab` (`model/GameData.kt`).
-3. Añade la rama en el `when` de `AppRoot.kt`:
-   ```kotlin
-   AppTab.Nueva -> NuevaScreen(state = ..., onEvento = ...)
-   ```
-4. Conecta sus lambdas desde `MainActivity`. Si necesita estado, añádelo a
-   `GameUiState` y resuélvelo en `MainViewModel`; no crees un segundo ViewModel
-   sin una razón de peso.
-5. Añade su botón en el `MenuBar` pasando `onSelectTab(AppTab.Nueva)`.
-
-### Añadir un nuevo desplegable (bottom sheet)
-
-1. Crea el composable del sheet con `ModalBottomSheet`, como `OptionsSheet`.
-2. Añade un campo boolean a `GameUiState` (p. ej. `isAboutOpen`) y sus
-   `onOpen...` / `onClose...` en `MainViewModel`.
-3. En `AppRoot`, dibújalo tras el `Scaffold` cuando el flag sea `true`.
-4. Añade un botón en el `MenuBar` que llame a `onOpen...`.
-
-### Añadir un paso al tutorial
-
-1. Añade la fase y su acción al enum correspondiente en `model/Tutorial.kt`
-   (o reutiliza las existentes) y su transición en `advance()`.
-2. Declárala en `allowedInteractions` (qué control responde) y en
-   `isMessageVisible` (si arranca con el mensaje abierto).
-3. Añade el texto del mensaje en `strings.xml` (`tutorial_*`) y mapea la fase
-   en `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
-4. Cablea la detección en `AppRoot`/`MainViewModel` si el paso reacciona a una
-   interacción que aún no alimenta la máquina (ver §22).
-5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
-   persiste con `enum.name`; renombrar una fase rompe los guardados
-   existentes a menos que se añada antes un mapeo de compatibilidad.
-
-### Añadir una nueva dirección de animación
-
-1. Añade el valor al `enum class Direction`.
-2. Añade el array de 4 drawables en `DefaultSpriteRepository`.
-3. Ajusta los rangos de ángulo en `MainViewModel.directionFrom()`.
-4. Sube los PNG a `res/drawable/`.
-
-### Cambiar el tiempo del reset o el tick de caminar
-
-`MainViewModel` → `FRAME_RESET_DELAY_MS = 1_000L` y `WALK_TICK_MS = 100L`.
-
-### Sustituir los iconos provisionales
-
-Cambia el `ImageVector` en el `private object MenuIcons` de
-`PokemonBottomMenu.kt`. Si usas iconos propios, ponlos en `res/drawable/` y usa
-`painterResource(id)` en lugar de `imageVector`.
-
-### Ajustar el movimiento de la Pokéball
-
-Todo está en `BottomMenuDefaults`: tamaño, cuánto sube, cuánto crece, sensibilidad
-del arrastre y umbral de enganche. No hace falta tocar la lógica del gesto.
-
-### Escribir tests del ViewModel
-
-`MainViewModel` no importa `R` ni ninguna clase de Android, así que se testea
-directamente en la JVM. Basta con pasar un `SpriteRepository` falso y un
-`GameStateStore` en memoria:
-
-```kotlin
-class FakeSprites : SpriteRepository { /* devuelve ids inventados */ }
-class FakeStore : GameStateStore { /* guarda en memoria */ }
-
-val vm = MainViewModel(FakeSprites(), FakeStore())
-vm.onPokeBallTouch(touchX = 0f, touchY = 100f, sizePx = 200f)   // 100 dp en xhdpi
-assertTrue(vm.uiState.value.zoneClicks > 0L)
-```
-
-El ViewModel también expone los métodos de navegación (`onSelectTab`,
-`onOpenOptions`, etc.), que se prueban sobre el mismo `uiState`.
-
----
-
-## 14. Compatibilidad de la partida actual
-
-El guardado actual es un `GameSnapshot` plano en `SharedPreferences`, dentro de
-`shared_prefs/kanto_clicker.xml`. `SharedPreferencesGameStateStore` escribe una
-clave por campo:
+- Los **tres conjuntos permanentes no son intercambiables**: `seenSpecies`
+  registra conocimiento, `caughtSpecies` la historia que alimenta la Pokédex y
+  `rewardedSpecies` el pago único de monedas.
+- `ownedSpecies` y `gymClearedRun` son **de la run**.
+- `zoneProgress` e `isLeadCandidate()` son derivaciones puras del propio estado.
+
+### Persistencia
+
+`GameStateStore` es el contrato; `SharedPreferencesGameStateStore` es la
+implementación, en `shared_prefs/kanto_clicker.xml`. El nombre histórico se
+mantiene para no invalidar partidas.
 
 | Clave | Campo | Formato |
 |---|---|---|
+| `schema_version` | Versión del formato | `Int` (actual: **2**) |
 | `player_name` | `playerName` | Texto o vacío |
 | `coins` | `coins` | `Long` |
 | `seen` | `seenSpecies` | IDs separados por comas |
@@ -1290,77 +787,635 @@ clave por campo:
 | `gym_cleared_run` | `gymClearedRun` | IDs separados por comas |
 | `zone_index` | `zoneIndex` | `Int` |
 | `zone_clicks` | `zoneClicks` | `Long` |
-| `tutorial_phase` | `tutorialPhase` | Nombre del enum (`PENDING`…`COMPLETED`) |
+| `tutorial_phase` | `tutorialPhase` | Nombre del enum |
 | `tutorial_message_closed` | `tutorialMessageClosed` | `Boolean` |
 
-Limitaciones que condicionan la migración:
+Reglas de compatibilidad:
 
-- **No hay `schemaVersion`**: el formato se deduce por la presencia de `coins`.
-- `owned` es un `Set<String>`: no puede representar dos individuos de la misma
-  especie, nivel, experiencia, movimientos, habilidad ni vínculo por Pokémon.
-- Los IDs son la única relación con el contenido; si un ID desaparece, el dato
-  queda huérfano.
-- El estado transitorio (encuentro, caminar, gimnasio, navegación y animación) no
-  se persiste a propósito.
-- El nombre histórico `kanto_clicker` y el `applicationId` **no se cambian**:
-  hacerlo invalidaría las partidas instaladas.
+- Un guardado sin `schema_version` se acepta como versión **1**.
+- Un guardado de una versión **futura** se ignora (no se reinterpreta).
+- Valores negativos se normalizan a 0.
+- La primera partida se detecta por la existencia de `coins`.
+- `clear()` usa `commit()` (destructivo y síncrono); `save()` usa `apply()`.
+- El estado transitorio (encuentro, captura, caminar, gimnasio, navegación y
+  animación) **no se persiste** a propósito.
 
-La migración a `PokemonInstance` y a un guardado versionado se define en §21.
+Se escribe en **cada** mutación persistente (incluido cada clic); el volumen es
+mínimo y `apply()` no bloquea el hilo de UI.
 
 ---
 
-## 15. Depuración
+## 10. Minijuego de captura
+
+### Mecánica
+
+El salvaje se mueve por un **riel vertical**; la Pokébola es la barra del
+jugador. Mantener pulsado acelera la barra hacia arriba; al soltar, la gravedad
+la hace caer. El medidor de progreso sube mientras la barra solapa al sprite y
+baja cuando no.
+
+- Llenar el progreso → **capturado**.
+- Llegar a 0 (tras la gracia inicial) → **escapado**.
+- La dificultad de la especie (`captureDifficulty`) solo cambia el movimiento del
+  sprite: suavizado y cadencia de dardos.
+
+### Constantes (`CatchingDefaults`)
+
+| Constante | Valor | Uso |
+|---|---|---|
+| `BAR_SIZE` | `0.22` | Tamaño de la barra (fracción del riel) |
+| `BAR_RISE_ACCEL` | `3.0` | Aceleración al mantener |
+| `GRAVITY` | `-3.0` | Caída al soltar |
+| `MAX_BAR_SPEED` | `1.2` | Velocidad máxima |
+| `FILL_RATE` | `0.40`/s | Progreso con solape |
+| `DRAIN_RATE` | `0.20`/s | Progreso perdido sin solape |
+| `INITIAL_GRACE_SECONDS` | `1.0` | Margen inicial sin huida |
+| `THROW_MS` + `REACTION_MS` | `900` + `200` | Vuelo y pausa antes de mover el riel |
+| `SMOOTHING_EASY` / `HARD` | `1.2` / `0.3` | Suavizado por dificultad |
+| `DART_EASY` / `HARD` | `0.4` / `1.6` por segundo | Dardos por dificultad |
+| `DART_BOOST_SECONDS` | `0.5` | Duración del impulso tras un dardo |
+| `WANDER_RANGE` | `0.35` | Vagabundeo suave |
+
+### Bucle y cierre
+
+- `CatchingEngine.start()` espera el lanzamiento y la reacción y luego avanza el
+  estado cada **16 ms** con `dt` real (tope 0,1 s).
+- `CatchingGame.step(state, held, dt, random)` es **puro**: no conoce Android ni
+  el reloj, y recibe la aleatoriedad inyectada.
+- `onCatchingResultContinue()` aplica el resultado:
+  - **capturado**: suma la especie a `ownedSpecies`, `caughtSpecies` y
+    `seenSpecies`, y paga `coinReward` si es la primera vez
+    (`rewardedSpecies`);
+  - **escapado**: no cambia nada.
+  En ambos casos se vuelve al juego y el temporizador de caminar queda listo.
+
+### Escena (`CatchingOverlay`)
+
+Es un *takeover* a pantalla completa: la ruta queda congelada detrás (la escena
+es transparente), no hay HUD ni menú, y la piel imita la pantalla de captura de
+la GBA (riel de energía, Pokébola, medidor y cajas de diálogo). La UI solo pinta
+el `CatchingState` y notifica mantener/soltar y la salida del resultado.
+
+### Archivos
+
+| Archivo | Rol |
+|---|---|
+| `model/CatchingGame.kt` | Reglas puras, constantes y configuración por dificultad |
+| `viewmodel/CatchingEngine.kt` | Bucle de ticks y cierre del encuentro |
+| `viewmodel/EncounterEngine.kt` | Aparición del salvaje al caminar |
+| `ui/CatchingOverlay.kt` | Escena, lanzamiento, resultado y assets `fx_catch_*` |
+
+---
+
+## 11. Gimnasios
+
+### Entrada
+
+Pulsar **Gimnasio** no abre el combate directamente: se cierra una cortinilla
+con las dos mitades de la Pokébola, se queda cerrada 1 segundo y se abre
+descubriendo el escenario. El cambio de escena ocurre con la cortinilla cerrada,
+así que nunca se ve un escenario vacío.
+
+Después llega `GymIntroPhase`:
+
+1. `WELCOME`: retrato del líder y discurso (Brock y Misty tienen guion propio;
+   Lt. Surge usa el panel genérico).
+2. `TUTORIAL`: explicación de la mecánica en **3 pasos** que se revelan solos,
+   con «Repetir tutorial» y «Entendido».
+3. `COUNTDOWN`: cartel de arranque; al terminar empieza el combate.
+
+Una línea puede declarar un **segundo retrato** (`altPortraitRes`): mientras la
+máquina de escribir avanza, los dos se alternan cada 140 ms (así Misty mueve la
+boca). El tamaño del retrato lo limitan tres topes (`leaderPortraitSize`):
+fracción del ancho, ancho máximo y fracción del alto.
+
+### Combate
+
+El combate es un minijuego por **fases excluyentes**:
+
+1. **Ataque** (`GymPhase.ATTACKING`): el líder lanza su mecánica. Cada acierto
+   del jugador suma postura; un fallo resta postura y HP. La postura **solo**
+   cambia con aciertos del jugador (`GymCombat.addPosture`).
+2. **Expuesto** (`GymPhase.EXPOSED`): al llenarse la postura, se rompe; el líder
+   deja de atacar y se abre una ventana de 2,5 s. Los toques sobre el enemigo
+   restan `clickPower × multiplicador de tipo`.
+3. **Furia**: con menos del 25 % de vida, los ataques son más densos y rápidos.
+   La primera vez que un golpe cruzaría el umbral, `gateFirstRage` lo frena y
+   obliga a jugar una ronda completa de furia (`rageRoundPlayed`) antes de poder
+   matar al líder. El cruce abre además el **discurso de furia**: el combate se
+   detiene y se muestra la cara de furia del líder con dos líneas.
+
+`typeDamageMultiplier(leadType, gymType)` es una función pura: 2× si es súper
+eficaz, 0,5× si es poco eficaz, 1× si es neutro o no hay principal.
+
+### Mecánicas por gimnasio
+
+| Gimnasio | Zona | Mecánica | Recompensa | Vida |
+|---|---|---|---|---|
+| **Brock** | Ciudad Plateada | Lluvia de rocas (`PROJECTILES`) | 40 | 80 |
+| **Misty** | Ciudad Celeste | Anillos rítmicos (`TIMING_RINGS`) | 60 | 90 |
+| **Lt. Surge** | Ciudad Carmín | Cuadrícula 4×4 de Voltorb (`VOLTORB_GRID`) | 80 | 120 |
+
+- **Brock**: 5 columnas, 2 rocas cada 650 ms, 1,8 s de caída, 1 de daño, 14
+  aciertos de postura. En furia: 450 ms, 2 rocas y 1,1 s.
+- **Misty**: un anillo cada 750 ms, ventana de 170 ms, viaje 950–1700 ms, 12
+  aciertos, 1 de daño por fallo. En furia: 520 ms y 700–1200 ms.
+- **Surge**: 16 celdas; los Voltorb se encienden cada 520 ms con una ventana de
+  1500 ms (en furia 340/950). Apagar a tiempo evita el daño; tocar una celda
+  apagada descarga. 16 aciertos de postura y 2,5 s de exposición.
+
+### Victoria y derrota
+
+- **Victoria** (`GymOutcome.WON`): el enemigo se hunde y se apaga; después llega
+  la despedida (`GymVictory`), con caras por línea y la medalla apareciendo en el
+  centro. Al cerrar la última, `onGymVictoryDone()` cobra medalla y monedas. Los
+  gimnasios sin despedida propia se cierran al terminar el desvanecimiento.
+- **Derrota** (`GymOutcome.LOST`): panel con **reintentar** (sin coste) y
+  **rendirse** (abandona el intento).
+- La **medalla** persiste entre runs, pero `gymClearedRun` se vacía al resetear:
+  un reset obliga a repetir el combate.
+
+### Arquitectura
+
+- `GymCombatEngine` orquesta el bucle (`GYM_TICK_MS = 50`, primera oleada a 800
+  ms, cuenta atrás de 1000 ms), la entrada, los ataques, la furia y los
+  resultados.
+- `GymCombat` (en `model/Combat.kt`) contiene las transiciones **puras**:
+  acierto → postura, postura llena → expuesto, recuperar → atacar, impacto → HP y
+  el umbral de furia.
+- La vista (`GymOverlay`) **no** recibe actualizaciones por fotograma: interpola
+  la caída con el reloj de frames desde `spawnedAtMs` y reparte los toques en una
+  única capa `pointerInput`.
+
+### Assets
+
+| Asset | Uso |
+|---|---|
+| `rock_gym.png` / `water_gym.png` / `electric_gym.jpg` | Fondos 2:3 de los tres gimnasios |
+| `rock.png`, `rock_shatter.png` | Proyectil y estallido de Brock |
+| `hydro_burst.png`, `hydro_implode.png` | Acierto y fallo del anillo de Misty |
+| `voltorb_capa1..9.png`, `voltorb_aura.png`, `voltorb_blast.png` | Voltorb de Surge |
+| `bulbasaur_back.gif`, `charmander_back.gif`, `squirtle_back.gif` | Principales vistos de espaldas |
+| `golem.gif`, `starmie.gif`, `raichu.gif` | Enemigos de Brock, Misty y Surge |
+
+Los efectos de pixelfx (`rock_shatter`, `hydro_burst`, `hydro_implode` y los
+Voltorb) se generan con la herramienta de pixelfx **fuera de este repositorio** y
+se copian a `drawable-nodpi/`. `RockShatterFxTest` y `WaterRingFxTest` comprueban
+que las hojas reales coinciden con sus rejillas.
+
+### Añadir un gimnasio
+
+1. Añade una entrada a `GymCatalog` con su `id`, tipo, vida, postura, ventana y
+   parámetros de la mecánica.
+2. Referencia el `id` en la zona (`gymId`).
+3. Añade el fondo y los sprites; registra su composición en `GymSceneLayouts`
+   (sin entrada usa `DEFAULT`).
+4. Opcional: guion de entrada (`GymEntry.leaderScriptFor`), furia
+   (`GymRageSpeech`) y victoria (`GymVictory`). Sin guion, se usan los textos
+   genéricos.
+
+---
+
+## 12. Introducción y tutorial
+
+### Introducción del Profesor Oak
+
+Es la primera pantalla de una partida nueva (`needsStarter`). Es un guion de
+líneas con:
+
+- **Máquina de escribir** (`TYPE_CHAR_MS = 35 ms`); el toque completa la línea y
+  luego avanza.
+- **Widgets** por línea (`IntroWidget`): `NONE`, `NAME`, `CONFIRM_NAME`,
+  `STARTER`, `CONFIRM_STARTER`.
+- **Moods** de Oak (`OakMood`): `TALKING`, `ANGRY`, `DROP`, `OFFERING`, con sus
+  retratos (`profesor_oak*`).
+- El nombre se limita a **12 caracteres** y no puede quedar en blanco.
+- Al elegir el starter, sus GIF se muestran en fila; la elección se confirma
+  antes de terminar.
+
+Al terminar, `onFinishIntro(name, starterId)` fija en **una sola mutación**:
+nombre, starter, vínculo 0 y principal; marca el starter como **visto y
+capturado** en la Pokédex y dispara `OAK_FINISHED` en el tutorial. Nada se
+persiste hasta terminar la intro.
+
+### Tutorial guiado
+
+`model/Tutorial.kt` es una máquina de estados **pura**:
+
+| Fase | Qué espera |
+|---|---|
+| `PENDING` | Oak aún no terminó (o partida heredada) |
+| `OFFER` | Respuesta a «¿Quieres un tutorial?» |
+| `CONFIRM` | «Empezar tutorial» / «Omitir» |
+| `DEPLOY_POKEBALL` | Desplegar la Pokébola |
+| `OPEN_MAP` → `RETURN_MAP` | Abrir el mapa y volver |
+| `OPEN_POKEDEX` → `RETURN_POKEDEX` | Abrir la Pokédex y volver |
+| `FAREWELL` | Cerrar la despedida de Oak |
+| `EXP_WAIT` → `EXP_NOTICE` → `ADVANCE_WAIT` | Ver la barra llena y avanzar |
+| `SKIPPED` / `COMPLETED` | Finales absorbentes |
+
+Reglas:
+
+- Las transiciones solo ocurren con **acciones reales** (`TutorialAction`); una
+  acción fuera de fase es un **no-op**.
+- Cada fase declara qué interacciones de juego permite (`TutorialInteraction`).
+  Mientras hay un mensaje visible, **nada del juego responde**.
+- Los guards viven en `MainViewModel` (`tutorialAllows`) y cubren toda la
+  operación: bloqueado, el método devuelve el estado intacto.
+- `derive()` normaliza dos transiciones dependientes del juego: `PENDING` +
+  starter → `OFFER`, y `EXP_WAIT` + barra llena → `EXP_NOTICE`.
+- `tutorialPhase` se persiste por **nombre del enum** (`tutorial_phase`);
+  renombrar una fase rompe guardados salvo que se añada un mapeo. Un guardado sin
+  la clave resuelve `COMPLETED` si ya hay starter y `PENDING` si no.
+- Limitación conocida: al reabrir a mitad de un diálogo paginado se recupera la
+  fase y si el mensaje estaba abierto, pero la página vuelve al inicio.
+
+### Archivos
+
+| Archivo | Rol |
+|---|---|
+| `ui/Intro.kt` | Guion, retratos, nombre, starter y GIF con `ImageDecoder` |
+| `model/Tutorial.kt` | Fases, acciones, transiciones y predicados |
+| `ui/TutorialOverlay.kt` | Diálogos paginados, preguntas y scrim |
+| `ui/AppRoot.kt` | Capa del tutorial y bloqueo de menú/Atrás |
+| `viewmodel/MainViewModel.kt` | Guards sobre los eventos reales |
+
+---
+
+## 13. Tema retro y componentes compartidos
+
+- **`RetroTheme.kt`**: `RetroColors` (paleta del juego), formas cortadas
+  (`PanelShape`, `PlateShape`, `CellShape`, `ButtonShape`), `RetroTypeColors` y
+  `RetroTypography` (aplicada en `MainActivity` con
+  `MaterialTheme(typography = RetroTypography)`), además de `PixelImage`.
+- **`GameUiComponents.kt`**: `GameColors`, `Modifier.bouncyClickable`,
+  `CoinDisc` y `RetroButton`.
+- **`PixelFont.kt`**: fuente 5×7 portada de pixelfx. Dibuja los glifos con
+  rectángulos (no con `Text`) para el cartel de combo; conserva el contorno, los
+  tramos de color, el ensanche de entrada y el brillo.
+- **`PixelArt.kt`**: `opaqueBounds()` recorta el margen transparente de los
+  sprites para normalizarlos en un recuadro fijo.
+- **`ModalBlocking.kt`**: `Modifier.modalBlocking()` consume todos los eventos de
+  puntero de una capa modal sin bloquear sus propios controles.
+- **`Layout.kt`**: `PercentageLayout` y sus anclajes (ver §6).
+
+### Regla de capas modales
+
+Todo overlay modal nuevo debe:
+
+1. aplicar `Modifier.modalBlocking()` en su nodo raíz;
+2. hacer que `AppRoot` **no componga** cualquier superficie de juego cuyos
+   detectores ignoren el consumo (la Pokébola es el caso conocido);
+3. cubrir el botón **Atrás** si la capa no debe abandonarse con él.
+
+---
+
+## 14. Recursos
+
+### `drawable/`
+
+| Grupo | Archivos |
+|---|---|
+| Entrenador | `front0-3.png`, `right0-3.png`, `left0-3.png`, `back0-3.png` |
+| Oak | `profesor_oak.png`, `profesor_oak_talk.png`, `profesor_oak_angry*.png`, `profesor_oak_drop.png`, `profesor_oak_offering.png` |
+| Líderes | `brock*.png`, `misty*.png` |
+| Medallas | `medalla_roca.png`, `medalla_cascada.png` |
+| Starters | `bulbasaur.gif`, `charmander.gif`, `squirtle.gif` y sus `*_back.gif` |
+| Enemigos | `golem.gif`, `starmie.gif`, `raichu.gif` |
+| Combate | `rock.png`, `pokeball_menu.png`, `pokeball_splash_*.png` |
+| Launcher | `ic_launcher_background.xml`, `ic_launcher_foreground.xml` |
+
+### `drawable-nodpi/`
+
+| Grupo | Archivos |
+|---|---|
+| Fondos de ruta | `background_pallet_town.png`, `background_bosque_verde.png`, `background_ciudad_verde.png`, `background_ciudad_plateada.png`, `background_ruta3.png`, `background_mt_moon.png`, `background_ciudad_celeste.png`, `background_ciudad_carmin.png`, `background_ruta.png` |
+| Gimnasios | `rock_gym.png`, `water_gym.png`, `electric_gym.jpg` |
+| Efectos | `rock_shatter.png`, `hydro_burst.png`, `hydro_implode.png`, `fx_catch_success.png`, `fx_catch_break.png`, `voltorb_*.png` |
+| Mapa | `mapa_kanto.png`, `mapa_cabecera.webp`, `mapa_marco.9.png`, `mapa_modulo_inferior.webp`, `mapa_base_menu.webp` |
+| Pokédex | `pokedex_cabecera.webp`, `pokedex_marco.9.png`, `pokedex_base.webp`, `pokedex_0001..0151.png` |
+
+Nombres en minúsculas obligatorio (a-z, 0-9, `_`). Los assets que no deben
+reescalarse por densidad van en `drawable-nodpi/`.
+
+### Cómo añadir una imagen
+
+1. Copia el archivo con nombre en minúsculas y solo `[a-z0-9_]`.
+2. Si es pixel art que no debe reescalarse, usa `drawable-nodpi/`.
+3. Añade su `contentDescription` en `strings.xml` si aporta información.
+4. Declara tamaño y posición en el `object` de configuración de esa pantalla.
+
+### Strings (`res/values/strings.xml`)
+
+| Grupo | Uso |
+|---|---|
+| `app_*`, `poke_*`, `trainer_*`, `nav_*` | Nombre y navegación |
+| `hud_*` | Zona, monedas y barra EXP |
+| `action_*` | Avanzar, gimnasio, reset y wipe |
+| `catch_*`, `catching_*` | Encuentro y minijuego de captura |
+| `lead_*` | Selector de principal |
+| `gym_*` | Entrada, combate, furia y victoria |
+| `dex_*` | Pokédex, estados y contadores |
+| `map_*` | Mapa, carcasa y editor |
+| `options_*`, `wipe_*` | Hoja de opciones y borrado |
+| `intro_*` | Guion del Profesor Oak |
+| `tutorial_*` | Tutorial guiado |
+
+### Temas
+
+`Theme.Pokeclic` hereda de `Theme.MaterialComponents.DayNight.NoActionBar`:
+
+| Atributo | Valor | Motivo |
+|---|---|---|
+| `windowFullscreen` | `true` | Sin barra de estado |
+| `statusBarColor` / `navigationBarColor` | `transparent` | Edge-to-edge |
+| `windowLayoutInDisplayCutoutMode` | `shortEdges` | Contenido hasta los bordes con notch |
+
+La app es **solo vertical**: `screenOrientation="portrait"` y
+`appCategory="game"` (necesario para mantener el bloqueo en pantallas ≥ 600 dp
+desde Android 16).
+
+---
+
+## 15. Dependencias y build
+
+Definidas en `gradle/libs.versions.toml`.
+
+### Plugins
+
+| Plugin | Versión |
+|---|---|
+| `com.android.application` | 9.1.1 |
+| `org.jetbrains.kotlin.plugin.compose` | 2.2.10 |
+
+> AGP 9 trae el soporte de Kotlin integrado. **No** apliques
+> `org.jetbrains.kotlin.android`: entra en conflicto con la versión del
+> classpath. `jvmTarget` se configura en `app/build.gradle.kts`.
+
+### Librerías
+
+| Grupo | Uso |
+|---|---|
+| `androidx.appcompat`, `com.google.android.material` | `AppCompatActivity` y el tema |
+| `androidx.core-ktx` | Utilidades base |
+| `androidx.lifecycle.viewmodel-ktx` | `ViewModel`, `viewModelScope`, `viewModelFactory` |
+| `androidx.lifecycle.runtime-compose` | `collectAsStateWithLifecycle()` |
+| `androidx.activity-compose` | `setContent {}` y `by viewModels()` |
+| `androidx.compose.ui`, `ui-graphics`, `ui-tooling-preview` | UI, dibujo y previews |
+| `androidx.compose.material3` | Componentes Material 3 |
+| `androidx.compose.material-icons-extended` | Iconos del menú y la hoja |
+| `androidx.compose.ui.tooling` (`debugImplementation`) | Inspector y previews |
+| `junit`, `kotlinx-coroutines-test` | Tests unitarios |
+| `org.json:json` (`testImplementation`) | `org.json` en la JVM de los tests |
+
+Compose se coordina con el BOM **2024.10.01**.
+
+### Build release
+
+```kotlin
+optimization {
+    enable = true
+    packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+}
+```
+
+`material-icons-extended` aporta muchos iconos; la optimización permite que R8
+elimine los que no se usan.
+
+---
+
+## 16. Ciclos de vida y flujos
+
+### Arranque
+
+1. `MainActivity.onCreate()` crea `MainViewModel` y `MapViewModel` con
+   `viewModelFactory { initializer { ... } }`.
+2. Carga el catálogo de la Pokédex **una vez por proceso**
+   (`PokedexCatalogLoader.load`) y lo inyecta en el ViewModel.
+3. `setContent { MaterialTheme(typography = RetroTypography) { ... } }` recoge los
+   dos `StateFlow` y pasa estado y lambdas a `AppRoot`.
+4. `AppRoot` compone la pantalla y la `PokeBallSplash` se dibuja encima hasta que
+   termina.
+5. El `MapViewModel` no carga nada hasta que la pestaña Mapa aparece
+   (`onScreenShown`).
+
+### Toque
+
+```
+MenuPokeBall (toque expandida)
+  → AppRoot.onPokeBallGameClick
+      → pokePulses++                               // fondo de ruta
+      → routeBackground.motion.directionForStep()  // dirección del entrenador
+      → MainViewModel.onPokeBallTouch(direction)
+          → guard del tutorial
+          → TrainerAnimator.animate(...)
+          → EncounterEngine.noteActivity(...)
+          → GameProjection.project(...) → StateFlow
+```
+
+### Captura
+
+```
+EncounterEngine (3 s de caminata) → Encounter + CatchingState
+  → CatchingOverlay (mantener/soltar)
+  → CatchingEngine (tick 16 ms)
+  → CatchingGame.step (puro)
+  → panel de resultado → onCatchingResultContinue()
+  → owned/caught/seen/coins + sin encuentro
+```
+
+### Rotación y destrucción
+
+- Los dos ViewModels sobreviven a la rotación: no se pierden progreso, pantalla
+  ni capas abiertas.
+- Los Jobs de caminar, captura, gimnasio y animación mueren con
+  `viewModelScope`; no hace falta `onCleared()`.
+- Solo hay una composición, la de `setContent`.
+
+---
+
+## 17. Guía rápida
+
+### Mover un elemento de cromo
+
+`ui/MainScreen.kt` → `object MainLayout` (`HUD_PADDING`). Para anclar un elemento
+suelto dentro de la zona de contenido usa `Modifier.anchor(...)`.
+
+### Mover o redimensionar la Pokébola
+
+`ui/PokemonBottomMenu.kt` → `object BottomMenuDefaults`:
+
+| Quiero… | Cambio |
+|---|---|
+| Tamaño en reposo / expandida | `POKEBALL_SIZE` / `POKEBALL_EXPANDED_SIZE` |
+| Sitio en reposo / expandida | `POKEBALL_BOTTOM_PADDING` + `POKEBALL_OFFSET_X` / `POKEBALL_EXPANDED_BOTTOM` + `POKEBALL_EXPANDED_OFFSET_X` |
+| Sombra al expandir | `EXPANDED_SHADOW` |
+| Hueco fijo o más ancho | `NOTCH_EXPANDED_WIDTH` = o > `NOTCH_WIDTH` |
+| Gesto más o menos sensible | `DRAG_SENSITIVITY` y `SNAP_THRESHOLD` |
+| Respuesta visual al toque | `TAP_PUNCH_SCALE` (`1f` lo desactiva) |
+
+`CONTAINER_HEIGHT` **no se edita**: se deriva de `BAR_HEIGHT` y de cuánto
+sobresale la Pokébola.
+
+### Mover toda la zona de contenido
+
+`ui/Layout.kt` → `object ContentZoneDefaults` (`TOP`, `BOTTOM`, `MAX_TOP`,
+`MIN_BOTTOM`).
+
+### Mover el entrenador
+
+`ui/WorldFrame.kt` → `WorldDefaults`:
+
+| Quiero… | Cambio |
+|---|---|
+| Subir o bajar | `TRAINER_CENTER_ART_Y` (px de arte) |
+| Cambiar su tamaño | `TRAINER_BOX_ART_SIZE` (px de arte) |
+| Cambiar fotogramas | `SpriteRepository` en `Catalogs.kt` |
+
+### Añadir una animación de zona
+
+1. Deja el PNG en `drawable-nodpi/` (idealmente un ancho de pantalla y continuo
+   en ambos ejes).
+2. Añade la entrada a `RouteBackgrounds.byZone` con el `Zone.id`, el arte y una
+   lista de `RouteLeg`. Para un fondo horizontal, `axis = HORIZONTAL`.
+3. Ajusta `startAnchor`, `startOffset`, `seamCutRow` y `artScale` si hace falta.
+
+No hay que tocar la pantalla, el ViewModel ni el sprite.
+
+### Previsualizar como en el dispositivo
+
+- **Dispositivo**: `device = "spec:width=411dp,height=914dp,dpi=420"` y
+  `showSystemUi = true`.
+- **Con bottom menu**: `MainScreenStage` compone el menú real.
+- **Estado realista**: usa `previewGameState(...)`, no un `GameUiState()` vacío.
+- **Montaje completo**: `AppRootGamePreview`, `AppRootGymPreview`,
+  `AppRootGymIntroPreview`, `AppRootIntroPreview`, `AppRootCatchingPreview`,
+  `AppRootDexPreview`, `AppRootTutorialOfferPreview` y
+  `AppRootTutorialDeployPreview`.
+- Los previews **no** reproducen los insets reales ni siempre el
+  `shadowElevation` de `graphicsLayer`.
+
+---
+
+## 18. Extensibilidad
+
+### Añadir una zona jugable
+
+1. Añade la entrada a `ZoneCatalog.zones` (el orden es la posición).
+2. Define `wildSpeciesIds` (vacío = ciudad sin fauna) y, si toca, `gymId`.
+3. Opcional: arte y trayectoria en `RouteBackgrounds.byZone`.
+4. Si la zona tiene gimnasio, añádelo antes a `GymCatalog`.
+5. `CatalogTest` bloquea el orden y exige que cada zona pida más clics que la
+   anterior; `RouteBackgroundsTest` valida el arte y los tramos.
+
+### Añadir una especie
+
+- Añade la entrada a `SpeciesCatalog.species` (id estable, nombre, tipo,
+  dificultad, recompensa y número de dex).
+- La Pokédex se alimenta de `pokedex_catalogo.json`: añade o corrige ahí la
+  entrada y su sprite.
+- Para que aparezca, inclúyela en el `wildSpeciesIds` de una zona.
+
+### Añadir una pantalla o pestaña
+
+1. Crea `ui/NuevaScreen.kt` sin estado propio.
+2. Añade el destino a `AppTab` (**solo hay Mapa y Home**; el menú tiene tres
+   huecos fijos, así que una pestaña nueva exige reordenarlo).
+3. Añade la rama en el `when` de `AppRoot`.
+4. Conecta sus lambdas desde `MainActivity`. Si necesita estado, resuélvelo en el
+   ViewModel correspondiente.
+
+### Añadir una hoja modal
+
+1. Crea el composable con `ModalBottomSheet`, como `OptionsSheet`.
+2. Añade un flag a `GameUiState` y sus `onOpen...` / `onClose...` en
+   `MainViewModel`.
+3. Compónla en `AppRoot` y oculta el menú si sus detectores ignoran el consumo.
+4. Añade la fila que la abre.
+
+### Añadir una región al mapa
+
+1. Añade la ubicación a `kanto_locations.json` (id numérico estable) o usa una ya
+   existente.
+2. Dibuja su geometría en `kanto_regions.json` y enlázala por `catalogId`.
+3. Para hacerlo cómodo, usa el editor visual en debug (botón de llave).
+4. `MapRegionsTest` y `MapRegionsJsonTest` validan geometrías y referencias.
+
+### Añadir un paso al tutorial
+
+1. Añade la fase y su acción a `model/Tutorial.kt` y su transición en `advance()`.
+2. Declara la interacción en `allowedInteractions` y el momento del mensaje.
+3. Añade el texto en `strings.xml` (`tutorial_*`) y mapea la fase en
+   `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
+4. Cablea la detección en `MainViewModel`/`AppRoot` si el paso usa una
+   interacción nueva.
+
+**El nombre del enum es contrato de guardado**: renombrar una fase rompe los
+guardados existentes salvo que se añada un mapeo.
+
+### Añadir una dirección de animación
+
+1. Añade el valor a `enum class Direction`.
+2. Añade su array de frames en `DefaultSpriteRepository`.
+3. Ajusta `directionForStep`/`RouteBackgroundMotion` si debe salir de un tramo.
+4. Sube los PNG a `res/drawable/`.
+
+### Cambiar ritmos
+
+| Ritmo | Dónde |
+|---|---|
+| Reset del entrenador | `TrainerAnimator.FRAME_RESET_DELAY_MS` |
+| Caminata y encuentros | `EncounterEngine.WALK_*` y `ENCOUNTER_SECONDS` |
+| Captura | `CatchingDefaults` |
+| Combate de gimnasio | `GymCombatEngine.GYM_TICK_MS`, `GymCatalog` |
+| Animación de la Pokébola | `BottomMenuDefaults` |
+| Splash | `PokeBallSplash.SPLASH_HOLD_MS` / `SPLASH_SLIDE_MS` |
+
+---
+
+## 19. Depuración
 
 | Problema | Causa probable | Solución |
 |---|---|---|
-| Los elementos se salen de la pantalla | `bias` inesperado o fuera del rango útil | Revisar el `BIAS` en `object MainLayout` |
-| Un elemento se solapa con otro | Ambos tienen sesgos cercanos | Separar los `BIAS` |
-| Solo se mueve en vertical | Se usó `anchorVertically`, que no toca el horizontal | Usar `anchor(verticalBias, horizontalBias)` en una sola llamada |
-| La zona se come la pantalla | `ContentZoneDefaults` mal ajustados | Revisar `TOP`, `BOTTOM`, `MAX_TOP`, `MIN_BOTTOM` |
-| La Pokéball no responde | El `pointerInput` no llega al composable | Comprobar que el área no está cubierta por otro elemento |
-| La Pokéball no reacciona al arrastre | `pointerInput(Unit)` con un `isExpanded` capturado: queda congelado | Leer siempre `state.value` o usar `rememberUpdatedState` para los callbacks |
-| El arrastre va a tirones | Se lanza una corrutina por evento (`launch { snapTo() }`) | Escribir en un `mutableFloatStateOf` y usar `Animatable` solo al soltar |
-| El toque no dispara nada al soltar | Se consumió el evento antes de superar el `touchSlop` | Consumir **solo** cuando el gesto ya es arrastre |
-| El clic siempre cuenta como "front" | `sizePx` incorrecto | Debe pasarse el tamaño real en px, no en dp |
-| La dirección sale invertida al girar | Se pasó la posición global en vez de la local | La Pokéball entrega `down.position`, que ya es local |
-| Un cambio de pestaña reinicia el progreso | Se reinicia el estado en `AppRoot` | El progreso debe vivir en `MainViewModel` (scope de Activity) |
-| El botón de Pokédex queda marcado sin hoja abierta | `isOptionsOpen` no se actualizó | Revisar `MainViewModel.onCloseOptions()` / `onSelectTab()` |
-| El mapa tapa el bottom menu | El contenido ignora `innerPadding` | El `when` vive dentro del `Box` con `padding(innerPadding)` |
-| La barra blanca queda bajo la barra de gestos | Falta el inset inferior | `navigationBarsPadding()` en el contenedor del menú |
-| Crash al crear el ViewModel (`NoSuchMethodException`) | Constructor con parámetros sin `Factory` | Usar `viewModelFactory { initializer { ... } }` en la Activity |
+| Los elementos se salen de la pantalla | `bias` fuera del rango útil | Revisar el sesgo en el `object` de esa pantalla |
+| Un elemento se solapa con otro | Sesgos cercanos | Separarlos |
+| Solo se mueve en vertical | Se usó `anchorVertically` | Usar `anchor(verticalBias, horizontalBias)` |
+| La Pokéball no responde | El `pointerInput` no llega al composable | Comprobar que no hay una capa encima |
+| El arrastre va a tirones | Se lanza una corrutina por evento | Escribir en `mutableFloatStateOf` y animar solo al soltar |
+| El toque no dispara al soltar | Se consumió antes del `touchSlop` | Consumir **solo** cuando el gesto ya es arrastre |
+| Un cambio de pestaña reinicia el progreso | Estado reiniciado en la UI | El progreso vive en `MainViewModel` |
+| Crash al crear el ViewModel | Constructor con parámetros sin `Factory` | `viewModelFactory { initializer { ... } }` |
 | Error de compilación en un layout propio | Firmas de Compose UI 1.9 | `MeasureScope.measure(List<Measurable>, …)` y `Density.modifyParentData(…)` |
+| La barra blanca queda bajo la barra de gestos | Falta el inset inferior | `navigationBarsPadding()` en el menú |
+| El mapa tapa el menú | El contenido ignora el hueco reservado | `bottomReserved` en `MapScreen` |
+| La Pokédex muestra error | Fallo de asset o JSON | Logcat con la etiqueta `PokedexCatalog` |
+| El mapa no muestra zonas | Fallo de assets o referencias rotas | Logcat con la etiqueta `KantoMap` |
 
 ### Depuración visual
 
-- `@Preview` está disponible en `MainScreen`, `MapScreen` y en los cinco previews
-  del bottom menu (`1 · En reposo`, `2 · Arrastrando (50 %)`, `3 · Expandida`,
-  `4 · Con Mapa seleccionado` y `5 · Hendidura (silueta)`).
-- **El 5 es el que sirve para ajustar la hendidura**: dibuja solo la silueta
-  sobre un fondo oscuro, con la Pokéball en su posición real de reposo encima,
-  sin iconos ni etiquetas que la tapen. Cambia `NOTCH_WIDTH`, `NOTCH_DEPTH` y
-  `POKEBALL_BOTTOM_PADDING` y míralo: cualquier cambio se ve al instante.
-- El fondo de los previews es verde (`PreviewBackground`) **a propósito**: la
-  hendidura se dibuja dejando ver lo que hay detrás, así que con un fondo claro
-  la curva desaparece y da la sensación de que los valores no hacen nada.
-- Para aislar el menú se usa `MenuStage`, que imita el contenido con un trainer de
-  mentira. Su `initialProgress` permite ver `0f` (reposo), `0.5f` (a medio camino)
-  o `1f` (expandida); es el mismo parámetro que alimenta el gesto real.
-- `MainScreen` y `MapScreen` son composables sin estado, así que sus `@Preview`
-  pasan un `GameUiState` de mentira (con `trainerFrameRes = R.drawable.front0`,
-  para no pintar con id 0) y no construyen ningún ViewModel. `MainScreenStage`
-  añade el `Scaffold` y el bottom menu reales.
-  `AppRoot` tiene previews propios para juego, gimnasio e introducción.
-- **Importante:** los `@Preview` no reproducen los insets reales, así que
-  `navigationBarsPadding()` vale 0 y la barra se ve pegada al borde inferior
-  (en el dispositivo queda sobre la barra de gestos).
-- Live Rendering tampoco siempre dibuja el `shadowElevation` de `graphicsLayer`.
-  Si en el preview parece un cuadrado alrededor de la Pokéball y en el
-  dispositivo no, es el renderizador, no el código.
-- Para ver el resultado real, usa Layout Inspector o ejecuta en un dispositivo.
+- `@Preview` en `MainScreen`, `MapScreen`, `DexScreen`, `CatchingOverlay`,
+  `GymIntro`, `PokemonBottomMenu` (5 variantes) y los previews completos de
+  `AppRoot`.
+- El fondo verde de los previews del menú es **a propósito**: la hendidura deja
+  ver lo que hay detrás.
+- La variante *Hendidura (silueta)* dibuja solo la forma: sirve para ajustar
+  `NOTCH_WIDTH`, `NOTCH_DEPTH` y `POKEBALL_BOTTOM_PADDING`.
+- Para ver el resultado real, usa Layout Inspector o un dispositivo.
+
+### Herramientas de desarrollo (solo debug)
+
+- **Editor visual del mapa**: botón de llave en la esquina inferior izquierda de
+  la pestaña Mapa.
+- **Saltos de zona**: filas de la hoja de opciones que dejan la barra llena en
+  Ciudad Plateada, Ciudad Celeste o Ciudad Carmín.
+- **Borrar partida**: fila de la hoja con confirmación (existe también en
+  release; es provisional).
+- El editor y los saltos de zona se componen solo si `Context.isDebugBuild()`; en
+  release no existen.
 
 ---
 
-## 16. Comandos útiles
+## 20. Comandos útiles
 
 ```bash
 # Compilar
@@ -1375,13 +1430,13 @@ La migración a `PokemonInstance` y a un guardado versionado se define en §21.
 # Limpiar
 ./gradlew clean
 
-# Logs
-adb logcat | Select-String "myapplication"
+# Logs del juego
+adb logcat | Select-String "pokeclic"
 
 # Lanzar la Activity
-adb shell am start -n com.example.myapplication/.MainActivity
+adb shell am start -n com.dsrs.pokeclic/.MainActivity
 
-# Ver el árbol de dependencias resueltas (útil si cambia una versión de Compose)
+# Árbol de dependencias resueltas
 ./gradlew :app:dependencies --configuration debugCompileClasspath
 ```
 
@@ -1389,1110 +1444,36 @@ En Windows PowerShell los comandos encadenados usan `;`, no `&&`.
 
 ---
 
-## 17. Juego: bucle, estado y persistencia (vertical slice)
-
-Primera rebanada jugable: una zona completa con avance, encuentros salvajes,
-captura simple, monedas, principal y reset. El diseño completo vive en
-`docs/superpowers/specs/2026-10-15-kanto-clicker-design.md` y el plan en
-`docs/superpowers/plans/2026-10-15-vertical-slice.md`.
-
-### Bucle
-
-1. En una zona, cada toque de la Pokéball suma `clickPower` clics de avance.
-2. Al alcanzar el umbral de la zona se avanza a la siguiente.
-3. En cualquier zona **con fauna**, el toque además marca actividad: un temporizador
-   que solo corre si hay toques recientes llena la barra de caminar; al completarse
-   aparece un salvaje. Las zonas sin fauna (ciudades) nunca generan encuentros.
-4. Con un encuentro activo, cada toque lanza una Pokéball (captura con
-   probabilidad). Al capturar: pasa a *visto* y a *en posesión*; si es la
-   primera vez que se captura la especie, paga monedas **una sola vez**.
-5. Las monedas se acumulan para futuras compras o recompensas.
-6. El reset vacía la run y conserva monedas, visto, especies ya recompensadas,
-   medallas, starter y vínculo.
-
-### Archivos
-
-| Archivo | Rol |
-|---|---|
-| `model/GameData.kt` | `Species`, `Zone`, `Encounter`, `TrainerState`, `LeadOption`, `StarterOption`, `advanceZone()`, `GameSnapshot` |
-| `model/Combat.kt` | tipos, `Gym`, fases, proyectiles, `GymState` y reglas puras |
-| `model/Catalogs.kt` | `SpeciesCatalog`, `ZoneCatalog`, `GymCatalog`, `SpriteRepository` |
-| `data/GameStateStore.kt` | contrato de persistencia + implementación `SharedPreferences` |
-| `ui/MainScreen.kt` | pantalla principal + HUD |
-| `ui/Overlays.kt` | overlay de captura y selector de principal |
-
-### Estado (`GameUiState`)
-
-Cinco grupos:
-
-- **meta permanente**: `coins`, `seenSpecies`, `rewardedSpecies`, `medals`,
-  `starterSpeciesId`, `starterBond`, `playerName`.
-- **run**: `ownedSpecies`, `leadSpeciesId`, `zoneIndex`, `zoneClicks`.
-- **tutorial**: `tutorialPhase` (fase de la máquina de `model/Tutorial.kt`,
-  persistida) y `tutorialMessageClosed` (momento del paso, persistido).
-- **transitorio/UI**: `walkProgress`, `encounter`, `gym`,
-  `trainer` y la navegación (`contentTab`, `isOptionsOpen`, `isLeadOpen`).
-- **derivados**: nombre de zona, `clickPower`, `maxHp`, `isGymReady`,
-  `leadName`, `leadType`, `needsStarter`, `leadOptions`, `starterOptions`.
-
-El ViewModel rellena los derivados en `derive()`, así que la UI no calcula nada.
-`seenSpecies` (visto) y `rewardedSpecies` (ya pagó monedas) son permanentes;
-`ownedSpecies` (en posesión) y el progreso de zona son de la run.
-
-### Persistencia
-
-`GameStateStore` es el contrato (sin detalles de almacenamiento);
-`SharedPreferencesGameStateStore` es la implementación real y se construye en
-`MainActivity` con `applicationContext`. Se guarda un `GameSnapshot`; el estado
-transitorio (encuentro, caminar, animación, navegación y combate) queda fuera.
-El archivo de preferencias mantiene el nombre histórico
-`shared_prefs/kanto_clicker.xml` para no invalidar partidas existentes.
-
-### Cómo extender el contenido
-
-- **Especie nueva**: añade una entrada a `SpeciesCatalog` en `Catalogs.kt`.
-- **Zona nueva**: añade una entrada a `ZoneCatalog.zones` (el orden es la
-  posición en el mapa).
-- **Apariciones futuras**: las especies de las ubicaciones que aún no son
-  jugables están planificadas en
-  [`docs/apariciones-planificadas.md`](docs/apariciones-planificadas.md); las
-  listas activas viven solo en `ZoneCatalog`.
-- **Gimnasio nuevo**: añade una entrada a `GymCatalog` y referencia su `id` en la
-  zona (`gymId`).
-- **Ajustar números**: `ENCOUNTER_SECONDS`, `WALK_ACTIVITY_WINDOW_MS`,
-  `BASE_CAPTURE_FACTOR`, `PER_OWNED_SPECIES_BONUS`, `BASE_MAX_HP` y
-  `STARTER_BOND_CLICK_BONUS` en `MainViewModel`, y los umbrales de `ZoneCatalog`.
-
-> Este flujo es el actual, todavía con contenido en código. La sustitución por
-> JSON versionado, modelos normalizados y guardado migrado se planifica en §21.
-
----
-
-## 18. Cortinilla de arranque
-
-Al abrir la app (arranque en frío) se dibuja una cortinilla a pantalla completa
-formada por dos imágenes que juntas la cubren:
-
-- `res/drawable/pokeball_splash_top.png` — parte visual **arriba**; sale subiendo
-  por el borde superior.
-- `res/drawable/pokeball_splash_bottom.png` — parte visual **abajo**; sale bajando
-  por el borde inferior.
-
-Ambas se cargan a la vez; tras una breve pausa se separan en paralelo hasta
-desaparecer, dejando ver la app.
-
-### Cómo funciona
-
-- Composable `ui/PokeBallSplash.kt`: un `BoxWithConstraints` a
-  `fillMaxSize()` con las dos imágenes, movidas con `graphicsLayer` (la animación
-  solo invalida esas capas). El recorrido es la altura de la pantalla, que basta
-  para sacarlas por completo.
-- `MainActivity` la dibuja encima del resto dentro de un `Box`, y la quita cuando
-  `onFinished` avisa. Se recuerda con `rememberSaveable`, así que una **rotación
-  no la repite**: solo aparece en un arranque real.
-
-### Ajustes
-
-| Quiero… | Cambio |
-|---|---|
-| Cambiar la pausa antes de abrirse | `SPLASH_HOLD_MS` en `PokeBallSplash.kt` |
-| Cambiar la duración de la apertura | `SPLASH_SLIDE_MS` en `PokeBallSplash.kt` |
-| Que reaparezca en cada rotación | Quitar `rememberSaveable` en `MainActivity` |
-| Cambiar las imágenes | Sustituye los PNG en `res/drawable/` (nombres en minúsculas) |
-
----
-
-## 19. Starter, principal, tipos y gimnasios
-
-Segunda rebanada: elección del **starter permanente**, **Pokémon principal**
-intercambiable, **ventaja de tipos bidireccional** y el **gimnasio de Brock**.
-
-### Starter (permanente y evolutivo)
-
-Al arrancar, si no hay starter elegido (`needsStarter`), se muestra la
-**introducción** del Profesor Oak (`IntroOverlay`, ver §20), que termina con la
-elección del starter entre Bulbasaur / Charmander / Squirtle. La elección:
-
-- Es **permanente**: sobrevive a los resets.
-- **Cuenta** para el `clickPower` como una especie más en posesión, aunque no sea
-  el principal.
-- Es el único que sube con **vínculo** (`starterBond`, +1 al ganar un gimnasio):
-  mientras esté equipado como principal, da un bonus de clic por nivel
-  (`STARTER_BOND_CLICK_BONUS`). La **evolución** por hitos de vínculo queda para
-  una etapa posterior.
-- Se guarda en `GameSnapshot.starterSpeciesId` y `starterBond`.
-
-### Principal (lead)
-
-`LeadOverlay` (abierto desde el HUD) lista las especies en posesión **de la run**
-más el starter, y permite fijar el `leadSpeciesId`. El principal:
-
-- Es **de la run**: al resetear, vuelve al starter.
-- **No** aporta un bonus propio de clic: su función principal es su **tipo** en el
-  gimnasio. Si el principal es el starter, sí se aplica el bonus de vínculo descrito
-  arriba.
-
-### Tipos y daño
-
-La eficacia es **bidireccional** (`PokemonType.effectiveness`): el tipo del
-principal se compara con el del gimnasio. `typeDamageMultiplier(leadType, gymType)`
-(`model/Combat.kt`) lo traduce a un multiplicador de daño:
-
-| Situación | Multiplicador |
-|---|---|
-| Súper eficaz | `effectiveness` = `2f` |
-| Poco eficaz | `0.5f` |
-| Neutro o sin principal | `1f` |
-
-Es una función **pura** para poder testearla en la JVM.
-
-### Gimnasio (Brock)
-
-Una zona con `gymId` **termina** en ese gimnasio: al alcanzar su umbral el
-progreso se capa y **no se avanza** hasta ganar la medalla.
-
-#### Entrada al gimnasio
-
-Pulsar «Gimnasio» no abre el panel directamente: primero se cierra una
-**cortinilla** con las dos mitades de la Pokéball (`pokeball_splash_top` baja
-desde arriba, `pokeball_splash_bottom` sube desde abajo), se queda cerrada
-**1 segundo** y se abre deslizándose. La cortinilla se cierra **sobre la pantalla
-de juego** y el cambio de escena ocurre con la Pokéball ya cerrada: el fondo del
-gimnasio solo se dibuja a partir de ahí, así que al abrirse se descubre el
-gimnasio y nunca se ve aparecer un escenario vacío antes de tiempo. Detrás queda
-la escena **sin sprites ni barras** (`gym == null`, así que `AppRoot` solo pinta el
-fondo).
-
-Al abrirse aparece el **retrato del líder** sobre el escenario y su discurso, con
-el mismo sistema que la intro de Oak: caja blanca con borde negro, máquina de
-escribir y toque para completar la línea y luego avanzar (`introTap`). El retrato
-va **por línea**: Brock sigue con su cara de siempre mientras escucha los primeros
-«...» y cambia a `brock_surprised` justo en «Espera... ¿me estás diciendo que el
-Team Rocket...?», manteniéndola hasta el estallido; después recupera su cara de
-siempre para la medalla y el reto.
-El guion vive por gimnasio en `ui/GymEntry.kt` (`leaderScriptFor`): Brock y Misty
-tienen el suyo y Lt. Surge, que aún no tiene retrato ni guion, conserva el panel de
-bienvenida genérico. Una línea puede declarar un **segundo retrato**
-(`GymLeaderLine.altPortraitRes`): mientras la máquina de escribir avanza, los dos
-se alternan cada 140 ms, que es como Misty mueve la boca entre `misty_happy` y
-`misty_happy2` sin dibujos extra. El tamaño del retrato lo frenan tres topes
-(`leaderPortraitSize`): fracción del ancho, ancho máximo y fracción del alto. Cada
-arte lo frena uno distinto —Brock es vertical (400×750) y manda el alto; Misty es
-más cuadrada (512×686) y manda el ancho—, así que subir el ancho no agranda a
-Brock. La capa extra (`overlay`, la medalla) se compone **la última**: va por
-delante del retrato y también de la caja de diálogo, y no come toques porque no
-declara ninguno. La última línea ofrece «Ver tutorial» / «Omitir», que llevan a
-`TUTORIAL` y `COUNTDOWN` como hasta ahora. La cortinilla se ve una vez por entrada
-(un reintento tras perder va directo al cartel).
-
-El combate es un minijuego por **fases excluyentes** en el `GymOverlay`, a
-pantalla completa: durante el combate **desaparece el bottom menu** (barra y
-Pokéball). La escena es vertical, con el enemigo arriba-centro y el principal
-abajo-centro. El HUD superior resume solo al líder (nombre, tipo, vida y pista);
-la **vida del jugador** se muestra en una barra anclada al borde inferior, junto
-al sprite del principal, y el botón de rendirse desaparece del HUD (solo queda
-en el panel de derrota):
-
-1. **Fase de ataque** (`GymPhase.ATTACKING`): el líder ataca con su mecánica
-   (rocas, anillos o Voltorb según el gimnasio). Cada **acierto** del jugador
-   —romper una roca, acertar un anillo, apagar un Voltorb— suma un punto a la
-   barra de **postura** (`posture` / `postureHits`). Un **clic fallado** resta un
-   punto (`GymCombat.failPosture`, nunca por debajo de cero) y un **fallo** además
-   resta HP al jugador (`projectileDamage`, `ringMissDamage`,
-   `voltorbExplosionDamage`, `voltorbShockDamage`). La barra ya no baja por tiempo.
-2. **Fase expuesta** (`GymPhase.EXPOSED`): al llenarse la postura, ésta se
-   **rompe**: el líder deja de atacar (se vacían rocas, anillos y Voltorb) y se
-   abre una ventana que sigue funcionando **por tiempo** (`exposureDurationMs`,
-   2,5 s). Mientras dura, los toques sobre el enemigo le restan
-   `potencia de clic × multiplicador de tipo`. Al cerrarse la ventana la postura
-   vuelve a cero y empieza un ataque nuevo.
-3. **Furia**: cuando al líder le queda **menos del 25 %** de vida (`rage`), sus
-   ataques son **más densos y rápidos** (`rageSpawnIntervalMs`,
-   `rageProjectilesPerSpawn`, `rageProjectileTravelMs`); el HUD lo anuncia con
-   «¡Enfurecido!» y la barra de postura se tiñe de rojo. La furia es
-   **obligatoria**: la primera vez que un golpe fuese a cruzar el umbral (incluido
-   un golpe letal), `GymCombat.gateFirstRage` clava la vida en el umbral y
-   devuelve al líder a `ATTACKING`, de modo que hay que jugar al menos una ronda
-   completa de furia. Al romper la postura durante esa ronda se marca
-   `rageRoundPlayed`; solo entonces el líder puede morir. No hay forma de
-   saltársela con daño alto.
-   Ese cruce abre además el **discurso de furia** (`GymState.rageSpeech`): el
-   combate se **detiene** del todo —el bucle del ViewModel no avanza— y la escena
-   se sustituye por la cara de furia del líder con dos líneas de diálogo, la
-   segunda en mayúsculas y con el retrato bamboleándose (el grito a su Pokémon).
-   Las caras y las frases son por gimnasio (`rageScriptFor`: Brock le grita a su
-   Golem, Misty a su Starmie); un líder sin furia propia conserva las de Brock.
-   Al cerrarlo se apaga el flag y la siguiente vuelta del bucle ya dispara la
-   oleada de furia.
-4. Las fases son **mutuamente excluyentes**: no se puede atacar al líder mientras
-   lanza su ataque, ni hay ataques que esquivar mientras está expuesto. Eso
-   cierra el antiguo *exploit* de dos manos (atacar con una y defender con la
-   otra).
-5. **Ganas** al vaciar la barra del líder; **pierdes** al quedarte sin HP y desde
-   el panel de derrota puedes **reintentar** sin coste o **rendirte** (reinicia
-   el combate).
-6. **Victoria** (`GymOutcome.WON`): el combate no se cierra de golpe. El bucle se
-   detiene y el Pokémon del líder **se hunde y se apaga** (`VICTORY_FADE_MS`,
-   `VICTORY_ENEMY_SINK`); después llega la **despedida** (`ui/GymVictory.kt`): la
-   cara de cada línea, la medalla apareciendo en el centro cuando la entrega y,
-   al cerrar la última, `onGymVictoryDone()` cobra la medalla. Cada guion declara
-   su medalla, su descripción y sus caras (`victoryScriptFor`); Misty pasa de
-   `misty_sad` a `misty_happy` y entrega la `medalla_cascada`. Los gimnasios sin
-   despedida propia se cierran en cuanto termina el desvanecimiento.
-7. Al ganar se añade `gymId` a `medals`, se pagan monedas (`Gym.coinReward`) y se
-   sale del overlay; en el reset las **medallas persisten**, así que los
-   gimnasios ya ganados se **saltan**.
-
-El sprite del enemigo se mapea por `gymId` (Brock → `golem.gif`) y el del jugador
-por `leadSpeciesId` (los tres starters tienen back). Para cualquier principal sin
-arte se dibuja un **placeholder por tipo** (disco del color del tipo + nombre), de
-modo que el combate sigue siendo jugable. La animación de ataque es un *lunge*
-del sprite, y cada roca rota estalla con su propio efecto
-(`ui/RockShatterFx.kt`).
-
-La vida máxima es fija (`BASE_MAX_HP = 5`). Los gimnasios escalan (vida del líder,
-aciertos de postura, duración de la ventana, cadencia/velocidad y número de
-proyectiles, daño). La lógica de avance vive en `advanceZone(...)`
-(`model/GameData.kt`), pura y testeable.
-
-### Mecánica del combate (arquitectura)
-
-El ViewModel es dueño de las rocas (`Projectile`: columna, instante de salida y
-duración de caída) y corre un **tick de combate** (`GYM_TICK_MS`). En la fase de
-ataque coloca los ataques del líder (ráfagas, anillos o Voltorb) y detecta los
-que hieren al jugador; durante la furia cambia la cadencia, el número y la
-velocidad. La postura **solo cambia con aciertos del jugador**: `GymCombat.addPosture`
-suma y, al llegar al máximo, rompe la postura y abre la ventana. En la fase
-expuesta solo descuenta la recuperación, que sí es por tiempo. Además,
-`GymCombat.gateFirstRage` garantiza que la furia se juegue al menos una vez:
-frena el primer golpe que cruzaría el umbral, reactiva la fase de ataque y marca
-`rageRoundPlayed` cuando el jugador rompe la postura en esa ronda. Las
-transiciones (acierto → postura, postura llena → expuesto, recuperar → atacar,
-impacto → HP, umbral de furia → ronda obligatoria) están en `GymCombat`,
-**funciones puras** sin reloj ni corrutinas, para poder testearlas en la JVM. La
-vista **no** recibe actualizaciones por fotograma:
-interpola la caída con el reloj de fotogramas a partir de `spawnedAtMs` y reparte
-los toques en una única capa `pointerInput` (enemigo si está expuesto; si no, la
-roca o el anillo más cercano, o la celda de Voltorb).
-
-### Archivos
-
-| Archivo | Rol |
-|---|---|
-| `model/Combat.kt` | `Gym`, `GymState`, fases, `Projectile`, `GymCombat` y `typeDamageMultiplier()` |
-| `model/GameData.kt` | `Zone`, `advanceZone()` y el resto de entidades |
-| `model/Catalogs.kt` | `GymCatalog` (Brock) y sprites |
-| `model/Tutorial.kt` | máquina de estados del tutorial explicativo (fases, acciones, guards, ver §22) |
-| `ui/Intro.kt` | introducción del Profesor Oak (nombre + starter, ver §20) |
-| `ui/Overlays.kt` | selector de principal |
-| `ui/GymOverlay.kt` | escena, HUD, sprites, rocas, barra de postura, expuesto y feedback |
-| `ui/TutorialOverlay.kt` | capa de diálogos del tutorial explicativo (ver §22) |
-| `ui/RockShatterFx.kt` | estallido de roca al romper un proyectil (reproducción del sprite sheet) |
-| `ui/GymSceneLayouts.kt` | composición por gimnasio: tamaño y ancla de los sprites del líder y del jugador |
-| `ui/GymEntry.kt` | cortinilla de entrada al gimnasio y guion del discurso del líder |
-| `ui/GymRageSpeech.kt` | discurso de furia a mitad de combate (retrato enfadado + grito) |
-| `ui/GymVictory.kt` | despedida al ganar: caras del líder y entrega de la medalla |
-| `ui/LeaderDialogue.kt` | marco compartido de los diálogos del líder: retrato (con boca que alterna), máquina de escribir, avance y capa superior para la medalla |
-
-### Estado nuevo (`GameUiState`)
-
-- **Meta**: `medals`, `starterSpeciesId`, `starterBond`.
-- **Run**: `leadSpeciesId` (se resetea al starter en `onReset()`).
-- **Transitorio**: `gym` (`GymState?`) con vida del líder/jugador, postura,
-  fase, furia, recuperación y ataques activos.
-- Derivados en `derive()`: `maxHp`, `leadName`, `leadType`, `isGymReady`,
-  `gymLeaderName`, `needsStarter`, `leadOptions`.
-
-### Cómo extender el contenido
-
-- **Gimnasio nuevo**: añade una entrada a `GymCatalog` y referencia su `id` en
-  `ZoneCatalog` (`gymId`). Ajusta `leaderHp`, `postureHits`,
-  `exposureDurationMs`, `columns`, `spawnIntervalMs`, `projectilesPerSpawn`,
-  `projectileTravelMs`, `projectileDamage`, la pareja `rage*` y `coinReward`.
-  Añade su sprite en el mapeo de `GymOverlay.kt` (`enemyGifFor`; si no, placeholder).
-  Registra su composición en `GymSceneLayouts` (tamaño y ancla de los sprites del
-  líder y del jugador): cada arte coloca la plataforma a otra altura y, sin
-  entrada, el gimnasio usa `DEFAULT`. Los fondos pixel-art 2:3 (Brock, Misty)
-  comparten la escala de sprite en `PixelArtSprites`: un cambio ahí mueve los dos
-  gimnasios a la vez, y lo que se ajusta por arte es solo el ancla.
-- **Principal nuevo con arte**: añade su back en el mapeo de `GymOverlay.kt`
-  (`backGifFor`); los recursos deben ir en minúsculas (`bulbasaur_back.gif`).
-- **Ajustar el ritmo del combate**: `GYM_TICK_MS` y `COMBAT_FIRST_SPAWN_MS` en
-  `MainViewModel`; aciertos de postura, duración de la ventana, aparición de
-  ataques y furia por gimnasio en `GymCatalog`.
-- **Ajustar el starter**: `SpeciesCatalog.starters` y
-  `STARTER_BOND_CLICK_BONUS` en `MainViewModel`.
-- **Retocar el estallido de roca**: el arte vive en pixelfx
-  (`src/fx/impacts/rock-shatter.js`). Se edita allí, se reexporta con
-  `node tools/render.mjs impacts/rock-shatter --sheet` y se copia
-  `rock-shatter.png` a `drawable-nodpi/rock_shatter.png`. `RockShatterFxTest`
-  comprueba que el sheet real coincide con la rejilla declarada en
-  `RockShatterFx` (5 columnas, 13 frames de 64×80, 24 fps).
-- **Retocar los efectos del anillo de Misty**: los dos artes viven en pixelfx
-  (`src/fx/water/hydro-burst.js` y `src/fx/water/hydro-implode.js`, con el helper
-  `wetRing`/`wetArc` en `src/fx/water/_lib.js`). Se editan allí, se reexportan con
-  `node tools/render.mjs water/hydro-burst water/hydro-implode --sheet` y se copian
-  a `drawable-nodpi/hydro_burst.png` e `hydro_implode.png`. Las dos hojas van con
-  la rampa de agua a propósito: el aro que se cierra y el estallido siguen siendo
-  agua. El verde del acierto y el rojo del fallo los lleva el **círculo fijo**
-  alrededor del Pokémon (`tinted(...)` y `RING_TINT_MS` en `GymOverlay`).
-  `WaterRingFxTest`
-  comprueba que cada sheet coincide con la rejilla de `WaterRingSheet` (5×25 y
-  6×31 frames de 208×208, 30 fps) y `tools/check.mjs` valida que ninguno se sale
-  del lienzo ni deja píxeles al terminar.
-- **Retocar el cartel del resultado**: `RingResultBanner` en `GymOverlay` es el
-  `ui/combo-counter` de pixelfx portado a Compose; todo se calcula desde los
-  segundos transcurridos (`BANNER_HIT_S`, `BANNER_BEAT_S`, `BANNER_OUT_S`,
-  `BANNER_LIFE_S`), sin animaciones propias ni estado acumulado. Encadena líneas
-  de velocidad, golpe con picos y anillo, chispas, dos estelas, el pulso del
-  latido, el brillo que barre las letras y la salida con motas. La barra de tiempo
-  del original se deja fuera: el cartel dura 1,2 s y no informa de nada. Las
-  letras no usan la tipografía del sistema: `PixelFont` es la fuente
-  5×7 de pixelfx (`src/core/font.js`, la "big") portada a Kotlin, dibujada con
-  rectángulos, contorno oscuro de una celda y tres tramos de color. El tamaño de
-  celda es el `cell = 4.dp` del cartel; ahí se agranda o achica. El combo vive en
-  `GymState.ringCombo` y viaja en `RingFeedback.combo`: sube con cada acierto y
-  cualquier fallo lo devuelve a 0. Con combo ≥ 2 el cartel usa
-  `gym_ring_combo` (`¡Combo ×N!`).
-- **Ideas futuras** (con hueco en el modelo, sin implementar): sprites reales de
-  ataque (hoy hay *lunge* + destello) y proyectiles que aguantan varios toques
-  (`Projectile.hitsRemaining` ya existe; el umbral de furia es
-  `RAGE_HP_FRACTION`).
-
-### Tests
-
-`ModelTest` cubre, además de tipos/costes, el `typeDamageMultiplier`
-(ventaja/desventaja/neutro), la progresión y el aterrizaje de `Projectile`,
-`advanceZone` (capado con gimnasio pendiente, auto-salto con medalla, avance
-normal y capado en la última zona) y las reglas de `GymCombat` (romper roca suma
-postura, daño por impacto, postura llena que expone al líder y limpia ataques,
-fin de la ventana que resetea la postura, umbral de furia y puerta que obliga a
-jugar una ronda de furia incluso con un golpe letal). Todo corre en la JVM con
-`./gradlew testDebugUnitTest`.
-
----
-
-## 20. Introducción: el Profesor Oak (nombre + starter)
-
-Es la **primera pantalla** de una partida nueva. Se muestra cuando `needsStarter`
-es verdadero (`starterSpeciesId == null`).
-
-### Aspecto
-
-- **Fondo blanco** a pantalla completa (tapa también el bottom menu).
-- **Retrato de Oak** (`res/drawable/profesor_oak.png`) centrado arriba.
-- **Caja de diálogo** ancho completo abajo, **estilo Pokémon**: rectángulo blanco
-  con borde negro y esquinas redondeadas.
-- Al completar una línea aparece un `▼` como pista para continuar.
-
-### Secuencia y control
-
-Fases (índice entero en `IntroOverlay`):
-
-0. «¡Hola! Soy el Profesor Oak.»
-1. «¡Bienvenido al mundo Pokémon!»
-2. «Este mundo está habitado por unas criaturas llamadas Pokémon.»
-3. **Pregunta el nombre** (interactiva).
-4. «¡Encantado, {nombre}! …»
-5. **Elige el starter** (interactiva).
-6. «¡{starter} será tu compañero! …» → termina la intro.
-
-- **Máquina de escribir**: `LaunchedEffect(phase)` revela letras con
-  `TYPE_CHAR_MS` (~35 ms) de retardo.
-- **Toque sobre la caja**: si aún se está escribiendo, completa la línea; si ya
-  está completa, avanza a la fase siguiente.
-- **Nombre**: `OutlinedTextField` + botón *Aceptar* (deshabilitado en blanco; máx.
-  12 caracteres). El teclado en pantalla aparece al enfocar el campo y se oculta
-  al aceptar; `imePadding()` evita que tape la caja. También acepta con la tecla
-  *Hecho*.
-- **Starter**: los tres GIF animados en fila, tocables, con nombre y tipo.
-
-### GIF animados sin dependencias
-
-Compose no anima GIFs con `painterResource`, así que `ui/Intro.kt`
-los decodifica con `ImageDecoder` (API 28+; el proyecto es minSdk 29) a un
-`AnimatedImageDrawable` y lo muestra dentro de un `AndroidView`/`ImageView`. El
-filtrado se desactiva (`setFilterBitmap(false)`) porque son pixel-art diminutos
-(37–43 px) que se escalan y deben verse nítidos.
-
-### Persistencia del nombre
-
-El nombre es **meta permanente** y se muestra en el HUD («Entrenador: …»). Se
-persiste junto al starter en una sola operación:
-
-- `MainViewModel.onFinishIntro(playerName, starterSpeciesId)` fija `playerName`,
-  `starterSpeciesId`, `starterBond = 0` y `leadSpeciesId` en un único `mutate`,
-  y alimenta la máquina del tutorial (`OAK_FINISHED`): al cerrar la última fase
-  **ya no se entra directo al juego**, sino que se ofrece el tutorial explicativo
-  (ver §22). Tras un reset la oferta reaparece sin repetir la introducción.
-- `GameSnapshot.playerName` se guarda bajo la clave `player_name` en
-  SharedPreferences.
-- Nada se persiste hasta terminar la intro: si se cierra a medias, vuelve a
-  empezar (el starter sigue sin elegir).
-
-### Archivos
-
-| Archivo | Rol |
-|---|---|
-| `ui/Intro.kt` | Introducción completa (fases, máquina de escribir, nombre, starter y GIF animado con `ImageDecoder`) |
-| `res/drawable/profesor_oak.png` | Retrato de Oak |
-| `res/drawable/bulbasaur.gif`, `charmander.gif`, `squirtle.gif` | Starters animados |
-
-### Cómo ajustarlo
-
-- **Textos**: cadenas `intro_*` en `strings.xml`.
-- **Velocidad de escritura**: `TYPE_CHAR_MS` en `Intro.kt`.
-- **Longitud del nombre**: `MAX_NAME_LENGTH` en `Intro.kt`.
-- **Arte**: sustituir `profesor_oak.png`; para nuevos starters, añadir el GIF y su
-  entrada en `starterGif(...)`.
-
-### Botón provisional para testear
-
-El HUD incluye bajo *Cambiar principal* un botón **«Borrar partida (test)»**
-(`OutlinedButton`, cadena `action_wipe`) que llama a `MainViewModel.onWipeGame()`:
-borra lo persistido (`GameStateStore.clear()`) y vuelve a una primera partida
-(la intro de Oak). Antes de ejecutarse muestra un `AlertDialog` de confirmación
-(cadenas `wipe_confirm_*`) para que un toque accidental no destruya la partida.
-Es **temporal**, solo para no depender de `adb shell pm clear` al probar; se
-eliminará cuando ya no haga falta, junto con su diálogo de confirmación.
-
----
-
-## 21. Migración a un catálogo de Pokémon basado en datos
-
-> **Estado:** planificada, no implementada. La app sigue usando `Catalogs.kt`.
-> Esta sección define el contrato y el orden de trabajo para sustituirlo sin
-> romper las partidas existentes.
-
-### 21.1 Alcance y principios
-
-El primer objetivo **no es meter los 151 Pokémon**, sino migrar el contenido que ya
-existe (7 especies, 2 zonas y Brock) conservando el comportamiento actual. Una vez
-validado el pipeline, ampliar Kanto es añadir archivos, no tocar lógica.
-
-Principios:
-
-1. **Contenido estático, partida dinámica y reglas separados.**
-   - Contenido: especies, tipos, movimientos, evoluciones, zonas y gimnasios.
-   - Partida: qué Pokémon posee el jugador, su nivel, vínculo y progreso.
-   - Reglas: captura, daño, evolución y efectos; código puro y testeable.
-2. **El catálogo no va en Room.** Es contenido de solo lectura, versionado con la
-   app. Room añadiría migraciones, consultas y una base de datos para datos que
-   caben en assets.
-3. **IDs estables e inmutables.** `pikachu`, `raichu-alola`, `ruta1`: nunca el
-   nombre visible ni el número de Pokédex como clave. Renombrar una especie no
-   cambia su ID.
-4. **La partida guarda referencias + instancias, no definiciones.** Un
-   `PokemonInstance` ocupa pocos bytes; la definición de especie se carga del
-   catálogo.
-5. **Todo se valida y se versiona.** `schemaVersion` para el guardado y
-   `contentVersion` para el catálogo. Un ID roto debe fallar en tests, no en
-   producción.
-6. **No modelar lo que todavía no se juega.** Movimientos, habilidades y efectos
-   pueden reservarse en el esquema, pero no se implementan hasta que una mecánica
-   los use.
-
-### 21.2 Estructura propuesta
-
-```
-app/src/main/assets/content/
-├── manifest.json       # versión, generación y lista de archivos
-├── types.json          # tabla de tipos
-├── species.json        # especies base
-├── forms.json          # formas regionales/alternativas (opcional al inicio)
-├── moves.json          # movimientos (fase de combate)
-├── abilities.json      # habilidades y pasivas (fase de efectos)
-├── learnsets.json      # movimientos aprendidos por especie/nivel
-├── evolutions.json     # relaciones de evolución
-├── effects.json        # efectos declarativos reutilizables
-├── encounters.json     # tablas de encuentro por zona
-├── zones.json          # zonas y referencias a encuentros/gimnasios
-└── gyms.json           # líderes y configuración del combate
-```
-
-Los assets se leen **una vez** al arrancar. Nada de parsear JSON en cada
-recomposición, clic o frame de combate.
-
-### 21.3 Contrato del contenido
-
-#### `manifest.json`
-
-```json
-{
-  "schemaVersion": 1,
-  "contentVersion": "1.0.0",
-  "generation": 1,
-  "files": [
-    "types.json",
-    "species.json",
-    "moves.json",
-    "learnsets.json",
-    "evolutions.json",
-    "effects.json",
-    "encounters.json",
-    "zones.json",
-    "gyms.json"
-  ]
-}
-```
-
-- `schemaVersion` cambia si cambia la **forma** del JSON.
-- `contentVersion` cambia al ajustar datos o balance.
-- `generation` permite dividir el catálogo por generación más adelante.
-- `files` evita cargar archivos que esa versión de la app no conoce.
-
-> `manifest.schemaVersion` versiona la **forma del catálogo**;
-> `GameSnapshot.schemaVersion` versiona la **forma del guardado**. Son independientes.
-
-#### `species.json`
-
-```json
-[
-  {
-    "id": "pikachu",
-    "dexNumber": 25,
-    "nameKey": "species.pikachu",
-    "types": ["electric"],
-    "baseStats": {
-      "hp": 35,
-      "attack": 55,
-      "defense": 40,
-      "specialAttack": 50,
-      "specialDefense": 50,
-      "speed": 90
-    },
-    "captureDifficulty": 0.2,
-    "coinReward": 5,
-    "spriteKey": "pikachu",
-    "learnsetId": "pikachu"
-  }
-]
-```
-
-Reglas:
-
-- `id` y `nameKey` son obligatorios y únicos.
-- `types` admite uno o dos tipos; el enum actual de un solo tipo se sustituye por
-  una lista.
-- `baseStats` puede quedar fuera de la primera migración si el combate aún no los
-  usa, pero el esquema debe decidirlo antes de escribir los assets. En el modelo
-  de dominio es opcional para no inventar datos que aún no se juegan.
-- `learnsetId` es opcional; se rellena cuando exista la mecánica de movimientos.
-- `spriteKey` no es una ruta: la implementación de sprites traduce esa clave a
-  `R.drawable.*`. Así el contenido no depende de nombres de recursos Android.
-- `captureDifficulty` y `coinReward` conservan la semántica actual.
-
-#### `zones.json` y `encounters.json`
-
-La zona referencia una tabla de encuentros; la tabla contiene especies y pesos.
-Esto sustituye `wildSpeciesIds` y permite probabilidades distintas por especie.
-
-```json
-[
-  {
-    "id": "ruta1",
-    "nameKey": "zone.ruta1",
-    "clickRequirement": 10,
-    "encounterTableId": "ruta1_grass",
-    "gymId": null
-  }
-]
-```
-
-```json
-[
-  {
-    "id": "ruta1_grass",
-    "entries": [
-      { "speciesId": "pidgey", "weight": 70 },
-      { "speciesId": "rattata", "weight": 30 }
-    ]
-  }
-]
-```
-
-`gyms.json` conserva los campos actuales de `Gym` (`leaderHp`, postura, furia,
-`coinReward`…), pero con `nameKey` y `spriteKey` en lugar de nombres y recursos
-hardcodeados.
-
-#### `learnsets.json` y `evolutions.json`
-
-Las relaciones se guardan por ID, nunca anidadas dentro de la especie:
-
-```json
-[
-  {
-    "id": "pikachu",
-    "moves": [
-      { "level": 1, "moveId": "thundershock" },
-      { "level": 4, "moveId": "growl" }
-    ]
-  }
-]
-```
-
-```json
-[
-  {
-    "id": "pikachu-raichu",
-    "from": "pikachu",
-    "to": "raichu",
-    "trigger": { "kind": "ITEM", "itemId": "thunder-stone" }
-  }
-]
-```
-
-Para evoluciones por nivel, `trigger` sería
-`{ "kind": "LEVEL", "level": 16 }`. El validador comprueba que `from` y `to`
-existen y que no hay ciclos.
-
-#### `effects.json`
-
-Los efectos se declaran como datos y se resuelven con un intérprete. No debe
-haber un `when (speciesId)` por Pokémon.
-
-```json
-[
-  {
-    "id": "static",
-    "trigger": "ON_HIT",
-    "chance": 0.3,
-    "target": "ATTACKER",
-    "effect": { "kind": "APPLY_STATUS", "status": "PARALYSIS", "turns": 1 }
-  }
-]
-```
-
-Contrato de dominio sugerido:
-
-```kotlin
-sealed interface Effect {
-    data class Damage(val amount: Int) : Effect
-    data class Heal(val amount: Int) : Effect
-    data class ApplyStatus(val status: Status, val turns: Int) : Effect
-    data class ModifyStat(val stat: Stat, val stages: Int) : Effect
-    data class GrantCurrency(val coins: Long) : Effect
-}
-
-enum class EffectTrigger { ON_CAPTURE, ON_CLICK, ON_HIT, ON_GYM_HIT, ON_WAVE_START }
-
-enum class EffectTarget { SELF, ATTACKER, ALLY, ALL }
-
-data class EffectRule(
-    val id: String,
-    val trigger: EffectTrigger,
-    val chance: Float,
-    val target: EffectTarget,
-    val effect: Effect
-)
-```
-
-`EffectResolver.resolve(rules, context, random)` devuelve eventos de juego y no
-toca Android ni Compose. La aleatoriedad se inyecta para que los tests sean
-deterministas. Los efectos se implementan **solo cuando la mecánica que los usa
-exista**; hasta entonces, `effects.json` puede estar vacío o no cargarse.
-
-### 21.4 Modelos de dominio
-
-La migración introduce dos conceptos que hoy no existen:
-
-```kotlin
-data class SpeciesDefinition(
-    val id: String,
-    val dexNumber: Int,
-    val nameKey: String,
-    val types: List<PokemonType>,
-    val baseStats: BaseStats? = null,
-    val captureDifficulty: Float,
-    val coinReward: Int,
-    val spriteKey: String,
-    val learnsetId: String? = null
-)
-
-data class BaseStats(
-    val hp: Int,
-    val attack: Int,
-    val defense: Int,
-    val specialAttack: Int,
-    val specialDefense: Int,
-    val speed: Int
-)
-
-data class PokemonInstance(
-    val instanceId: String,
-    val speciesId: String,
-    val level: Int = 5,
-    val xp: Int = 0,
-    val bond: Int = 0,
-    val moves: List<String> = emptyList(),
-    val abilityId: String? = null,
-    val nickname: String? = null
-)
-```
-
-- `SpeciesDefinition` es inmutable y vive en el catálogo.
-- `PokemonInstance` es estado de partida y se persiste.
-- `instanceId` identifica al individuo. Se genera al capturar o al migrar; nunca
-  se reutiliza.
-- El nivel, XP y movimientos pueden quedar en valores por defecto hasta que el
-  combate los necesite, pero el campo existe desde el guardado v2 para no migrar
-  dos veces.
-- `leadSpeciesId`/`starterSpeciesId` pasan a `leadInstanceId` y a un
-  `starter: PokemonInstance?`. El starter conserva su vínculo y nivel aunque se
-  resetee la run; `ownedPokemon` contiene solo los individuos de la run y no lo
-  duplica.
-
-`GameSnapshot` v2 propuesto:
-
-```kotlin
-data class GameSnapshot(
-    val schemaVersion: Int = 2,
-    val contentVersion: String,
-    val playerName: String?,
-    val coins: Long,
-    val seenSpecies: Set<String>,
-    val rewardedSpecies: Set<String>,
-    val unknownSpecies: Set<String> = emptySet(),
-    val medals: Set<String>,
-    val starter: PokemonInstance?,
-    val ownedPokemon: List<PokemonInstance>,
-    val leadInstanceId: String?,
-    val zoneId: String,
-    val zoneClicks: Long
-)
-```
-
-`seenSpecies`, `rewardedSpecies` y `unknownSpecies` siguen siendo IDs de especie
-porque son progreso global, no individuos. `zoneId` sustituye a `zoneIndex`:
-reordenar el catálogo no debe cambiar en qué zona está el jugador. El `derive()` de
-la UI construye las opciones de principal con `ownedPokemon + starter`.
-
-### 21.5 Capa de acceso al contenido
-
-Estructura recomendada:
-
-```
-data/content/
-├── ContentDataSource.kt      # interfaz: lee texto/bytes de assets
-├── AssetContentDataSource.kt # AssetManager + kotlinx.serialization
-├── ContentRepository.kt      # carga, indexa y expone GameContent
-└── ContentValidator.kt       # integridad y reglas de contenido
-
-model/content/
-├── ContentModels.kt          # DTOs/definiciones puras
-├── GameContent.kt            # agregado con mapas inmutables
-└── EffectResolver.kt         # efectos puros
-```
-
-`GameContent` debe exponer índices ya construidos:
-
-```kotlin
-data class GameContent(
-    val manifest: ContentManifest,
-    val species: Map<String, SpeciesDefinition>,
-    val moves: Map<String, MoveDefinition>,
-    val learnsets: Map<String, Learnset>,
-    val evolutions: Map<String, List<Evolution>>,
-    val encounters: Map<String, EncounterTable>,
-    val zones: List<ZoneDefinition>,
-    val gyms: Map<String, GymDefinition>,
-    val effects: Map<String, EffectRule>
-)
-```
-
-Flujo de arranque:
-
-1. `ContentRepository` lee `manifest.json` y los archivos declarados.
-2. Deserializa con `kotlinx.serialization` (`ignoreUnknownKeys = false` para
-   detectar errores de esquema en debug).
-3. `ContentValidator` comprueba integridad referencial.
-4. Publica un `StateFlow<ContentState>` (`Loading`, `Ready`, `Error`).
-5. Un `ContentGate` mantiene la cortinilla mientras `Loading`; al pasar a `Ready`,
-   `MainActivity` crea `MainViewModel` con el `GameContent` ya validado. La UI no
-   cambia de forma perceptible.
-6. En `Error`, se muestra un mensaje recuperable con la ruta del archivo inválido;
-   nunca se arranca con contenido a medias.
-
-En tests, `MainViewModel` recibe un `GameContent` de fixture, sin `AssetManager`.
-
-Los DTOs anotados con `@Serializable` viven en `data/content/` y se mapean a los
-modelos puros de `model/content/`. No se anotan los modelos de UI ni los de
-dominio: así un cambio de formato JSON no contamina `GameUiState`.
-
-### 21.6 Dependencias que habrá que añadir
-
-| Dependencia | Fase | Uso |
-|---|---|---|
-| `org.jetbrains.kotlin.plugin.serialization` | 1 | Generar serializers; usar la versión alineada con el Kotlin que aporta AGP 9 |
-| `org.jetbrains.kotlinx:kotlinx-serialization-json` | 1 | Leer y escribir JSON |
-| `androidx.datastore:datastore-preferences` | 4 | Guardado v2 y migración desde SharedPreferences |
-| `io.coil-kt.coil3:coil-compose` (opcional) | 6 | Caché de GIF si el catálogo crece |
-
-No se añaden ahora: la migración de la fase 1 puede empezar con el catálogo en
-tests sin tocar el guardado ni la UI.
-
-### 21.7 Persistencia y migración del guardado
-
-Se mantiene `kanto_clicker` como nombre histórico, pero se cambia el formato:
-
-- `DataStore<Preferences>` con una clave `save_v2` que contiene JSON serializado.
-- `GameSaveStore` como interfaz; `DataStoreGameSaveStore` como implementación.
-- `SaveMigrator` lee el `GameSnapshot` legacy de `SharedPreferences` y genera v2.
-- No se borra el guardado legacy hasta que v2 se haya escrito correctamente.
-
-Algoritmo de migración:
-
-1. Si existe `save_v2`, cargarlo y validar `schemaVersion`.
-2. Si no existe, leer las claves legacy (`coins`, `owned`, `starter`, `lead`…).
-3. Convertir cada ID de `owned` en un `PokemonInstance`:
-   - `instanceId = "legacy-" + speciesId` (determinista, evita duplicados en la
-     primera migración).
-   - `level = 5`, `xp = 0`, `bond = 0`, `moves = []`.
-   - `starter` se crea aparte con el `starterBond` legacy; no se mete también en
-     `ownedPokemon`.
-   - `leadInstanceId` apunta al starter o a una instancia de la run; si el ID no
-     es válido, cae al starter.
-4. Conservar `seenSpecies`, `rewardedSpecies`, `medals`, monedas y progreso.
-5. Convertir `zoneIndex` legacy en el `zoneId` de esa posición en el catálogo; si
-   está fuera de rango, usar la primera zona y registrar el valor original.
-6. Escribir v2 con `schemaVersion = 2` y el `contentVersion` cargado.
-7. Si un ID no existe en el catálogo, **no borrar la partida**: registrarlo en
-   `unknownSpecies`, omitirlo de la UI y conservarlo en el save. Si el catálogo lo
-   recupera en una versión futura, vuelve a estar disponible.
-8. Si el JSON está corrupto, exponer un estado de error recuperable; no hacer
-   `clear()` silencioso.
-
-Reglas de compatibilidad:
-
-- Los IDs de especie deben ser los mismos que usa el guardado actual
-  (`bulbasaur`, `charmander`, `pidgey`…).
-- `zoneIndex` legacy se traduce una sola vez a `zoneId`; a partir de v2 la partida
-  no depende del orden del catálogo.
-- Cada cambio de forma del guardado crea un `SaveMigrator` encadenable; nunca se
-  reescriben migradores ya publicados.
-- Al cargar v2, un `leadInstanceId` que no exista en `ownedPokemon` ni en `starter`
-  cae al starter; si tampoco hay starter, se deja `null` y la UI pide elegir.
-- Tests con fixtures de guardados legacy reales, incluidos IDs desconocidos y
-  campos ausentes.
-
-### 21.8 Fases de implementación
-
-| Fase | Entrega | Criterio de aceptación |
-|---|---|---|
-| **0. Contrato** | Esquema JSON, IDs y decisiones de alcance | Revisado y congelado antes de escribir datos |
-| **1. Serialización** | `kotlinx.serialization`, DTOs, `ContentValidator` y fixtures | Tests de parseo y validación en verde |
-| **2. Contenido actual** | JSON con las 7 especies, 2 zonas y Brock | Paridad exacta con `Catalogs.kt` |
-| **3. Repositorio** | `ContentRepository`, `GameContent` y carga desde assets | La app arranca y juega igual; sin `SpeciesCatalog` en el ViewModel |
-| **4. Instancias y save v2** | `PokemonInstance`, DataStore y `SaveMigrator` | Un guardado legacy se migra y sobrevive a cerrar/abrir |
-| **5. Efectos** | `EffectResolver` y efectos declarativos | Tests deterministas; sin `when` por especie |
-| **6. Kanto** | Contenido por generación, sprites y balance | Validación completa y rendimiento aceptable |
-
-Orden obligatorio: **1 → 2 → 3 → 4**. La fase 5 puede posponerse; la 6 no empieza
-hasta que las anteriores estén estables.
-
-### 21.9 Validación
-
-`ContentValidator` debe comprobar, como mínimo:
-
-- IDs únicos en cada archivo.
-- `manifest.files` existe y no referencia archivos ausentes.
-- `species.types` existen en `types.json`.
-- `spriteKey` y `encounterTableId` resuelven; `learnsetId` resuelve si está
-  presente.
-- `evolutions.from`/`to` existen y el grafo no tiene ciclos.
-- `zones.gymId` existe; `encounters.speciesId` existe.
-- Cada zona tiene al menos una entrada de encuentro válida.
-- Los starters son exactamente tres, existen y tienen datos completos.
-- Pesos de encuentro > 0; probabilidades y multiplicadores en rango.
-- `contentVersion` y `schemaVersion` están presentes.
-- Los recursos de sprite referenciados existen (test de integración de recursos).
-
-Los errores deben incluir **archivo, ruta JSON e ID**, no solo “JSON inválido”.
-
-### 21.10 Pruebas
-
-- **Parseo:** cada archivo se deserializa con el esquema actual.
-- **Paridad:** el contenido JSON produce las mismas especies, zonas, gimnasio y
-  recompensas que `Catalogs.kt` en la fase 2.
-- **Validación:** fixtures con ID duplicado, referencia rota, evolución cíclica,
-  peso negativo y starter faltante.
-- **Guardado:** round-trip v2; migración legacy → v2 con y sin starter/lead;
-  IDs desconocidos; JSON corrupto.
-- **Efectos:** `EffectResolver` con `Random` sembrado; probabilidad 0 y 1;
-  objetivos inválidos.
-- **Regresión:** `ModelTest`, `testDebugUnitTest`, `lintDebug` y `assembleDebug`.
-
-### 21.11 Rendimiento y escala
-
-- Cargar una vez y reutilizar mapas inmutables; no leer assets en `derive()`.
-- Mantener el JSON pequeño y dividirlo por generación o por dominio si crece.
-- Evitar un único archivo de 151 especies con movimientos y evoluciones anidadas.
-- No usar reflexión para resolver efectos; `EffectResolver` interpreta un conjunto
-  cerrado de tipos.
-- Para muchos GIF, sustituir la decodificación manual por Coil/Glide con caché en
-  disco y memoria. `ImageDecoder` es suficiente para los tres starters actuales,
-  no para un catálogo grande.
-- Si se activa R8, conservar las reglas de `kotlinx.serialization`.
-
-### 21.12 Decisiones y riesgos
-
-| Decisión | Elección | Motivo |
-|---|---|---|
-| Formato del catálogo | JSON en assets | Legible, versionable, editable sin recompilar la lógica |
-| Base de datos del catálogo | Ninguna; mapas en memoria | Solo lectura y volumen pequeño |
-| Guardado | DataStore + JSON versionado | Menos código que Room y migraciones explícitas |
-| Efectos | Datos + intérprete | Evita lógica duplicada por Pokémon |
-| IDs | Slug estable | Sobrevive a traducciones y renombrados |
-
-Riesgos principales:
-
-- **Sobreingeniería:** modelar movimientos, IVs, habilidades y efectos antes de
-  que exista el combate. Mitigación: campos opcionales y fases separadas.
-- **Datos inconsistentes:** las referencias por ID son frágiles sin validator.
-  Mitigación: validar en tests y al cargar.
-- **Pérdida de partidas:** cambiar claves o limpiar preferencias. Mitigación:
-  migrador, cuarentena y no borrar el formato legacy hasta confirmar v2.
-- **Rendimiento de imágenes:** cientos de GIF decodificados a la vez. Mitigación:
-  caché y carga bajo demanda.
-- **Localización:** nombres dentro del JSON. Mitigación: `nameKey` y textos en
-  `strings.xml`/recursos por idioma.
-
-### 21.13 Definición de terminado
-
-- [ ] `Catalogs.kt` ya no contiene especies, zonas ni gimnasios hardcodeados.
-- [ ] El contenido actual se carga desde assets y supera la prueba de paridad.
-- [ ] `ContentValidator` corre en tests y falla con referencias rotas.
-- [ ] `PokemonInstance` se persiste y el guardado legacy se migra sin pérdida.
-- [ ] `schemaVersion` y `contentVersion` están en el guardado y el manifiesto.
-- [ ] Los efectos, si existen, se resuelven sin `when` por especie.
-- [ ] `assembleDebug`, `testDebugUnitTest` y `lintDebug` pasan.
-- [ ] Las partidas existentes siguen abriendo con `kanto_clicker`.
-
----
-
-## 22. Tutorial explicativo
-
-Tercera rebanada de onboarding: un **recorrido guiado** que enseña el menú, el
-mapa y la Pokédex. Se ofrece tras la introducción de Oak (primera partida) o
-después de un reset (sin repetir a Oak); con un borrado total vuelve a aparecer
-el flujo completo desde la intro.
-
-### Flujo
-
-```text
-Intro de Oak → ¿Oferta? → ¿Confirmar?
-  ├─ Omitir ─────────────► juego normal (la oferta reaparece tras un reset)
-  └─ Empezar → desplegar Pokéball → abrir Mapa → volver
-              → abrir Pokédex → volver → despedida
-              → aviso de experiencia → primer avance → COMPLETED
-```
-
-- **Oferta**: tras cerrar la despedida de Oak se pregunta «¿es tu primera vez
-  aquí?» con botones Sí/No.
-- **Doble confirmación**: responder *Sí* lleva a una segunda pregunta
-  «Empezar tutorial / Omitir». Solo *Empezar* inicia el recorrido; *Omitir*
-  juega con normalidad.
-- **Recorrido obligatorio**: una vez empezado, no se puede abandonar; se
-  completa con el primer avance real de zona.
-- **Dos momentos por paso**: cada paso arranca con su mensaje explicativo
-  visible (todo bloqueado); al tocar la caja el mensaje se cierra y **solo**
-  la interacción del paso responde. La acción real de juego es lo que
-  completa el paso: cerrar el mensaje no lo salta.
-
-### Máquina de estados (`model/Tutorial.kt`)
-
-Pura y sin Android: 14 fases (`TutorialPhase`), 14 acciones
-(`TutorialAction`) y una función `advance()` que descarta cualquier acción
-que no aplique (no-op) — los finales (`SKIPPED`, `COMPLETED`) absorben todo.
-
-| Fase | Momento | Acción que la completa |
-|---|---|---|
-| `PENDING` | Antes de terminar Oak | `OAK_FINISHED` → `OFFER` |
-| `OFFER` | Pregunta «primera vez?» | `ACCEPT_OFFER` / `DECLINE_OFFER` |
-| `CONFIRM` | Doble confirmación | `BEGIN_TUTORIAL` / `SKIP_TUTORIAL` |
-| `DEPLOY_POKEBALL` | Paso 1: desplegar | `POKEBALL_EXPANDED` |
-| `OPEN_MAP` | Paso 2: instrucción | `MAP_OPENED` |
-| `RETURN_MAP` | Paso 3: volver del mapa | `MAP_CLOSED` |
-| `OPEN_POKEDEX` | Paso 4: instrucción | `POKEDEX_OPENED` |
-| `RETURN_POKEDEX` | Paso 5: volver de la Dex | `POKEDEX_CLOSED` |
-| `FAREWELL` | Despedida | `FAREWELL_DISMISSED` |
-| `EXP_WAIT` | Jugar hasta llenar la barra | `EXP_BAR_FILLED` (derivado) |
-| `EXP_NOTICE` | Aviso de avance | `EXP_NOTICE_DISMISSED` |
-| `ADVANCE_WAIT` | Primer avance real | `ADVANCE_ZONE_EXECUTED` |
-| `SKIPPED` / `COMPLETED` | Finales (juego libre) | absorben todo |
-
-Predicados puros que comparten UI y ViewModel:
-
-- `allowedInteractions`: qué control responde en cada fase (en los pasos
-  guiados, solo el del paso).
-- `isMessageVisible`: si el mensaje del paso está en pantalla.
-- `isFreePlay`: fases sin restricción (`EXP_WAIT`, esperas y finales, y
-  también `PENDING` — su aislamiento lo hacen las capas visuales: la intro es
-  opaca y el menú no se compone porque `menuHidden` incluye `needsStarter`).
-- `tutorialInteractionAllowed` (regla principal): mientras **cualquier**
-  mensaje esté visible, nada del juego responde; con el mensaje cerrado, en
-  pasos guiados solo responde la interacción del paso, y en el resto, juego
-  libre total.
-
-### Integración en el ViewModel y la UI
-
-- `MainViewModel`: cada evento de juego real consulta el guard
-  (`tutorialAllows(...)`) y alimenta la máquina con su acción. Los guards
-  cubren **toda** la operación: bloqueado, el método devuelve el estado
-  intacto (no navega ni cierra nada). Puertas adicionales:
-  `onTutorialAction` (respuestas y cierres de mensaje) y
-  `onTutorialMessageTap` (avanza/cierra la caja de diálogo).
-- `AppRoot.kt`: dibuja la capa (`TutorialOverlay`), oculta el menú en las
-  capas modales (`tutorialHidesMenu`), inmoviliza la Pokéball
-  (`tutorialPokeBallEnabled`), los destinos de la hoja
-  (`tutorialDexDestinationsEnabled`) y el clic de juego
-  (`tutorialPokeBallClickEnabled`), y bloquea el botón Atrás con
-  `BackHandler` mientras el tutorial lo exija.
-- `derive()` normaliza dos transiciones dependientes del juego: `PENDING` +
-  starter → `OFFER` (oferta tras la intro o tras un reset) y `EXP_WAIT` +
-  barra llena → `EXP_NOTICE`.
-
-### Persistencia
-
-- `GameSnapshot.tutorialPhase` (clave `tutorial_phase`, **nombre del enum**)
-  y `GameSnapshot.tutorialMessageClosed` (clave `tutorial_message_closed`).
-- Guardados antiguos sin la clave: `GameStateStore` resuelve `COMPLETED` si
-  ya hay starter (jugador anterior a la función, no se le ofrece) y
-  `PENDING` si no.
-- Limitación conocida: al reabrir la app a mitad de un diálogo paginado se
-  recupera la fase y el momento (mensaje abierto o cerrado), pero la página
-  concreta del diálogo vuelve al inicio del mensaje.
-
-### Archivos
-
-| Archivo | Rol |
-|---|---|
-| `model/Tutorial.kt` | máquina de estados: fases, acciones, transiciones y predicados |
-| `ui/TutorialOverlay.kt` | diálogos paginados estilo Oak (sin retrato), scrim y `modalBlocking` |
-| `ui/AppRoot.kt` | composición de la capa, scrims modales y bloqueo del menú/Atrás |
-| `viewmodel/MainViewModel.kt` | guards sobre los eventos reales y eventos del tutorial |
-
-### Cómo ajustarlo
-
-| Quiero… | Cambio |
-|---|---|
-| Cambiar los textos | `strings.xml`, claves `tutorial_*` |
-| Cambiar la velocidad de la máquina de escribir | `TYPE_CHAR_MS` en `TutorialOverlay.kt` |
-| Cambiar el scrim de las preguntas | `QuestionScrim` en `TutorialOverlay.kt` |
-
-Los tutoriales de gimnasio (`GymIntro`, `GymOverlay`, §19) son un mecanismo
-independiente y no comparten máquina con este recorrido.
-
-### Cómo extenderlo
-
-1. Añade la fase y su acción a los enums de `model/Tutorial.kt` y su
-   transición en `advance()`.
-2. Declárala en `allowedInteractions` y en `isMessageVisible`.
-3. Añade su texto en `strings.xml` (`tutorial_*`) y mapea la fase en
-   `tutorialMessageRes` (`ui/TutorialOverlay.kt`).
-4. Si el paso reacciona a una interacción que aún no alimenta la máquina,
-   añade la detección en su método de `MainViewModel` y los helpers que
-   falten en `AppRoot` (ver §13).
-5. **El nombre del enum es contrato de guardado**: `tutorial_phase` se
-   persiste con `enum.name`; renombrar una fase rompe los guardados
-   existentes salvo que se añada antes un mapeo de compatibilidad.
+## 21. Compatibilidad y migración
+
+### Estado actual
+
+- **Pokédex**: ya es dato (`assets/pokedex_catalogo.json` + sprites). La fuente
+  de verdad del juego sigue siendo `SpeciesCatalog`.
+- **Mapa**: ya es dato (`kanto_locations.json` + `kanto_regions.json`).
+- **Contenido jugable** (especies, zonas, gimnasios): sigue en `Catalogs.kt`.
+- **Guardado**: versionado (`schema_version = 2`), sin migraciones complejas.
+- **Paquete**: `com.dsrs.pokeclic`; el archivo de preferencias conserva el nombre
+  histórico `kanto_clicker`.
+
+### Limitaciones del guardado
+
+- `ownedSpecies` es un `Set<String>`: no representa individuos, niveles,
+  experiencia, movimientos ni vínculo por Pokémon.
+- Los IDs son la única relación con el contenido: un ID que desaparezca deja el
+  dato huérfano.
+- El estado transitorio no se persiste a propósito.
+
+### Plan pendiente
+
+La migración a contenido versionado (`manifest.json`, `species.json`,
+`encounters.json`, `gyms.json`…) y a instancias (`PokemonInstance`) sigue
+planificada, no implementada. El contrato completo está en
+[`docs/plan-migracion-contenido.md`](docs/plan-migracion-contenido.md); el diseño
+de referencia, en
+`docs/superpowers/specs/2026-10-15-kanto-clicker-design.md`, y el plan de la
+primera rebanada, en `docs/superpowers/plans/2026-10-15-vertical-slice.md`.
+
+Las apariciones de las ubicaciones aún no jugables viven en
+[`docs/apariciones-planificadas.md`](docs/apariciones-planificadas.md); las
+listas activas están solo en `ZoneCatalog`.
