@@ -68,6 +68,7 @@ import com.dsrs.pokeclic.model.isFreePlay
 import com.dsrs.pokeclic.model.isMessageVisible
 import com.dsrs.pokeclic.model.isModal
 import com.dsrs.pokeclic.viewmodel.GameUiState
+import com.dsrs.pokeclic.viewmodel.MapUiState
 
 /**
  * Duración del fundido con el que aparece y desaparece el bottom menu cuando una
@@ -149,6 +150,11 @@ private const val MENU_FADE_MS = 220
  * @param onOpenDex abre la Pokédex.
  * @param onCloseDex cierra la Pokédex y vuelve al juego.
  * @param onPokeBallExpanded avisa del resultado del gesto de arrastre.
+ * @param onTutorialAction responde a los botones del tutorial guiado.
+ * @param onTutorialMessageTap cierra el mensaje del paso guiado.
+ * @param mapState estado ya resuelto de la pantalla del mapa (zona destacada).
+ * @param onMapOpened avisa de que la pantalla del mapa apareció.
+ * @param onMapTap entrega el toque del mapa en coordenadas normalizadas.
  */
 @Composable
 fun AppRoot(
@@ -185,7 +191,10 @@ fun AppRoot(
     onCloseDex: () -> Unit,
     onPokeBallExpanded: (Boolean) -> Unit,
     onTutorialAction: (TutorialAction) -> Unit,
-    onTutorialMessageTap: () -> Unit
+    onTutorialMessageTap: () -> Unit,
+    mapState: MapUiState = MapUiState(),
+    onMapOpened: () -> Unit = {},
+    onMapTap: (u: Float, v: Float) -> Unit = { _, _ -> }
 ) {
     // Contador de pulsaciones sobre la Pokébola: es lo único que mueve el fondo
     // de ruta y, con él, la dirección en la que camina el entrenador. Estado
@@ -489,7 +498,10 @@ fun AppRoot(
                             onAdvanceZone = onAdvanceZone
                         )
                         AppTab.Map -> MapCarcasaScreen(
-                            bottomReserved = menuReserved
+                            bottomReserved = menuReserved,
+                            mapState = mapState,
+                            onMapOpened = onMapOpened,
+                            onMapTap = onMapTap
                         )
                     }
                 }

@@ -32,8 +32,8 @@ const val KANTO_MAP_LOG_TAG = "KantoMap"
 /**
  * Sistema de mapeo ya cargado y validado, listo para que la UI consulte.
  *
- * [MapScreen] recuerda una instancia por sesión de la pantalla; [onTap] usa [
- * KantoRegionMap.regionAt] sobre [regions] y resuelve el nombre visible con
+ * `MapViewModel` lo carga una sola vez por sesión de la app; el toque usa el
+ * hit-testing (`selectAt`) sobre [regions] y resuelve el nombre visible con
  * [MapRegion.resolvedName] contra [locations].
  */
 data class KantoMapData(
