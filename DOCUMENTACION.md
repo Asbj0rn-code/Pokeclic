@@ -49,7 +49,7 @@ estado de juego **y** el de navegación.
 | Bottom menu | Componente propio `PokemonBottomMenu` (barra con hendidura + Pokéball) |
 | Tema | `Theme.Pokeclic`, pantalla completa (edge-to-edge) |
 | Persistencia | `GameStateStore` (interfaz) + `SharedPreferencesGameStateStore` |
-| Recursos gráficos | 16 frames del trainer, Pokéballs, hierba, rocas, gimnasio, Oak, GIFs de starters y sprites de combate |
+| Recursos gráficos | 16 frames del trainer, Pokéballs, rocas, gimnasio, Oak, GIFs de starters y sprites de combate |
 
 ---
 
@@ -82,7 +82,7 @@ estado de juego **y** el de navegación.
 
 - **View → ViewModel**: la `MainActivity` cablea el `StateFlow` y los métodos del
   ViewModel a las lambdas de los composables. Los composables solo renderizan
-  estado y emiten eventos (`onPokeBallTouch`, `onTallGrassToggle`, ...); no ven el
+  estado y emiten eventos (`onPokeBallTouch`, `onReset`, ...); no ven el
   ViewModel.
 - **ViewModel → Model/Data**: usa los tipos y funciones puras de `model/` y el
   contrato `GameStateStore` de `data/`. Nunca importa `R`, así que la lógica es
@@ -98,7 +98,7 @@ estado de juego **y** el de navegación.
 
 | Decisión | Motivo |
 |---|---|
-| **Composables sin estado (`state` + lambdas)** | `MainScreen(state = ..., onTallGrassToggle = ...)` no conoce el ViewModel. Se puede previsualizar y testear con estado de mentira, y no se acopla UI con negocio. |
+| **Composables sin estado (`state` + lambdas)** | `MainScreen(state = ..., onEnterGym = ...)` no conoce el ViewModel. Se puede previsualizar y testear con estado de mentira, y no se acopla UI con negocio. |
 | **`MainViewModel` con scope de Activity** | La Pokéball del bottom menu vive en `AppRoot` y comparte estado con `MainScreen`; ambos leen el mismo `StateFlow`. |
 | **Un único ViewModel y un único `StateFlow`** | Juego, navegación y overlays comparten fuente de verdad. Elimina la sincronización entre ViewModels y los estados imposibles (dos pantallas abiertas a la vez). |
 | **`StateFlow` en vez de `LiveData`** | Es lo idiomático con Compose; se consume con `collectAsStateWithLifecycle()`. |
@@ -148,7 +148,7 @@ Pokeclic/
 │       │       │   ├── colors.xml
 │       │       │   └── themes.xml               # Theme.Pokeclic
 │       │       ├── values-night/themes.xml
-│       │       ├── drawable/                    # Pokéballs, hierba, frames del trainer, rocas y gimnasio
+│       │       ├── drawable/                    # Pokéballs, frames del trainer, retratos, medallas y gimnasio
 │       │       └── drawable-nodpi/              # fondos animados (ruta, Pueblo Paleta, Bosque Verde, Ciudad Verde y Ruta 3): pixel art sin reescalado por densidad
 │       └── test/                                # Tests unitarios JVM (modelo, catálogo y ViewModel)
 ├── build.gradle.kts
@@ -376,7 +376,7 @@ quede bajo la barra de gestos.
 | Destino | Botón del menú | Contenido |
 |---|---|---|
 | **Mapa** | Botón izquierdo (`Icons.Filled.Map`) | `MapScreen`, ocupa todo el espacio bajo el menú |
-| **Principal** | Pokéball central | `MainScreen`: HUD, trainer y hierba |
+| **Principal** | Pokéball central | `MainScreen`: HUD y trainer |
 | **Opciones** | Botón derecho, *Pokédex* (`Icons.Filled.Book`) | `OptionsSheet` (`ModalBottomSheet`, no cambia de pantalla) |
 
 `AppTab` solo tiene `Map` y `Home`: son las pantallas que ocupan la zona de
@@ -408,23 +408,22 @@ visibilidad vive en `GameUiState.isOptionsOpen`.
 
 ### Elementos de la pantalla
 
-| Elemento | Tamaño | Sesgo vertical | Sesgo horizontal | Interactivo |
-|---|---|---|---|---|
-| HUD | automático | primera fila del `Column` | ancho completo | Botones de gimnasio/reset/principal |
-| Trainer (+ capas de hierba) | `100.dp` | `-0.0f` | centrado | No |
-| Botón de hierba alta | `80.dp` | `0.80f` | `0.90f` (derecha) | Sí (entra/sale del modo) |
-| Fondo de ruta (capa inferior) | pantalla completa | — | — | No: lo mueve la Pokéball |
-| Poké Ball | — | — | — | **No está aquí**: vive en el bottom menu |
+| Elemento | Tamaño | Ubicación | Interactivo |
+|---|---|---|---|
+| HUD | automático | primera fila del `Column`, ancho completo | Botones de gimnasio/avance |
+| Trainer | `WorldDefaults.TRAINER_BOX_ART_SIZE` | proyectado por `WorldFrame`, sobre la línea del arte | No |
+| Fondo de ruta (capa inferior) | pantalla completa | — | No: lo mueve la Pokéball |
+| Poké Ball | — | — | **No está aquí**: vive en el bottom menu |
 
-Los valores están centralizados en `object MainLayout` (`ui/MainScreen.kt`).
+El HUD se mide en `dp` (`object MainLayout` en `ui/MainScreen.kt`). El entrenador
+**no**: se mide en píxeles de arte y lo proyecta `WorldFrame` (ver `ui/WorldFrame.kt`).
 
 ### El HUD reserva espacio (no se superpone)
 
 `MainScreen` es un `Column`: el **HUD** (`GameHud`) ocupa la primera fila con su
-altura natural y el **entrenador + hierba** van en una `Box` con `weight(1f)`
-justo debajo. Así el HUD no se superpone al trainer: si crece mucho (nombre,
-monedas, zona, barras, botones…), reduce el espacio restante. `TRAINER_BIAS` se
-ajusta sobre esa caja, no sobre la pantalla completa.
+altura natural y el entrenador se dibuja aparte, proyectado por `WorldFrame` sobre
+el mismo `Box` que el fondo. Así el HUD no se superpone al trainer: si crece mucho
+(nombre, monedas, zona, barras, botones…), reduce el espacio restante.
 
 ### Fondo de ruta animado
 
@@ -554,25 +553,16 @@ id de la entrada sea una zona real (un id mal escrito caería en `DEFAULT` sin
 avisar). `RouteScrollShiftTest` comprueba la traducción del recorrido al dibujo:
 qué eje se mueve y con qué fase.
 
-### Capas de hierba alta sobre el trainer
+### Capas del entrenador
 
-El botón de hierba alta **alterna** la visibilidad de dos imágenes superpuestas
-en la posición exacta del trainer:
+El entrenador es una **sola imagen** anclada en coordenadas de arte. Se apila en un
+`Box` alineado arriba y centrado y se desplaza hasta
+`WorldDefaults.TRAINER_CENTER_ART_Y` con el marco del mundo (`WorldFrame`), de modo
+que comparte proyección con el fondo de ruta y no puede desalinearse.
 
-| Capa | Imagen | Contenido |
-|---|---|---|
-| Fondo | `tall_grass_full` | Matorral completo, oculta al trainer |
-| Medio | trainer | Sprite animado |
-| Frente | `tall_grass_mid` | Matorral parcial, solo tapa la parte baja |
-
-Las tres se apilan en un mismo `Box` (`contentAlignment = Center`), por lo que
-comparten el mismo centro **por construcción**: no pueden desalinearse. En un
-`Box` el orden de dibujo es de fondo a frente, así que el orden de las llamadas
-es exactamente el orden de las capas.
-
-El estado vive en el ViewModel (`GameUiState.isTallGrass`) y se alterna
-con `MainViewModel.onTallGrassToggle()`. Las capas solo se componen cuando están
-visibles, así que cuando se ocultan no se dibujan ni interceptan toques.
+El sprite se dibuja con `PixelImage` (`FilterQuality.None`) para preservar el pixel
+art, y su tamaño llega ya convertido desde `WorldFrame`: siempre mide la misma
+fracción del ancho de pantalla, sea cual sea la densidad del móvil.
 
 ### Estado expuesto
 
@@ -586,7 +576,7 @@ data class GameUiState(
     // meta permanente: playerName, coins, seenSpecies, rewardedSpecies,
     //                 medals, starterSpeciesId, starterBond
     // run: ownedSpecies, leadSpeciesId, zoneIndex, zoneClicks
-    // hierba/encuentros: isTallGrass, walkProgress, encounter
+    // encuentros: walkProgress, encounter
     // combate: gym
     // visual: trainer, trainerFrameRes
     // navegación: contentTab, isOptionsOpen, isLeadOpen
@@ -688,8 +678,8 @@ pantalla ni sacudida del sprite (se retiraron porque el parpadeo blanco
 resultaba molesto).
 
 El pop solo aparece cuando el clic suma avance real: con la barra de zona llena
-(`zoneClicks` se capa en el umbral) o en modo hierba alta, el delta es 0 y no se
-genera.
+(`zoneClicks` se capa en el umbral) o con un encuentro abierto, el delta es 0 y no
+se genera.
 
 ### Captura del toque
 
@@ -790,59 +780,42 @@ idéntica en cualquier móvil.
 
 ### Valores actuales de la pantalla principal
 
-Centralizados en `object MainLayout` (`ui/MainScreen.kt`):
+El cromo de la pantalla principal vive en `object MainLayout`
+(`ui/MainScreen.kt`); el mundo (entrenador) se mide en píxeles de arte en
+`WorldDefaults` (`ui/WorldFrame.kt`):
 
 ```kotlin
 object MainLayout {
-    val TRAINER_SIZE = 100.dp
-    val TALL_GRASS_SIZE = 80.dp
-
-    const val TRAINER_BIAS = -0.0f       // trainer (mueve también las capas)
-    const val TALL_GRASS_BIAS = 0.8f     // botón de hierba
-    const val TALL_GRASS_H_BIAS = 0.9f   // botón de hierba: hacia la derecha
     val HUD_PADDING = 16.dp              // margen del HUD
+}
 
-    // Capas de hierba alta, centradas sobre la posición del trainer
-    val TALL_GRASS_FULL_SIZE = 120.dp
-    val TALL_GRASS_MID_SIZE = 120.dp
-    val TALL_GRASS_X_OFFSET = 3.dp       // desplazamiento horizontal de la hierba
-    val TALL_GRASS_Y_OFFSET = 38.dp      // desplazamiento vertical de la hierba
+internal object WorldDefaults {
+    const val TRAINER_CENTER_ART_Y = 780.8f   // centro del sprite, en px de arte
+    const val TRAINER_BOX_ART_SIZE = 224f     // lado del recuadro del entrenador
 }
 ```
 
 > La Pokéball **no** se posiciona desde aquí: la dibuja el bottom menu. Sus
 > ajustes están en `ui/PokemonBottomMenu.kt`.
 
-**Para mover un elemento, cambia su `BIAS`. Para mover toda la zona, cambia
-`ContentZoneDefaults.TOP` / `BOTTOM`.**
+**Para mover el entrenador, cambia `WorldDefaults.TRAINER_CENTER_ART_Y`; para
+mover el cromo, su `BIAS`.**
 
-### Mover trainer + hierba
+### Mover el entrenador
 
-Trainer y las dos capas comparten un único `Box`, así que **un solo sesgo los
-mueve a todos**: `TRAINER_BIAS`.
-
-### Mover la hierba respecto al trainer
-
-`TALL_GRASS_X_OFFSET` e `TALL_GRASS_Y_OFFSET` (en `dp`) desplazan **las dos
-capas a la vez**, sin separarlas entre sí:
-
-```kotlin
-val TALL_GRASS_X_OFFSET = 3.dp     // positivo = derecha, negativo = izquierda
-val TALL_GRASS_Y_OFFSET = 38.dp    // positivo = abajo,    negativo = arriba
-```
-
-Afecta solo al desplazamiento visual: `Modifier.offset` no altera el tamaño del
-`Box`, así que el trainer no se mueve ni cambia el tamaño de la zona.
+El entrenador se proyecta con `WorldFrame`: su centro cae en
+`TRAINER_CENTER_ART_Y` (px de arte), así que la posición es la misma fracción del
+arte en cualquier móvil. No usa `dp` ni porcentajes de pantalla.
 
 ### Posicionar en ambas dimensiones a la vez
 
-Para elementos que necesitan sesgo vertical **y** horizontal (como el botón de
-hierba alta) usa `anchor(...)`:
+Para elementos de cromo que necesitan sesgo vertical **y** horizontal usa
+`anchor(...)`:
 
 ```kotlin
 Modifier.anchor(
-    verticalBias = MainLayout.TALL_GRASS_BIAS,
-    horizontalBias = MainLayout.TALL_GRASS_H_BIAS
+    verticalBias = 0.9f,
+    horizontalBias = 0.1f
 )
 ```
 
@@ -914,9 +887,6 @@ decorativos (*Configuración* y *Acerca de*) sin acción asociada.
 |---|---|
 | `pokeball_menu.png` | Pokéball del bottom menu (100 dp en reposo, escala hasta 280 dp) |
 | `pokeball_splash_top.png`, `pokeball_splash_bottom.png` | Cortinilla de arranque |
-| `tall_grass_button.png` | Botón de hierba alta (80 dp) |
-| `tall_grass_full.png` | Capa de fondo: matorral completo sobre el trainer (120 dp) |
-| `tall_grass_mid.png` | Capa frontal: matorral parcial sobre el trainer (120 dp) |
 | `front0-3.png` | Frames "front" (toque abajo) |
 | `right0-3.png` | Frames "right" (toque derecha) |
 | `left0-3.png` | Frames "left" (toque izquierda) |
@@ -956,20 +926,17 @@ Nombres en minúsculas obligatorio (a-z, 0-9, `_`).
 ### Cómo añadir una imagen nueva
 
 1. Copia el archivo a `app/src/main/res/drawable/` con nombre **en minúsculas** y
-   solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `tallGrassButton.png` →
-   `tall_grass_button.png`). Si es pixel art que no debe reescalarse por densidad,
-   va en `res/drawable-nodpi/` (así viven los fondos `background_*.png`).
+   solo `[a-z0-9_]` (AAPT2 rechaza mayúsculas: `miBoton.png` → `mi_boton.png`). Si
+   es pixel art que no debe reescalarse por densidad, va en `res/drawable-nodpi/`
+   (así viven los fondos `background_*.png`).
 2. Añade su `contentDescription` en `strings.xml` si aporta información.
 3. Añade el composable en la pantalla correspondiente.
 4. Declara tamaño y posición en el `object` de configuración de esa pantalla.
 
-> **Aviso de tamaño:** `tall_grass_button.png` ocupa 1500×1500 px (394 KB) pero
-> se muestra a 80 dp. Conviene reducirla a unas 300×300 px o pasarla a WebP.
-> `tall_grass_full.png` y `tall_grass_mid.png` son de 750×750 px y se muestran a
-> 120 dp, así que también admiten reducción. Los fondos de gimnasio (`rock_gym.png`,
-> `water_gym.png`, `electric_gym.jpg`) van en `drawable-nodpi` para que la
-> densidad no los reescale; roca y agua pasaron de varios MB en JPG a ~40 KB y
-> ~29 KB en PNG.
+> **Aviso de tamaño:** los `@Preview` no son un medidor de rendimiento, pero sí de
+> legibilidad. Los fondos de gimnasio (`rock_gym.png`, `water_gym.png`,
+> `electric_gym.jpg`) van en `drawable-nodpi` para que la densidad no los reescale;
+> roca y agua pasaron de varios MB en JPG a ~40 KB y ~29 KB en PNG.
 
 ### Strings (`res/values/strings.xml`)
 
@@ -978,7 +945,7 @@ La lista completa vive en el recurso; los grupos son:
 | Grupo | Claves representativas | Uso |
 |---|---|---|
 | App y navegación | `app_name`, `nav_*`, `map_placeholder` | Nombre, menú y mapa |
-| Pantalla principal | `trainer_desc`, `tall_grass_desc`, `hud_*` | Trainer, HUD y hierba |
+| Pantalla principal | `trainer_desc`, `hud_*` | Trainer y HUD |
 | Acciones | `action_reset`, `action_gym`, `action_wipe` | Botones del HUD |
 | Captura | `catch_*` | Overlay de encuentro |
 | Starter y principal | `starter_type`, `lead_*` | Intro y selector de principal |
@@ -1056,7 +1023,7 @@ lo que permite que R8 elimine los que no se usan.
    único estado con `collectAsStateWithLifecycle()` y se pasa a `AppRoot` junto
    con las lambdas.
 3. `AppRoot` dibuja el `Scaffold` y, como `contentTab` empieza en `AppTab.Home`,
-   compone `MainScreen(state = state, onTallGrassToggle = ...)`.
+   compone `MainScreen(state = state, onEnterGym = ...)`.
 4. `PokeBallSplash` se dibuja encima y se retira al terminar la animación.
 5. Cambiar de pestaña es cambiar `GameUiState.contentTab`, y Compose recompone el
    `when`.
@@ -1090,17 +1057,6 @@ MenuPokeBall.pointerInput (awaitEachGesture)
       → spring(Muelle) lleva progress a 1f o 0f
 ```
 
-### Botón de hierba alta
-
-```
-TallGrassButton.onClick
-  → onTallGrassToggle()                     ← lambda que cableó MainActivity
-      → MainViewModel.onTallGrassToggle()
-          → _uiState.update { isTallGrass = !it.isTallGrass }
-  → recomposición de MainScreen
-      → TrainerGrassStack dibuja (o no) las dos capas
-```
-
 ### Rotación
 
 - El único `MainViewModel` de Activity sobrevive: no se pierden el progreso ni el
@@ -1118,19 +1074,22 @@ TallGrassButton.onClick
 
 ## 12. Guía rápida: mover elementos
 
-### Mover un elemento concreto
+### Mover un elemento de cromo
 
-`ui/MainScreen.kt` → `object MainLayout` → cambia el `BIAS`:
+`ui/MainScreen.kt` → `object MainLayout` guarda el único ajuste de cromo de la
+pantalla:
 
 ```kotlin
-const val TRAINER_BIAS     = -0.55f
-const val TALL_GRASS_BIAS  = 0.80f
-const val TALL_GRASS_H_BIAS = 0.90f
+val HUD_PADDING = 16.dp
 ```
 
-Rango habitual: `0f` (guía superior) a `1f` (guía inferior). Se admiten valores
-fuera de ese rango: `TRAINER_BIAS = -0.55f` sube al trainer por encima de la guía
-superior. El layout no los recorta.
+Para anclar un elemento suelto dentro de la zona de contenido, usa `anchor(...)`
+con `verticalBias`/`horizontalBias` en el rango `0f` (arriba) a `1f` (abajo). El
+layout no recorta valores fuera de ese rango.
+
+El **entrenador** no se mueve con un sesgo: su posición es
+`WorldDefaults.TRAINER_CENTER_ART_Y`, en píxeles de arte, y la proyecta
+`WorldFrame`.
 
 ### Mover o redimensionar la Pokéball del menú
 
@@ -1171,9 +1130,9 @@ const val MIN_BOTTOM = 0.70f   // tope de seguridad inferior
 
 ### Cambiar tamaños fijos
 
-`MainLayout.TRAINER_SIZE` / `MainLayout.TALL_GRASS_SIZE` (en `dp`, escalan con
-la densidad), `MainLayout.HUD_PADDING` para el margen superior del HUD y
-`BottomMenuDefaults.POKEBALL_SIZE` para la del menú.
+`MainLayout.HUD_PADDING` para el margen superior del HUD,
+`WorldDefaults.TRAINER_BOX_ART_SIZE` para el lado del entrenador (en px de arte) y
+`BottomMenuDefaults.POKEBALL_SIZE` para la Pokéball del menú.
 
 ### Añadir un elemento nuevo a la pantalla principal
 
@@ -1194,20 +1153,16 @@ PercentageLayout {
 Modifier.anchor(verticalBias = 0.5f, horizontalBias = 0.25f)   // 0f = pegado a la izquierda
 ```
 
-### Ajustar las capas de hierba alta
+### Ajustar el entrenador
 
 | Quiero… | Cambio |
 |---|---|
-| Mover trainer + capas juntos | `TRAINER_BIAS` |
-| Subir o bajar la hierba sobre el trainer | `TALL_GRASS_Y_OFFSET` (en `dp`, afecta a las dos capas) |
-| Mover la hierba a izquierda o derecha | `TALL_GRASS_X_OFFSET` (en `dp`, afecta a las dos capas) |
-| Cambiar el tamaño de la capa de fondo | `TALL_GRASS_FULL_SIZE` |
-| Cambiar el tamaño de la capa frontal | `TALL_GRASS_MID_SIZE` |
-| Desplazar solo una capa | Pasa un `offsetX` / `offsetY` propio en esa llamada a `TallGrassLayer` |
-| Añadir otra capa | Añade un `Image` en `TrainerGrassStack` en el orden de capas que quieras |
+| Subir o bajar el entrenador | `WorldDefaults.TRAINER_CENTER_ART_Y` (px de arte) |
+| Cambiar su tamaño | `WorldDefaults.TRAINER_BOX_ART_SIZE` (px de arte) |
+| Cambiar sus fotogramas | `SpriteRepository` en `Catalogs.kt` |
 
-El **orden de las capas** es el orden de las llamadas dentro de
-`TrainerGrassStack`: la primera se dibuja al fondo y la última al frente.
+El entrenador se dibuja con `PixelImage` (`FilterQuality.None`) para no ablandar el
+pixel art, y su recuadro se proyecta con `WorldFrame`.
 
 ### Previsualizar como en el dispositivo
 
@@ -1224,8 +1179,7 @@ parecía más corto):
 - **Estado realista**: usar `previewGameState(...)`, **no** `GameUiState()` en
   blanco (vacío deja el HUD corto y el preview engaña).
 - El montaje **completo** (con overlays) tiene sus previews en `AppRoot`:
-  `AppRootGamePreview`, `AppRootTallGrassPreview`, `AppRootGymPreview` y
-  `AppRootIntroPreview`.
+  `AppRootGamePreview`, `AppRootGymPreview` y `AppRootIntroPreview`.
 
 > Los insets del sistema pueden no reproducirse en el preview aunque pongas
 > `showSystemUi = true`; por eso `PercentageLayout` puede verse unos dp más arriba
@@ -1395,7 +1349,7 @@ La migración a `PokemonInstance` y a un guardado versionado se define en §21.
   pasan un `GameUiState` de mentira (con `trainerFrameRes = R.drawable.front0`,
   para no pintar con id 0) y no construyen ningún ViewModel. `MainScreenStage`
   añade el `Scaffold` y el bottom menu reales.
-  `AppRoot` tiene previews propios para juego, hierba, gimnasio e introducción.
+  `AppRoot` tiene previews propios para juego, gimnasio e introducción.
 - **Importante:** los `@Preview` no reproducen los insets reales, así que
   `navigationBarsPadding()` vale 0 y la barra se ve pegada al borde inferior
   (en el dispositivo queda sobre la barra de gestos).
@@ -1437,8 +1391,8 @@ En Windows PowerShell los comandos encadenados usan `;`, no `&&`.
 
 ## 17. Juego: bucle, estado y persistencia (vertical slice)
 
-Primera rebanada jugable: una zona completa con avance, hierba alta, captura
-simple, monedas, principal y reset. El diseño completo vive en
+Primera rebanada jugable: una zona completa con avance, encuentros salvajes,
+captura simple, monedas, principal y reset. El diseño completo vive en
 `docs/superpowers/specs/2026-10-15-kanto-clicker-design.md` y el plan en
 `docs/superpowers/plans/2026-10-15-vertical-slice.md`.
 
@@ -1446,9 +1400,9 @@ simple, monedas, principal y reset. El diseño completo vive en
 
 1. En una zona, cada toque de la Pokéball suma `clickPower` clics de avance.
 2. Al alcanzar el umbral de la zona se avanza a la siguiente.
-3. En **hierba alta** los toques **no** avanzan: marcan actividad. Un
-   temporizador que solo corre si hay toques recientes llena la barra de caminar;
-   al completarse aparece un salvaje.
+3. En cualquier zona **con fauna**, el toque además marca actividad: un temporizador
+   que solo corre si hay toques recientes llena la barra de caminar; al completarse
+   aparece un salvaje. Las zonas sin fauna (ciudades) nunca generan encuentros.
 4. Con un encuentro activo, cada toque lanza una Pokéball (captura con
    probabilidad). Al capturar: pasa a *visto* y a *en posesión*; si es la
    primera vez que se captura la especie, paga monedas **una sola vez**.
@@ -1476,7 +1430,7 @@ Cinco grupos:
 - **run**: `ownedSpecies`, `leadSpeciesId`, `zoneIndex`, `zoneClicks`.
 - **tutorial**: `tutorialPhase` (fase de la máquina de `model/Tutorial.kt`,
   persistida) y `tutorialMessageClosed` (momento del paso, persistido).
-- **transitorio/UI**: `isTallGrass`, `walkProgress`, `encounter`, `gym`,
+- **transitorio/UI**: `walkProgress`, `encounter`, `gym`,
   `trainer` y la navegación (`contentTab`, `isOptionsOpen`, `isLeadOpen`).
 - **derivados**: nombre de zona, `clickPower`, `maxHp`, `isGymReady`,
   `leadName`, `leadType`, `needsStarter`, `leadOptions`, `starterOptions`.
