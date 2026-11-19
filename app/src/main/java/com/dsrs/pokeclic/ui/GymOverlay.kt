@@ -1128,9 +1128,6 @@ private const val BANNER_STRETCH_OUT = 1.12f
 /** Cuánto crecen las letras en el pico del latido. */
 private const val BANNER_PULSE_SCALE = 0.12f
 
-/** Interpolación lineal suelta, para no arrastrar otra dependencia. */
-private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
-
 /** Curva de salida rápida y frenada, la que usan el confeti y el golpe. */
 private fun easeOutCubic(t: Float): Float {
     val u = 1f - t.coerceIn(0f, 1f)

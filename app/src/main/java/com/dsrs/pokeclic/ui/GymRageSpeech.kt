@@ -66,9 +66,6 @@ private val rageScripts: Map<String, RageScript> = mapOf(
     )
 )
 
-/** Líderes con furia propia. */
-internal val rageScriptGymIds: Set<String> = rageScripts.keys
-
 /**
  * Furia de [gymId]. Los que aún no tienen retrato ni frases propias conservan los
  * de Brock: es lo que hacía este archivo antes de separarlo por gimnasio.

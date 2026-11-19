@@ -299,6 +299,104 @@ class MapRegionsJsonTest {
         }
     }
 
+    /**
+     * Exportar una región enlazada al catálogo y **sin** prioridad explícita no
+     * puede resolverse sin el catálogo: `effectivePriority` caería al default de
+     * ruta y el fichero quedaría con una prioridad falsa.
+     */
+    @Test
+    fun writeRegions_linkedRegionWithoutExplicitPriority_requiresTheCatalog() {
+        val linked = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "ciudad-verde",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    catalogId = 26
+                )
+            )
+        )
+
+        try {
+            linked.writeRegions()
+            fail("Debía rechazar el export sin catálogo")
+        } catch (expected: MapRegionsDataException) {
+            assertTrue("ciudad-verde" in expected.message!!)
+        }
+    }
+
+    /** La región libre (sin enlace) no necesita catálogo para exportarse. */
+    @Test
+    fun writeRegions_freeRegionWithoutCatalog_stillExports() {
+        val free = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "torre",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    name = "Torre",
+                    type = MapRegionType.SPECIAL
+                )
+            )
+        )
+
+        val parsed = parseRegions(free.writeRegions())
+        assertEquals(2, parsed.regions.single().priority)
+    }
+
+    /** Un catálogo que no contiene el id enlazado tampoco puede resolver el tipo. */
+    @Test
+    fun writeRegions_catalogMissingTheLinkedId_throws() {
+        val onlyRoute = parseCatalog(
+            """{"ubicaciones": [{"id": 1, "nombre": "Ruta 1", "tipo": "ruta"}]}"""
+        )
+        val map = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "ciudad-verde",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    catalogId = 26
+                )
+            )
+        )
+
+        try {
+            map.writeRegions(onlyRoute)
+            fail("Debía rechazar el enlace roto")
+        } catch (expected: MapRegionsDataException) {
+            assertTrue("ciudad-verde" in expected.message!!)
+        }
+    }
+
+    /** Una región inválida invalida el documento entero: no se escribe a medias. */
+    @Test
+    fun writeRegions_secondRegionInvalid_failsWholeExport() {
+        val map = KantoRegionMap(
+            version = 1,
+            regions = listOf(
+                MapRegion(
+                    id = "libre",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    name = "Libre",
+                    type = MapRegionType.ROUTE
+                ),
+                MapRegion(
+                    id = "enlazada",
+                    geometry = MapRegionGeometry.Circle(0.5f, 0.5f, 0.05f),
+                    catalogId = 26
+                )
+            )
+        )
+
+        try {
+            map.writeRegions()
+            fail("Debía rechazar el documento con una región enlazada sin catálogo")
+        } catch (expected: MapRegionsDataException) {
+            assertTrue("enlazada" in expected.message!!)
+        }
+    }
+
     // ─────────────────────── Referencias cruzadas ───────────────────────
 
     @Test

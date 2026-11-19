@@ -282,9 +282,6 @@ private fun pokeBallTransform(density: Density): PokeBallTransform = with(densit
  *
  * @param isMapSelected marca el botón izquierdo como la pantalla visible.
  * @param isPokedexSelected marca el botón derecho, es decir, con la hoja abierta.
- * @param isHomeSelected marca la Pokéball como la pantalla visible. La bola se
- *   dibuja **siempre sólida**: qué pantalla está activa lo comunican las
- *   vitrinas, no la opacidad de la bola.
  * @param expansionEnabled `false` desactiva el gesto de expansión: la bola no
  *   se estira ni crece y cualquier arrastre completado cuenta como un toque
  *   (`onHomeClick`). Es el modo de pantallas donde la bola no tiene juego, como
@@ -307,7 +304,6 @@ fun PokemonBottomMenu(
     modifier: Modifier = Modifier,
     isMapSelected: Boolean = false,
     isPokedexSelected: Boolean = false,
-    isHomeSelected: Boolean = false,
     expansionEnabled: Boolean = true,
     pokeBallEnabled: Boolean = true,
     destinationsEnabled: Boolean = true,
@@ -792,7 +788,6 @@ private fun MenuStage(
 
         PokemonBottomMenu(
             isMapSelected = isMapSelected,
-            isHomeSelected = !isMapSelected,
             modifier = Modifier.align(Alignment.BottomCenter),
             initialProgress = initialProgress
         )

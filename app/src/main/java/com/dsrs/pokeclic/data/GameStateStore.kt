@@ -2,6 +2,7 @@ package com.dsrs.pokeclic.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.dsrs.pokeclic.model.GameSnapshot
 import com.dsrs.pokeclic.model.TutorialPhase
 import com.dsrs.pokeclic.model.tutorialPhaseFromName
@@ -36,19 +37,40 @@ interface GameStateStore {
  * Los conjuntos se serializan como cadenas delimitadas porque los ids del
  * contenido (especies, medallas) no contienen comas.
  *
+ * El formato persistido lleva una clave `schema_version`. Un guardado escrito
+ * por una versión **más nueva** de la app se ignora en vez de reinterpretarse
+ * con un significado que esta build no conoce; un guardado anterior a la clave
+ * se acepta como versión 1.
+ *
  * El sistema de mejoras se retiró del modelo por no tener UI; cuando vuelva,
  * habrá que añadir aquí su mapa persistido (`upgrades`).
+ *
+ * @param warn receptor de avisos de normalización. En la app escribe al log;
+ *   en tests es un no-op por defecto (no toca `android.util.Log`, que en la JVM
+ *   no está implementado).
  */
 class SharedPreferencesGameStateStore internal constructor(
-    private val prefs: SharedPreferences
+    private val prefs: SharedPreferences,
+    private val warn: (String) -> Unit = {}
 ) : GameStateStore {
 
     constructor(context: Context) : this(
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+        { message -> Log.w(TAG, message) }
     )
 
     override fun load(): GameSnapshot? {
         if (!prefs.contains(KEY_COINS)) return null
+
+        val version = prefs.getInt(KEY_SCHEMA_VERSION, LEGACY_SCHEMA_VERSION)
+        if (version > SCHEMA_VERSION) {
+            warn(
+                "Guardado de un formato futuro (versión $version, esta build " +
+                    "entiende hasta $SCHEMA_VERSION): se ignora"
+            )
+            return null
+        }
+
         return GameSnapshot(
             playerName = decodeNullable(prefs.getString(KEY_PLAYER_NAME, null)),
             coins = prefs.getLong(KEY_COINS, 0L),
@@ -57,12 +79,12 @@ class SharedPreferencesGameStateStore internal constructor(
             caughtSpecies = decodeSet(prefs.getString(KEY_CAUGHT, null)),
             medals = decodeSet(prefs.getString(KEY_MEDALS, null)),
             starterSpeciesId = decodeNullable(prefs.getString(KEY_STARTER, null)),
-            starterBond = prefs.getInt(KEY_BOND, 0),
+            starterBond = nonNegative(prefs.getInt(KEY_BOND, 0), KEY_BOND),
             ownedSpecies = decodeSet(prefs.getString(KEY_OWNED, null)),
             leadSpeciesId = decodeNullable(prefs.getString(KEY_LEAD, null)),
             gymClearedRun = decodeSet(prefs.getString(KEY_GYM_CLEARED_RUN, null)),
-            zoneIndex = prefs.getInt(KEY_ZONE_INDEX, 0),
-            zoneClicks = prefs.getLong(KEY_ZONE_CLICKS, 0L),
+            zoneIndex = nonNegative(prefs.getInt(KEY_ZONE_INDEX, 0), KEY_ZONE_INDEX),
+            zoneClicks = nonNegative(prefs.getLong(KEY_ZONE_CLICKS, 0L), KEY_ZONE_CLICKS),
             tutorialPhase = loadTutorialPhase(),
             tutorialMessageClosed = prefs.getBoolean(KEY_TUTORIAL_MESSAGE_CLOSED, false)
         )
@@ -70,6 +92,7 @@ class SharedPreferencesGameStateStore internal constructor(
 
     override fun save(snapshot: GameSnapshot) {
         prefs.edit()
+            .putInt(KEY_SCHEMA_VERSION, SCHEMA_VERSION)
             .putString(KEY_PLAYER_NAME, encodeNullable(snapshot.playerName))
             .putLong(KEY_COINS, snapshot.coins)
             .putString(KEY_SEEN, encodeSet(snapshot.seenSpecies))
@@ -127,8 +150,33 @@ class SharedPreferencesGameStateStore internal constructor(
             ?.toSet()
             .orEmpty()
 
+    /**
+     * Un valor negativo solo puede venir de datos corruptos o de un formato
+     * ajeno: se normaliza a 0 en vez de propagarlo al estado de juego.
+     */
+    private fun nonNegative(value: Int, key: String): Int {
+        if (value >= 0) return value
+        warn("Valor negativo en \"$key\" ($value): se normaliza a 0")
+        return 0
+    }
+
+    private fun nonNegative(value: Long, key: String): Long {
+        if (value >= 0L) return value
+        warn("Valor negativo en \"$key\" ($value): se normaliza a 0")
+        return 0L
+    }
+
     private companion object {
+        const val TAG = "GameStateStore"
         const val PREFS_NAME = "kanto_clicker"
+
+        /** Versión del formato que escribe esta build. */
+        const val SCHEMA_VERSION = 2
+
+        /** Formato anterior a la clave de versión: no la escribía. */
+        const val LEGACY_SCHEMA_VERSION = 1
+
+        const val KEY_SCHEMA_VERSION = "schema_version"
         const val KEY_PLAYER_NAME = "player_name"
         const val KEY_COINS = "coins"
         const val KEY_SEEN = "seen"

@@ -294,6 +294,10 @@ private fun requireCoordinate(
  * [locations] que se pasen (el catálogo, cuando esté cargado), de modo que el
  * fichero exportado es autocontenido: al volver a leerlo no hace falta
  * deducir nada por fuera.
+ *
+ * @throws MapRegionsDataException si una región enlazada al catálogo no trae
+ *   `priority` explícita y [locations] no permite resolver su tipo. Escribir el
+ *   default de ruta en ese caso degradaría la prioridad real del mapa sin avisar.
  */
 fun KantoRegionMap.writeRegions(locations: List<MapLocation> = emptyList()): String {
     val root = JSONObject()
@@ -307,7 +311,7 @@ fun KantoRegionMap.writeRegions(locations: List<MapLocation> = emptyList()): Str
         region.catalogId?.let { element.put("catalogId", it) }
         region.name?.let { element.put("name", it) }
         region.type?.let { element.put("type", typeName(it)) }
-        element.put("priority", region.effectivePriority(locations))
+        element.put("priority", requireExportPriority(region, locations))
 
         val geometry = region.geometry
         val geometryJson = when (geometry) {
@@ -345,3 +349,25 @@ fun KantoRegionMap.writeRegions(locations: List<MapLocation> = emptyList()): Str
 
 /** Sin conversión implícita ni recurrente: Float → Double explícito. */
 private fun doubles(value: Float): Double = value.toDouble()
+
+/**
+ * Prioridad que se escribe en el fichero.
+ *
+ * Una región enlazada al catálogo sin `priority` explícita solo puede resolver
+ * su tipo leyendo [locations]. Si el catálogo no llegó, [MapRegion.effectivePriority]
+ * devolvería el default de ruta y el export perdería el valor real **sin avisar**:
+ * se rechaza en vez de escribir una prioridad falsa.
+ */
+private fun requireExportPriority(region: MapRegion, locations: List<MapLocation>): Int {
+    region.priority?.let { return it }
+    region.resolvedType(locations)?.let { return it.defaultPriority }
+    if (region.catalogId != null) {
+        throw MapRegionsDataException(
+            "La región \"${region.id}\" está enlazada al catálogo " +
+                "(catalogId=${region.catalogId}) y no trae prioridad explícita: " +
+                "exportarla sin el catálogo la degradaría a la prioridad de ruta"
+        )
+    }
+    return MapRegionType.ROUTE.defaultPriority
+}
+

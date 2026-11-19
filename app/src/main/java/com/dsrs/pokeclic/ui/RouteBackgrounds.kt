@@ -47,7 +47,7 @@ import com.dsrs.pokeclic.model.Direction
  *   que `-1` y `+1` son el mismo sitio.
  */
 internal data class ZoneBackground(
-    @DrawableRes val imageRes: Int,
+    @param:DrawableRes val imageRes: Int,
     val motion: RouteBackgroundMotion = RouteScrollDefaults.MOTION,
     val seamCutRow: Int = 0,
     val startAnchor: Float? = null,

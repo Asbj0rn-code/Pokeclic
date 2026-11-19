@@ -425,7 +425,7 @@ class PokedexDexTest {
         assertTrue("pidgey" !in vm.uiState.value.caughtSpecies)
 
         val coinsBefore = vm.uiState.value.coins
-        val expectedCoins = SpeciesCatalog.require("pidgey").coinReward.toLong()
+        val expectedCoins = SpeciesCatalog.require("pidgey").coinReward
         vm.onCatchingResultContinue()
 
         with(vm.uiState.value) {
