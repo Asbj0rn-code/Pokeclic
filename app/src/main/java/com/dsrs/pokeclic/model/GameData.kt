@@ -79,7 +79,8 @@ data class Species(
 )
 
 /**
- * Un Pokémon salvaje que ha aparecido en la hierba alta y espera a ser capturado.
+ * Un Pokémon salvaje que ha aparecido en una zona con fauna y espera a ser
+ * capturado.
  *
  * Es estado **transitorio**: no se persiste mientras está abierto. La captura
  * se juega con el minijuego de captura (`CatchingGame`); su estado en curso vive
@@ -124,8 +125,8 @@ data class StarterOption(
  * @param id clave estable para la persistencia.
  * @param name nombre mostrado.
  * @param clickRequirement clics de zona necesarios para desbloquear el avance.
- * @param wildSpeciesIds especies que pueden aparecer en su hierba alta; una
- *   lista vacía marca zonas sin hierba (las ciudades): caminar en ellas nunca
+ * @param wildSpeciesIds especies que pueden aparecer salvajes en la zona; una
+ *   lista vacía marca zonas sin fauna (las ciudades): caminar en ellas nunca
  *   abre un encuentro.
  * @param gymId si no es `null`, la zona **termina** en ese gimnasio: el botón de
  *   avance no aparece hasta ganarlo dentro de la run actual.
@@ -135,14 +136,7 @@ data class Zone(
     val name: String,
     val clickRequirement: Long,
     val wildSpeciesIds: List<String>,
-    val gymId: String? = null,
-    /**
-     * La zona es una **cueva** (Mt.Moon): genera salvajes al avanzar sin modo
-     * hierba alta. El botón de hierba se oculta, el fondo se mueve y los clics
-     * cuentan para la barra igual que en una ruta, pero el encuentro aparece por
-     * el mero hecho de caminar. No hay sprite de hierba bajo el entrenador.
-     */
-    val alwaysWilds: Boolean = false
+    val gymId: String? = null
 )
 
 /**

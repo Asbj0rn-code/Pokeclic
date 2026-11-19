@@ -33,7 +33,7 @@ import kotlin.random.Random
 
 /**
  * ViewModel de juego: contiene **toda** la lógica de negocio (clic de zona,
- * caminar por la hierba alta, captura, starter y principal, tipos, gimnasio,
+ * encuentros salvajes al caminar, captura, starter y principal, tipos, gimnasio,
  * reset, persistencia, navegación y la animación del entrenador). La UI solo lee
  * el único [uiState] y le envía eventos.
  *
@@ -42,8 +42,9 @@ import kotlin.random.Random
  *   progreso **se capa en el umbral**: el avance a la siguiente zona es manual,
  *   vía `onAdvanceZone`. En zonas con gimnasio, el requisito extra es haberlo
  *   ganado dentro de la run actual (`gymClearedRun`).
- * - En hierba alta, los toques **no** cuentan para el avance: marcan actividad de
- *   caminar (temporizador que solo corre con toques recientes).
+ * - Cada toque también marca actividad de caminar (temporizador que solo corre
+ *   con toques recientes): en zonas con fauna, 3 s de caminata continuada abren un
+ *   encuentro salvaje.
  * - Con un encuentro activo se juega el minijuego de captura (`CatchingGame`): la
  *   UI registra la pulsación en toda la pantalla y el ViewModel mueve barra y
  *   sprite en un bucle de ticks.
@@ -157,20 +158,14 @@ class MainViewModel(
         mutate { state ->
             val animated = animator.animate(state, direction, directionChanged)
 
-            val progressed = when {
+            val progressed = if (state.encounter != null) {
                 // Minijuego en curso: la pokéball no interviene en la partida.
-                state.encounter != null -> animated
-                state.isTallGrass -> {
-                    walkEngine.noteActivity(now)
-                    animated
-                }
-                // Cueva: el clic mueve el fondo y suma a la barra, pero además
-                // deja actividad para que el encuentro pueda aparecer caminando.
-                state.alwaysWilds -> {
-                    walkEngine.noteActivity(now)
-                    addZoneClicks(animated)
-                }
-                else -> addZoneClicks(animated)
+                animated
+            } else {
+                // Un toque cuenta para la barra de zona y, a la vez, deja
+                // actividad para que el encuentro aparezca caminando.
+                walkEngine.noteActivity(now)
+                addZoneClicks(animated)
             }
             progressed
         }
@@ -182,23 +177,6 @@ class MainViewModel(
         }
         // Un segundo sin pulsar devuelve al entrenador al reposo (front, frame 0).
         animator.scheduleReset()
-    }
-
-    /** Entra o sale de la hierba alta. Al salir se resuelve (huye) el encuentro. */
-    fun onTallGrassToggle() = mutate { state ->
-        // Guard del tutorial (regla principal de QA): la hierba alta
-        // solo opera en juego libre; con un mensaje visible o un paso en curso,
-        // nada de la partida responde.
-        if (!state.tutorialPhase.isFreePlay) return@mutate state
-        // Las cuevas no tienen modo que alternar: los salvajes ya están activos.
-        if (state.alwaysWilds) {
-            state
-        } else if (state.isTallGrass) {
-            catchingEngine.cancel()
-            state.copy(isTallGrass = false, walkProgress = 0f, encounter = null, catching = null)
-        } else {
-            state.copy(isTallGrass = true)
-        }
     }
 
     /**
@@ -226,7 +204,6 @@ class MainViewModel(
                 gymClearedRun = emptySet(),
                 zoneIndex = 0,
                 zoneClicks = 0L,
-                isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
                 catching = null,
@@ -288,7 +265,6 @@ class MainViewModel(
                 zoneIndex = index,
                 zoneClicks = zones[index].clickRequirement,
                 gymClearedRun = emptySet(),
-                isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
                 catching = null,
@@ -600,9 +576,8 @@ class MainViewModel(
 
     /**
      * Botón **Avanzar**: si `canAdvanceZone` (barra al 100 % y, en zonas con
-     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0
-     * y **fuera del modo captura**: la hierba alta se cierra y no se arrastra
-     * ningún encuentro en curso; en caso contrario es un no-op. En la última
+     * gimnasio, ganado en la run), pasa a la siguiente zona con el progreso a 0 y
+     * **sin encuentro en curso**; en caso contrario es un no-op. En la última
      * zona nunca sufre cambios.
      *
      * Un avance real cierra el tutorial: la acción
@@ -621,8 +596,7 @@ class MainViewModel(
             catchingEngine.cancel()
             state.copy(
                 zoneIndex = state.zoneIndex + 1,
-                zoneClicks = 0L,
-                isTallGrass = false
+                zoneClicks = 0L
             ).withoutEncounter()
                 .withTutorial(TutorialAction.ADVANCE_ZONE_EXECUTED)
         } else {
@@ -726,6 +700,6 @@ class MainViewModel(
     }
 }
 
-/** Sale del encuentro y deja la hierba lista para el siguiente. */
+/** Sale del encuentro y deja el temporizador de caminar listo para el siguiente. */
 internal fun GameUiState.withoutEncounter(): GameUiState =
     copy(encounter = null, catching = null, walkProgress = 0f)

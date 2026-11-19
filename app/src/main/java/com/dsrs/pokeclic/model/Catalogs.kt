@@ -196,8 +196,8 @@ object SpeciesCatalog {
  * `CatalogTest` bloquea ese orden exacto y la regla de progresión: **cada zona
  * pide más clics que la anterior**.
  *
- * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin hierba alta: solo
- * avanzan con clics.
+ * Las ciudades (`wildSpeciesIds` vacía) son peldaños sin fauna: solo avanzan con
+ * clics y nunca generan encuentros salvajes.
  *
  * Las listas `wildSpeciesIds` de este catálogo solo cubren las zonas jugables
  * implementadas. Las apariciones de ubicaciones futuras están planificadas en
@@ -261,9 +261,7 @@ object ZoneCatalog {
             id = "mt_moon",
             name = "Mt.Moon",
             clickRequirement = 160L,
-            wildSpeciesIds = listOf("zubat", "geodude", "clefairy", "paras"),
-            // Cueva: los salvajes aparecen caminando, sin modo hierba alta.
-            alwaysWilds = true
+            wildSpeciesIds = listOf("zubat", "geodude", "clefairy", "paras")
         ),
         Zone(
             id = "ruta4",

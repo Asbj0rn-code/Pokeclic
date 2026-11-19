@@ -120,7 +120,6 @@ internal class GameProjection(
             leadType = lead?.type,
             isGymReady = isGymReady,
             hasWilds = zone.wildSpeciesIds.isNotEmpty(),
-            alwaysWilds = zone.alwaysWilds,
             gymLeaderName = if (isGymReady) {
                 zone.gymId?.let { GymCatalog.byId(it)?.leaderName }
             } else {

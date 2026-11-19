@@ -324,7 +324,6 @@ internal class GymCombatEngine(
         commit(false) {
             val maxHp = maxHp
             copy(
-                isTallGrass = false,
                 walkProgress = 0f,
                 encounter = null,
                 catching = null,

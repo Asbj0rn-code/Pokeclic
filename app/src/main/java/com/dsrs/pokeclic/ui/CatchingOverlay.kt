@@ -690,7 +690,7 @@ private fun CatchingHint(encounter: Encounter, modifier: Modifier = Modifier) {
     }
 }
 
-/** Panel de resultado: mensaje y botón para volver a la hierba. */
+/** Panel de resultado: mensaje y botón para volver al juego. */
 @Composable
 private fun CatchingResultPanel(
     encounter: Encounter,

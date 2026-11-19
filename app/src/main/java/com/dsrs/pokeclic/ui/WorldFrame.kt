@@ -7,7 +7,7 @@
  * siempre el ancho completo y su centro vertical cae en el centro de la pantalla,
  * así que:
  *
- * - la relación entre cualquier elemento del mundo (entrenador, hierba) y el arte
+ * - la relación entre cualquier elemento del mundo (el entrenador) y el arte
  *   del fondo es idéntica en cualquier móvil,
  * - lo único que cambia con la relación de aspecto es **cuánto arte** se ve por
  *   arriba y por abajo, que el bucle del fondo rellena,
@@ -72,10 +72,6 @@ internal object WorldDefaults {
      */
     const val TRAINER_CENTER_ART_Y = 780.8f
 
-    /** Lado del recuadro del entrenador y de las capas de hierba (80 dp). */
+    /** Lado del recuadro del entrenador (80 dp). */
     const val TRAINER_BOX_ART_SIZE = 224f
-
-    /** Desplazamiento de las capas de hierba respecto al entrenador (2 dp / 30 dp). */
-    const val GRASS_OFFSET_X_ART = 5.6f
-    const val GRASS_OFFSET_Y_ART = 84f
 }

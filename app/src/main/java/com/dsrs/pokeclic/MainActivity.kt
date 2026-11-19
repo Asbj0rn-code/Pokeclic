@@ -72,7 +72,6 @@ class MainActivity : AppCompatActivity() {
                         // cortinilla consume los toques.
                         isSplashShowing = showSplash,
                         onPokeBallTouch = mainViewModel::onPokeBallTouch,
-                        onTallGrassToggle = mainViewModel::onTallGrassToggle,
                         onReset = mainViewModel::onReset,
                         onWipeGame = mainViewModel::onWipeGame,
                         onDebugJumpToZone = mainViewModel::onDebugJumpToZone,
