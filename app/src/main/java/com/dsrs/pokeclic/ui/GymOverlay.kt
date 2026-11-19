@@ -94,6 +94,8 @@ import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.GymCombat
+import com.dsrs.pokeclic.model.ProjectileLaneGeometry
 import com.dsrs.pokeclic.model.RingFeedback
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.Voltorb
@@ -471,26 +473,34 @@ private fun GymScene(
                             if (onEnemy) {
                                 onEnemyHit()
                             } else {
-                                val hit = currentState.projectiles
-                                    .map { projectile ->
-                                        val cx = laneLeftPx + cellPx * (projectile.column + 0.5f)
-                                        val cy = spawnPx + (impactPx - spawnPx) * projectile.progressAt(tapTime)
-                                        val dx = tapAt.x - cx
-                                        val dy = tapAt.y - cy
-                                        Triple(projectile, dx * dx + dy * dy, Offset(cx, cy))
-                                    }
-                                    // La más cercana dentro del radio, para que dos
-                                    // columnas contiguas no se acierten de más.
-                                    .filter { it.second <= hitRadius * hitRadius }
-                                    .minByOrNull { it.second }
+                                // La regla de acierto vive en el modelo: la UI solo
+                                // mide la geometría de sus carriles y le pasa el
+                                // toque en píxeles.
+                                val hit = GymCombat.hitProjectile(
+                                    state = currentState,
+                                    tapX = tapAt.x,
+                                    tapY = tapAt.y,
+                                    lanes = ProjectileLaneGeometry(
+                                        laneLeft = laneLeftPx,
+                                        cellWidth = cellPx,
+                                        spawnY = spawnPx,
+                                        impactY = impactPx,
+                                        hitRadius = hitRadius
+                                    ),
+                                    nowMs = tapTime
+                                )
                                 if (hit == null) {
                                     // Toque al aire: resta postura, igual que un
                                     // fallo en las otras mecánicas.
                                     onMiss()
                                 } else {
                                     attackNonce++
-                                    bursts += RockBurst(nextBurstId++, hit.third, rockSize)
-                                    onProjectileHit(hit.first.id)
+                                    bursts += RockBurst(
+                                        nextBurstId++,
+                                        Offset(hit.centerX, hit.centerY),
+                                        rockSize
+                                    )
+                                    onProjectileHit(hit.projectile.id)
                                 }
                             }
                         }
