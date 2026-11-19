@@ -75,7 +75,7 @@ class KantoMapDataTest {
         assertTrue(result.isFailure)
     }
 
-    /** La cadena completa que usará `onTap` de `MapScreen`, sin la UI. */
+    /** La cadena completa que usará `MapViewModel.onTap`, sin la UI. */
     @Test
     fun selectionFlow_resolvesTheMappedRegionUnderATapPoint() {
         val loaded = parseKantoMapData(

@@ -31,13 +31,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
-import com.dsrs.pokeclic.data.loadKantoMapData
 import com.dsrs.pokeclic.dbg.isDebugBuild
 import com.dsrs.pokeclic.dbg.isMapEditorAvailable
 import com.dsrs.pokeclic.dbg.openMapEditor
 import com.dsrs.pokeclic.model.LeadOption
-import com.dsrs.pokeclic.model.MapRegionSelection
-import com.dsrs.pokeclic.model.selectAt
+import com.dsrs.pokeclic.viewmodel.MapUiState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
@@ -57,9 +55,11 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.tooling.preview.Preview
@@ -443,18 +443,16 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  * El zoom y el desplazamiento son estado local de Compose (transformaciones
  * puramente visuales, no forman parte de [com.dsrs.pokeclic.viewmodel.GameUiState]).
  *
- * **Zonas interactivas**: al arrancar la pantalla se cargan una vez el catálogo
- * y el mapeo de Kanto ([loadKantoMapData], con validación cruzada de los
- * `catalogId`). Un toque simple se convierte a `(u, v)` con [screenToUv] y
- * [com.dsrs.pokeclic.model.KantoRegionMap.selectAt] devuelve **todas** las
- * zonas que contienen realmente el punto (hit-testing geométrico), ordenadas
- * por categoría CITY > ROUTE > SPECIAL; sus nombres aparecen en
- * [MapRegionBadge], anclado a la esquina superior derecha del área visible
- * (fijo, aunque la imagen se mueva, con márgenes de zona segura). Si el toque
- * cae fuera de toda zona el indicador **desaparece** hasta la siguiente
- * pulsación dentro de una zona; al abrir la pantalla no existe. Con assets
- * ausentes, vacíos o con errores, la pantalla vive sin indicador y el fallo
- * queda en `Logcat`.
+ * **Zonas interactivas**: la pantalla no conoce el mapeo ni el catálogo. Al
+ * entrar en composición avisa con [onMapOpened] y el `MapViewModel` carga los
+ * assets una sola vez; un toque simple se convierte a `(u, v)` con [screenToUv]
+ * —transformación puramente visual— y se reenvía con [onMapTap]. El ViewModel
+ * hace el hit-testing y entrega los nombres **ya resueltos** en [MapUiState],
+ * que [MapRegionBadge] pinta anclado a la esquina superior derecha del área
+ * visible (fijo, aunque la imagen se mueva, con márgenes de zona segura). Si el
+ * toque cae fuera de toda zona el indicador **desaparece**; al volver a abrir
+ * la pantalla tampoco existe. Con assets ausentes, vacíos o con errores, el
+ * ViewModel deja el estado vacío y la pantalla vive sin indicador.
  *
  * La transformación usada aquí es la referencia compartida del sistema
  * (`MapTransform`): un punto normalizado `(u, v)` de la imagen original se
@@ -463,6 +461,12 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  * el escalado inicial (fit) de la imagen y `centroContenedor` es el centro del
  * área visible (contenedor interior, con [bottomReserved] descontado).
  *
+ * @param mapState zona bajo la última pulsación, con los nombres ya resueltos
+ *   por el ViewModel.
+ * @param onMapOpened avisa al ViewModel de que la pantalla apareció: carga el
+ *   mapeo la primera vez y limpia el indicador anterior.
+ * @param onMapTap entrega el punto pulsado en coordenadas normalizadas `(u, v)`
+ *   de la imagen; el ViewModel resuelve qué zonas lo contienen.
  * @param bottomReserved altura reservada al bottom menu que el contenedor
  *   interior debe descartar de su layout (y por la que el contenedor exterior
  *   baja detrás del menú). No la mide el propio mapa: la cede el `Scaffold` vía
@@ -476,6 +480,9 @@ internal fun MapOceanBackdrop(modifier: Modifier = Modifier) {
  */
 @Composable
 fun MapScreen(
+    mapState: MapUiState = MapUiState(),
+    onMapOpened: () -> Unit = {},
+    onMapTap: (u: Float, v: Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     bottomReserved: Dp = 0.dp,
     frameOverlay: (@Composable () -> Unit)? = null
@@ -483,20 +490,13 @@ fun MapScreen(
     val mapPainter = painterResource(id = R.drawable.mapa_kanto)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-
-    // Mapeo de zonas y catálogo: una única lectura de assets por sesión de la
-    // pantalla. Con ficheros ausentes, vacíos o con errores queda `null` y el
-    // mapa sigue funcionando sin indicador; el diagnóstico está en Logcat
-    // («KantoMap»).
     val context = LocalContext.current
-    val kantoMap = remember { loadKantoMapData(context).getOrNull() }
+    val currentOnMapOpened by rememberUpdatedState(onMapOpened)
+    val currentOnMapTap by rememberUpdatedState(onMapTap)
 
-    // Última selección en el punto tocado: todas las zonas que contienen el
-    // punto, ya ordenadas para presentación (ciudad > ruta > especial).
-    // Determinación puramente visual: se muestra tal cual hasta que otra
-    // pulsación la sustituya. Antes de la primera zona o al tocar fuera vale
-    // `null` (pulso sin ninguna zona: el indicador desaparece).
-    var selection by remember { mutableStateOf<MapRegionSelection?>(null) }
+    // La pantalla no lee assets ni calcula zonas: solo avisa de que apareció
+    // para que el ViewModel cargue el mapeo (una vez) y limpie el indicador.
+    LaunchedEffect(Unit) { currentOnMapOpened() }
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(MapFitZoom) }
@@ -605,25 +605,18 @@ fun MapScreen(
                 // el down y los movimientos, y el detector de toques debe verlos antes.
                 .pointerInput(fitWidthPx, fitHeightPx) {
                     detectTapGestures(
-                        // Toque simple: ¿hay una zona bajo el dedo? La conversión
-                        // a (u, v) usa los mismos primitivos que la composición,
-                        // ya con el zoom y el desplazamiento en curso, así que la
-                        // selección siempre coincide con lo pintado. Fuera de toda
-                        // zona la llamada devuelve `null` y el indicador conserva
-                        // el último nombre (comportamiento pactado).
+                        // Toque simple: la conversión a (u, v) usa los mismos
+                        // primitivos que la composición, ya con el zoom y el
+                        // desplazamiento en curso, así que el punto enviado al
+                        // ViewModel coincide con lo pintado. Qué zona hay bajo
+                        // el dedo (y si no hay ninguna) lo decide el ViewModel.
                         onTap = { tap ->
                             val uv = screenToUv(
                                 tap.x, tap.y,
                                 size.width / 2f, size.height / 2f,
                                 offset.x, offset.y, zoom, fitWidthPx, fitHeightPx
                             )
-                            // `selectAt` ordena CIUDAD > RUTA > ESPECIAL y solo
-                            // incluye lo que realmente contiene el punto; fuera
-                            // de toda zona devuelve `null` y limpia el estado
-                            // (el indicador desaparece, comportamiento de la
-                            // mejora del indicador).
-                            selection = kantoMap?.regions
-                                ?.selectAt(uv.u, uv.v, kantoMap.locations)
+                            currentOnMapTap(uv.u, uv.v)
                         },
                         onDoubleTap = { tap ->
                             cancelViewAnimation()
@@ -673,12 +666,10 @@ fun MapScreen(
 
             // Indicador de zona(s): fijo en la esquina superior derecha del
             // área visible, sin seguir al mapa, con márgenes de zona segura.
-            // Solo se compone con una selección; el nombre resuelto (catálogo
-            // o propio) puede ser `null` si el enlace de catálogo está roto,
-            // y entonces esa línea enseña su id técnico (último recurso,
-            // informativo, nunca rompe la pantalla).
-            val locations = kantoMap?.locations.orEmpty()
-            selection?.let { selected ->
+            // Solo se compone con una selección; los nombres llegan ya
+            // resueltos desde el ViewModel (o su id técnico como último
+            // recurso), así que aquí no se consulta ningún catálogo.
+            mapState.primaryName?.let { primaryName ->
                 // Márgenes de zona segura: el `Scaffold` (`AppRoot`) ya
                 // descuenta las barras del sistema de esta área, así que aquí
                 // solo se compensa el recorte de pantalla (que aquel no
@@ -693,9 +684,8 @@ fun MapScreen(
                     containerSize.width.toDp() * MapBadgeMaxWidthFraction
                 }
                 MapRegionBadge(
-                    primary = selected.primary.resolvedName(locations)
-                        ?: selected.primary.id,
-                    others = selected.secondary.mapNotNull { it.resolvedName(locations) },
+                    primary = primaryName,
+                    others = mapState.otherNames,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(
