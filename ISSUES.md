@@ -1,5 +1,19 @@
 # Issues y riesgos — Pokeclic
 
+> **Documento histórico.** Esta auditoría se hizo el 20/10/2026 sobre una versión
+> anterior del proyecto (15 archivos Kotlin). No es el estado vigente: para la
+> arquitectura, pantallas y persistencia actuales consulta
+> [`DOCUMENTACION.md`](DOCUMENTACION.md).
+>
+> Puntos que ya no reflejan el código actual (verificados en noviembre de 2026):
+> el paquete y `applicationId` son `com.dsrs.pokeclic` (no `com.example`);
+> el guardado tiene `schema_version = 2`; existen tests de ViewModel, de
+> persistencia y de reglas de juego; el mapa y la Pokédex están implementados;
+> los overlays aplican `Modifier.modalBlocking()`; el borrado de partida vive en
+> la hoja de Opciones con confirmación; la tipografía retro se aplica con
+> `RetroTypography`; y la lógica del gimnasio y de la captura está extraída en
+> motores con reglas puras testeables.
+
 Auditoría estática del proyecto Android `MyApplication2` (nombre visible **Pokeclic**), realizada el 20/10/2026 sobre el estado actual del código.
 
 - **Alcance:** 15 archivos Kotlin de `app/src/main`, recursos, manifiesto, Gradle y documentación.
