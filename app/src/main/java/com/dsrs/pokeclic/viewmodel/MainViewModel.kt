@@ -100,6 +100,21 @@ class MainViewModel(
      */
     private val pokedexProjector = PokedexProjector(pokedexLoad.catalog)
 
+    /**
+     * `derive()` corre en cada tick (16 ms durante una captura, 50 ms en un
+     * gimnasio), pero estas dos listas solo cambian al capturar o al cambiar el
+     * Pokémon principal. Se memoizan para no reasignarlas 60 veces por segundo:
+     * la identidad estable es además lo que permite a Compose saltarse los
+     * composables que las reciben.
+     */
+    private var leadOptionsKey: LeadOptionsKey? = null
+    private var leadOptionsCache: List<LeadOption> = emptyList()
+    private val starterOptionsCache: List<StarterOption> by lazy {
+        SpeciesCatalog.starters.map { StarterOption(id = it.id, name = it.name, type = it.type) }
+    }
+
+    private data class LeadOptionsKey(val owned: Set<String>, val starter: String?)
+
     private val _uiState = MutableStateFlow(derive(restoreState()))
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
 
@@ -1376,6 +1391,23 @@ class MainViewModel(
     }
 
     /** Recalcula los campos que dependen de catálogos (zona, costes, principal…). */
+    /**
+     * Opciones del selector de principal, recalculadas solo cuando cambia la
+     * posesión o el inicial. La clave se compara por contenido (`data class` con
+     * `Set`), así que un `copy` con el mismo contenido reutiliza la lista.
+     */
+    private fun leadOptionsFor(owned: Set<String>, starterId: String?): List<LeadOption> {
+        val key = LeadOptionsKey(owned, starterId)
+        if (key != leadOptionsKey) {
+            leadOptionsKey = key
+            leadOptionsCache = (owned + setOfNotNull(starterId))
+                .mapNotNull { SpeciesCatalog.byId(it) }
+                .sortedBy { it.name }
+                .map { LeadOption(id = it.id, name = it.name) }
+        }
+        return leadOptionsCache
+    }
+
     private fun derive(state: GameUiState): GameUiState {
         val zone = zoneAt(state.zoneIndex)
 
@@ -1392,13 +1424,9 @@ class MainViewModel(
         val lead = (state.leadSpeciesId ?: starterId)?.let { SpeciesCatalog.byId(it) }
 
         // Opciones ya resueltas: la UI no conoce el catálogo ni ordena especies.
-        val leadOptions = (state.ownedSpecies + setOfNotNull(starterId))
-            .mapNotNull { SpeciesCatalog.byId(it) }
-            .sortedBy { it.name }
-            .map { LeadOption(id = it.id, name = it.name) }
-        val starterOptions = SpeciesCatalog.starters.map {
-            StarterOption(id = it.id, name = it.name, type = it.type)
-        }
+        // Memoizadas: `derive` corre en cada tick y solo cambian al capturar.
+        val leadOptions = leadOptionsFor(state.ownedSpecies, starterId)
+        val starterOptions = starterOptionsCache
 
         val gymPending = isGymPending(zone, state.gymClearedRun)
         val isGymReady = gymPending && state.zoneClicks >= zone.clickRequirement

@@ -615,15 +615,27 @@ internal fun RouteScrollingBackground(
     @DrawableRes imageRes: Int = R.drawable.background_ruta,
     seamCutRow: Int = 0,
     startAnchor: Float? = null,
-    startOffset: Float = 0f
+    startOffset: Float = 0f,
+    /**
+     * Factor de ampliación del PNG respecto al arte autorado (1 = nativo).
+     * Ver [ZoneBackground.artScale]: la decodificación se reduce por este factor
+     * y el dibujo se escala por el mismo, así que el mundo no cambia de tamaño.
+     */
+    artScale: Int = 1
 ) {
     val context = LocalContext.current
-    // `drawable-nodpi` evita el reescalado por densidad: siempre se carga a
-    // tamaño nativo y el escalado lo controla el dibujo. Con arte continuo basta
-    // con usarlo tal cual; solo el arte antiguo de ruta se enrolla por
-    // `seamCutRow` para que la unión del bucle no se vea.
-    val bitmap = remember(context, imageRes, seamCutRow) {
-        val source = BitmapFactory.decodeResource(context.resources, imageRes)
+    // `drawable-nodpi` evita el reescalado por densidad. Los fondos nuevos son
+    // PNG ampliados 4× con nearest-neighbor, así que decodificar a 1/artScale
+    // devuelve el arte autorado **sin pérdida** y ocupa 16× menos memoria.
+    // El arte antiguo de ruta (`artScale = 1`) se enrolla por `seamCutRow`.
+    val decodeOptions = remember(artScale) {
+        BitmapFactory.Options().apply {
+            inSampleSize = artScale.coerceAtLeast(1)
+            inScaled = false
+        }
+    }
+    val bitmap = remember(context, imageRes, seamCutRow, artScale) {
+        val source = BitmapFactory.decodeResource(context.resources, imageRes, decodeOptions)
             ?: return@remember null
         if (seamCutRow <= 0) return@remember source.asImageBitmap()
 
@@ -661,7 +673,9 @@ internal fun RouteScrollingBackground(
 
     // Alto del arte en px: la cámara se mide en **alturas de arte**, así que el
     // paso de un clic tiene que traducirse con esta proporción.
-    val artHeight = bitmap?.height ?: 0
+    // Las medidas de mundo se expresan en píxeles de arte: el bitmap puede venir
+    // muestreado, así que se compensa con `artScale`.
+    val artHeight = (bitmap?.height ?: 0) * artScale
 
     LaunchedEffect(motion, artHeight) {
         if (artHeight <= 0) return@LaunchedEffect
@@ -696,6 +710,9 @@ internal fun RouteScrollingBackground(
                 val srcW = bmp.width
                 val srcH = bmp.height
                 if (srcW <= 0 || srcH <= 0) return@drawBehind
+                // El bitmap puede venir muestreado: todo se razona en arte.
+                val artW = srcW * artScale
+                val artH = srcH * artScale
 
                 // El mundo se dibuja con **una sola escala derivada del ancho**
                 // ([worldFrame]): la cámara ocupa el ancho completo y se centra en
@@ -705,11 +722,19 @@ internal fun RouteScrollingBackground(
                 val frame = worldFrame(size.width, size.height)
                 val scale = frame.scale
                 if (scale <= 0f) return@drawBehind
-                val tileW = srcW * scale
-                val tileH = srcH * scale
+                val tileW = artW * scale
+                val tileH = artH * scale
                 if (tileH <= 1f || tileW <= 1f) return@drawBehind
 
-                val filter = if (scale >= 1f) FilterQuality.None else FilterQuality.Medium
+                // La nitidez se decide por la escala **efectiva** del bitmap: con
+                // el arte muestreado a 1/artScale, el renderer amplía por
+                // `scale * artScale`. Si esa ampliación ya es ≥1, el filtrado
+                // bilineal emborrona el pixel art; `None` conserva los bordes.
+                val filter = if (scale * artScale >= 1f) {
+                    FilterQuality.None
+                } else {
+                    FilterQuality.Medium
+                }
                 // El punto de partida de la zona se suma a la fase: `phaseV` sigue
                 // midiendo el recorrido (y por tanto la trayectoria), y el ancla
                 // solo decide por dónde se empieza a ver el arte. El ancla se mide
@@ -728,7 +753,7 @@ internal fun RouteScrollingBackground(
                 // mismos píxeles que un clic recto aunque el dibujo no sea cuadrado
                 // y aunque el drawable mida más o menos que la cámara. `startOffset`
                 // viene en anchos de pantalla y se convierte aparte.
-                val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / srcH
+                val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / artH
                 val left0 = (size.width - tileW) / 2f
                 // El patrón horizontal se repite **como un tile**: a la derecha de
                 // una columna vuelve a empezar el borde izquierdo del arte, sin
@@ -753,7 +778,7 @@ internal fun RouteScrollingBackground(
                     while (top < size.height && rowsDrawn < RouteScrollDefaults.MAX_REPEATS) {
                         withTransform({
                             translate(startX, top)
-                            scale(scale, scale, Offset.Zero)
+                            scale(scale * artScale, scale * artScale, Offset.Zero)
                         }) {
                             drawImage(image = bmp, filterQuality = filter)
                         }
