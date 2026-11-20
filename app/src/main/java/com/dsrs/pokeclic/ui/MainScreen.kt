@@ -12,16 +12,11 @@ package com.dsrs.pokeclic.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -33,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -48,13 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -306,60 +299,26 @@ private fun CoinPlate(coins: Long, modifier: Modifier = Modifier) {
 // ─────────────────────────── Pantalla ───────────────────────────
 
 /**
- * Ajustes de posición de la pantalla. Todos los valores `bias` van de 0f (arriba)
- * a 1f (abajo) dentro de la zona de contenido, que desde la remodelación del HUD
- * abarca **toda** el área de la pantalla principal —el HUD flota encima—: así el
- * mundo no cambia de sitio cuando el panel crece o encoge.
+ * Ajustes de **cromo** de la pantalla (botones y HUD). Todos los valores `bias`
+ * van de 0f (arriba) a 1f (abajo) dentro de la zona de contenido.
+ *
+ * El mundo —el entrenador— **no** se posiciona aquí: se mide en
+ * píxeles de arte y se proyecta con [WorldFrame] (ver [WorldDefaults]), para que
+ * quede siempre en el mismo sitio del paisaje mida lo que mida el móvil.
  *
  * La Pokéball **no** se posiciona aquí: vive en el bottom menu.
  */
 object MainLayout {
-    val TRAINER_SIZE = 80.dp
-
-    /**
-     * Trainer algo por debajo del centro de la zona. Reproduce la altura a la
-     * que caminaba con el HUD antiguo (mucho más alto): antes anclaba a 0f del
-     * hueco que quedaba bajo el panel, y al compactarlo ese hueco creció y el
-     * sprite subió casi hasta la barra de estado, desajustado del fondo de ruta.
-     * Anclar a toda el área lo deja inmune a la altura del HUD.
-     */
-    const val TRAINER_BIAS = 0.54f
-
-    /**
-     * Botón de hierba alta: esquina inferior derecha de la zona, sobre la zona
-     * flotante de la Pokébola.
-     */
-    val TALL_GRASS_SIZE = 80.dp
-    const val TALL_GRASS_BIAS = 0.95f
-    const val TALL_GRASS_H_BIAS = 0.9f
-
-    /**
-     * Capas de hierba alta que se superponen al trainer.
-     * Ambas se centran sobre la misma posición que el trainer.
-     */
-    val TALL_GRASS_FULL_SIZE = 80.dp
-    val TALL_GRASS_MID_SIZE = 80.dp
-
-    /**
-     * Desplazamiento de las capas de hierba respecto al trainer.
-     * Positivo lo mueve a la derecha (X) o hacia abajo (Y); negativo, al revés.
-     * Afecta a las dos capas a la vez para que no se separen entre sí.
-     */
-    val TALL_GRASS_X_OFFSET = 2.dp
-    val TALL_GRASS_Y_OFFSET = 30.dp
 
     /** Margen del HUD respecto al borde superior de la zona de contenido. */
     val HUD_PADDING = 16.dp
 }
 
 /**
- * Pantalla principal: el mundo (entrenador y hierba alta) ancla a **toda** el
- * área de contenido y el HUD flota encima como capa superior.
- *
- * Antes el mundo se anclaba al hueco que dejaba el HUD debajo suyo, así que
- * cualquier cambio de altura del panel (como la remodelación compacta)
- * desplazaba al entrenador y lo desajustaba del camino del fondo de ruta. Con
- * el HUD superpuesto, el mundo es inmune a su altura.
+ * Pantalla principal: HUD y controles. El **mundo** (el entrenador) no
+ * se compone aquí: vive en `WorldTrainer`, sobre el mismo `Box` y con la misma
+ * proyección ([WorldFrame]) que el fondo de ruta, para que no puedan
+ * desincronizarse. El HUD flota encima como capa superior.
  *
  * A cada clic de zona (toque de la Pokéball) responde con números de ganancia
  * flotantes (+potencia) que suben y se desvanecen. Es el **único** feedback: el
@@ -372,7 +331,6 @@ object MainLayout {
 @Composable
 fun MainScreen(
     state: GameUiState,
-    onTallGrassToggle: () -> Unit,
     onEnterGym: () -> Unit,
     onAdvanceZone: () -> Unit,
     modifier: Modifier = Modifier
@@ -397,35 +355,10 @@ fun MainScreen(
     }
     val removeLcdPop: (Long) -> Unit = { id -> lcdPops = lcdPops.filterNot { it.id == id } }
 
-    // El mundo ancla a toda el área de contenido (no al hueco bajo el HUD) y el
-    // HUD flota encima: cambiar la altura del panel ya no mueve al entrenador.
+    // El HUD y los controles flotan sobre el mundo, que compone `AppRoot` en este
+    // mismo `Box` (ver `WorldTrainer`): cambiar la altura de cualquiera de los dos
+    // ya no mueve al entrenador.
     Box(modifier = modifier.fillMaxSize()) {
-        PercentageLayout(
-            modifier = Modifier.matchParentSize(),
-            applyInsets = false
-        ) {
-            TrainerGrassStack(
-                trainerFrameRes = state.trainerFrameRes,
-                showTallGrass = state.isTallGrass,
-                modifier = Modifier.anchorVertically(MainLayout.TRAINER_BIAS)
-            )
-
-            // Solo las zonas con hierba alta (rutas, bosque) pueden entrar: las
-            // ciudades no tienen fauna y las cuevas generan salvajes al avanzar,
-            // así que en ambas la hierba no se ofrece.
-            if (state.hasWilds && !state.alwaysWilds) {
-                TallGrassButton(
-                    onClick = onTallGrassToggle,
-                    modifier = Modifier
-                        .size(MainLayout.TALL_GRASS_SIZE)
-                        .anchor(
-                            verticalBias = MainLayout.TALL_GRASS_BIAS,
-                            horizontalBias = MainLayout.TALL_GRASS_H_BIAS
-                        )
-                )
-            }
-        }
-
         PopLayer(
             pops = lcdPops,
             onRemove = removeLcdPop,
@@ -498,110 +431,6 @@ private fun ProgressionAction(
     }
 }
 
-/**
- * Grupo trainer + hierba alta.
- *
- * Las tres imágenes se apilan en un mismo [Box], así que comparten **exactamente**
- * la misma posición: basta con cambiar el sesgo del grupo para moverlas todas.
- * El orden de dibujo en un `Box` es de fondo a frente. Todos los pasajes pasan
- * por `PixelImage` (`FilterQuality.None`) para preservar el pixel art.
- */
-@Composable
-private fun TrainerGrassStack(
-    trainerFrameRes: Int,
-    showTallGrass: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        // Capa 1 · fondo: hierba alta completa
-        if (showTallGrass) {
-            TallGrassLayer(
-                drawableRes = R.drawable.tall_grass_full,
-                size = MainLayout.TALL_GRASS_FULL_SIZE,
-                offsetX = MainLayout.TALL_GRASS_X_OFFSET,
-                offsetY = MainLayout.TALL_GRASS_Y_OFFSET
-            )
-        }
-
-        // Capa 2 · medio: trainer
-        PixelImage(
-            res = trainerFrameRes,
-            contentDescription = stringResource(R.string.trainer_desc),
-            modifier = Modifier.size(MainLayout.TRAINER_SIZE)
-        )
-
-        // Capa 3 · frente: hierba alta parcial
-        if (showTallGrass) {
-            TallGrassLayer(
-                drawableRes = R.drawable.tall_grass_mid,
-                size = MainLayout.TALL_GRASS_MID_SIZE,
-                offsetX = MainLayout.TALL_GRASS_X_OFFSET,
-                offsetY = MainLayout.TALL_GRASS_Y_OFFSET
-            )
-        }
-
-    }
-}
-
-@Composable
-private fun TallGrassLayer(drawableRes: Int, size: Dp, offsetX: Dp = 0.dp, offsetY: Dp = 0.dp) {
-    PixelImage(
-        res = drawableRes,
-        contentDescription = stringResource(R.string.tall_grass_desc),
-        modifier = Modifier
-            .size(size)
-            .offset(x = offsetX, y = offsetY)
-    )
-}
-
-/**
- * Botón de hierba alta, situado en la esquina inferior derecha de la zona, sobre
- * la zona flotante de la Pokébola.
- * Entra o sale del modo hierba alta (que también muestra/oculta las capas).
- *
- * Usa `anchor(...)` con los dos sesgos en una sola llamada: encadenar
- * `anchorVertically` + `anchorHorizontally` crearía dos datos de anclaje y solo
- * se aplicaría el último.
- *
- * El toque responde con **squash & stretch** asimétrico a 45° de muelle
- * (sin ripple) para dar game feel al área de interacción.
- */
-@Composable
-private fun TallGrassButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val squashX by animateFloatAsState(
-        targetValue = if (pressed) 1.14f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "grassSquashX"
-    )
-    val squashY by animateFloatAsState(
-        targetValue = if (pressed) 0.82f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "grassSquashY"
-    )
-    PixelImage(
-        res = R.drawable.tall_grass_button,
-        contentDescription = stringResource(R.string.tall_grass_desc),
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = squashX
-                scaleY = squashY
-                transformOrigin = TransformOrigin(0.5f, 0.7f)
-            }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            )
-    )
-}
 
 // ─────────────────────────── Previews ───────────────────────────
 
@@ -612,6 +441,10 @@ private fun TallGrassButton(onClick: () -> Unit, modifier: Modifier = Modifier) 
  */
 private const val PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
 
+/** Medidas en px del AVD de referencia (`PREVIEW_DEVICE` a 420 dpi). */
+private const val PREVIEW_WIDTH_PX = 1080f
+private const val PREVIEW_HEIGHT_PX = 2400f
+
 /**
  * Estado de ejemplo realista para los previews. **No** vale el estado por defecto
  * (`GameUiState()`): con zona vacía, sin monedas ni principal, el HUD sale corto y
@@ -619,7 +452,7 @@ private const val PREVIEW_DEVICE = "spec:width=411dp,height=914dp,dpi=420"
  *
  * Los valores imitan una partida de principios de Ruta 1.
  */
-private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
+private fun previewGameState() = GameUiState(
     playerName = "Sergio",
     coins = 40L,
     seenSpecies = setOf("bulbasaur", "rattata", "pidgey"),
@@ -631,7 +464,6 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
     leadSpeciesId = "bulbasaur",
     zoneIndex = 1,
     zoneClicks = 4L,
-    isTallGrass = isTallGrass,
     trainerFrameRes = R.drawable.front0,
     zoneName = "Ruta 1",
     zoneRequirement = 20L,
@@ -650,24 +482,36 @@ private fun previewGameState(isTallGrass: Boolean = false) = GameUiState(
  * [PokemonBottomMenu] reserva el mismo hueco que en la app (`CONTAINER_HEIGHT`),
  * que es justo lo que faltaba en los previews antiguos y hacía que el entrenador
  * saliera en otro sitio. Fondo de chasis oscuro para encajar con el diseño.
+ *
+ * El marco del mundo se calcula con las medidas del dispositivo del preview
+ * (`PREVIEW_DEVICE`: 411×914 dp a 420 dpi → 1080×2400 px), las mismas del AVD de
+ * referencia.
  */
 @Composable
 private fun MainScreenStage(state: GameUiState) {
-    Scaffold(
-        containerColor = Color(0xFF14181D),
-        bottomBar = { PokemonBottomMenu(isHomeSelected = true) }
-    ) { innerPadding ->
-        MainScreen(
-            state = state,
-            onTallGrassToggle = {},
-            onEnterGym = {},
-            onAdvanceZone = {},
-            modifier = Modifier.padding(innerPadding)
+    val density = LocalDensity.current
+    val world = with(density) { worldFrame(PREVIEW_WIDTH_PX, PREVIEW_HEIGHT_PX) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Mismo orden que en la app: mundo detrás, `Scaffold` transparente encima.
+        WorldTrainer(
+            trainerFrameRes = state.trainerFrameRes,
+            world = world
         )
+        Scaffold(
+            containerColor = Color(0xFF14181D),
+            bottomBar = { PokemonBottomMenu() }
+        ) { innerPadding ->
+            MainScreen(
+                state = state,
+                onEnterGym = {},
+                onAdvanceZone = {},
+                modifier = Modifier.padding(innerPadding)
+            )
+        }
     }
 }
 
-/** Juego en reposo: HUD completo, entrenador y botón de hierba. */
+/** Juego en reposo: HUD completo y entrenador. */
 @Preview(
     name = "1 · Juego",
     device = PREVIEW_DEVICE,
@@ -677,18 +521,6 @@ private fun MainScreenStage(state: GameUiState) {
 @Composable
 private fun MainScreenPreview() = MaterialTheme {
     MainScreenStage(state = previewGameState())
-}
-
-/** Modo hierba alta: capas de hierba sobre el entrenador y barra de búsqueda. */
-@Preview(
-    name = "2 · Hierba alta",
-    device = PREVIEW_DEVICE,
-    showSystemUi = true,
-    showBackground = true
-)
-@Composable
-private fun MainScreenTallGrassPreview() = MaterialTheme {
-    MainScreenStage(state = previewGameState(isTallGrass = true))
 }
 
 // ─────────────────────────── HUD ───────────────────────────

@@ -16,6 +16,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,11 +30,25 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.dsrs.pokeclic.R
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 
 private const val SPLASH_HOLD_MS = 800L
 private const val SPLASH_SLIDE_MS = 1000
+
+/** Fundido de entrada del logo sobre la mitad superior. */
+private const val SPLASH_LOGO_FADE_MS = 300
+
+/** Ancho del logo como fracción del ancho de pantalla. */
+private const val SPLASH_LOGO_WIDTH_FRACTION = 0.32f
+
+/**
+ * Borde superior del logo como fracción de la altura de pantalla. Deja el logo
+ * dentro del campo rojo y por encima del aro de la Pokébola incluso en las
+ * pantallas más cortas (16:9), donde el recorte desplaza el arte hacia arriba.
+ */
+private const val SPLASH_LOGO_TOP_FRACTION = 0.09f
 
 /**
  * Cortinilla de arranque: dos imágenes a pantalla completa que juntas cubren la
@@ -40,6 +56,10 @@ private const val SPLASH_SLIDE_MS = 1000
  * arriba) sube hasta salir por el borde superior, y la inferior
  * ([R.drawable.pokeball_splash_bottom], visual abajo) baja hasta salir por el
  * inferior, dejando ver la app.
+ *
+ * Encima del campo rojo de la mitad superior aparece el logo del juego
+ * ([R.drawable.pokeclic_logo]) con un fundido corto; viaja con esa mitad, así
+ * que sale de pantalla junto a ella.
  *
  * Se apoya en `graphicsLayer`, así que la animación solo invalida esas capas y no
  * recompone el resto. Al terminar, avisa con [onFinished] para que el llamante
@@ -51,8 +71,11 @@ private const val SPLASH_SLIDE_MS = 1000
 fun PokeBallSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(true) }
     val progress = remember { Animatable(0f) }
+    val logoAlpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
+        // El fundido corre en paralelo a la espera: no alarga la cortinilla.
+        launch { logoAlpha.animateTo(1f, animationSpec = tween(SPLASH_LOGO_FADE_MS)) }
         delay(SPLASH_HOLD_MS)
         progress.animateTo(
             targetValue = 1f,
@@ -88,6 +111,25 @@ fun PokeBallSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { translationY = travel * progress.value }
+        )
+
+        // El logo viaja con la mitad superior: mismo desplazamiento, así que sale
+        // por arriba con ella en vez de quedarse flotando sobre el juego.
+        val logoWidth = maxWidth * SPLASH_LOGO_WIDTH_FRACTION
+        Image(
+            painter = painterResource(R.drawable.pokeclic_logo),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .width(logoWidth)
+                .offset(
+                    x = (maxWidth - logoWidth) / 2f,
+                    y = maxHeight * SPLASH_LOGO_TOP_FRACTION
+                )
+                .graphicsLayer {
+                    translationY = -travel * progress.value
+                    alpha = logoAlpha.value
+                }
         )
     }
 }

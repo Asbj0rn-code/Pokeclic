@@ -1,5 +1,19 @@
 # Issues y riesgos — Pokeclic
 
+> **Documento histórico.** Esta auditoría se hizo el 20/10/2026 sobre una versión
+> anterior del proyecto (15 archivos Kotlin). No es el estado vigente: para la
+> arquitectura, pantallas y persistencia actuales consulta
+> [`DOCUMENTACION.md`](DOCUMENTACION.md).
+>
+> Puntos que ya no reflejan el código actual (verificados en noviembre de 2026):
+> el paquete y `applicationId` son `com.dsrs.pokeclic` (no `com.example`);
+> el guardado tiene `schema_version = 2`; existen tests de ViewModel, de
+> persistencia y de reglas de juego; el mapa y la Pokédex están implementados;
+> los overlays aplican `Modifier.modalBlocking()`; el borrado de partida vive en
+> la hoja de Opciones con confirmación; la tipografía retro se aplica con
+> `RetroTypography`; y la lógica del gimnasio y de la captura está extraída en
+> motores con reglas puras testeables.
+
 Auditoría estática del proyecto Android `MyApplication2` (nombre visible **Pokeclic**), realizada el 20/10/2026 sobre el estado actual del código.
 
 - **Alcance:** 15 archivos Kotlin de `app/src/main`, recursos, manifiesto, Gradle y documentación.
@@ -29,7 +43,7 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Prioridad:** P0 · **Estado:** Resuelto (issue #21, rama `feature-7`)
 - **Evidencia:** `ui/Overlays.kt:60-92` (captura), `ui/Overlays.kt:112-155` (principal), `ui/Intro.kt:130-179`, `ui/PokeBallSplash.kt:66-88`, `ui/AppRoot.kt:159-174`.
 - **Qué pasa:** las capas de captura y selector de principal usan un `Box` con fondo semitransparente pero sin `clickable`/`pointerInput`. Solo el `Surface` central bloquea los toques dentro de su área. La intro y el splash no tienen ningún consumidor de toques. Los toques en el resto de la pantalla atraviesan la capa visual.
-- **Impacto:** durante una captura o el selector de principal se puede pulsar sin verlo el HUD de debajo: **Reset**, **Cambiar principal**, la hierba alta o **Borrar partida**. Durante la intro y el splash ocurre lo mismo con la UI oculta. Es una vía directa a perder la partida sin querer.
+- **Impacto:** durante una captura o el selector de principal se puede pulsar sin verlo el HUD de debajo: **Reset**, **Cambiar principal** o **Borrar partida**. Durante la intro y el splash ocurre lo mismo con la UI oculta. Es una vía directa a perder la partida sin querer.
 - **Propuesta:** añadir un scrim de pantalla completa que consuma los toques (`pointerInput(Unit) { detectTapGestures { ... } }` o `clickable`), decidir si el toque fuera cierra o no, y cubrir con test de UI que ningún botón de debajo recibe eventos. En intro y splash, consumir siempre.
 - **Solución aplicada (issue #21):** modificador reutilizable `Modifier.modalBlocking()` (`ui/ModalBlocking.kt`) que consume todos los eventos de puntero de la capa sin afectar a sus controles hijos; aplicado en la raíz de `IntroOverlay`, `LeadOverlay` y `PokeBallSplash`. Además, mientras haya capa modal (`needsStarter`, `isLeadOpen` o splash) `AppRoot` no compone el menú, porque la Pokéball usa un detector que ignora el consumo (`requireUnconsumed = false`); con la intro (opaca) tampoco se compone el contenido. Gimnasio y pesca ya aislaban por sí solos (escena a pantalla completa con `detectTapGestures` + menú oculto) y `OptionsSheet` es una `ModalBottomSheet` en ventana propia, impenetrable para el juego. Verificación manual documentada por capa en la issue #21; pendiente test de UI automatizado.
 
@@ -101,7 +115,7 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ### FUN-11 · La captura no tiene salida explícita y persiste al cambiar de pestaña
 - **Prioridad:** P2 · **Estado:** Confirmado
 - **Evidencia:** `ui/Overlays.kt:55-93`, `ui/AppRoot.kt:150-154`.
-- **Qué pasa:** el overlay no ofrece “Huir” y se dibuja mientras `encounter != null`, incluso en la pestaña Mapa. La única forma de resolverlo es acertar, agotar los tres intentos o salir de la hierba (botón oculto detrás del overlay).
+- **Qué pasa:** el overlay no ofrece “Huir” y se dibuja mientras `encounter != null`, incluso en la pestaña Mapa. La única forma de resolverlo es acertar o agotar los tres intentos.
 - **Impacto:** el jugador puede quedar bloqueado en una captura no deseada y el estado de encuentro contamina otras pantallas.
 - **Propuesta:** añadir un botón “Huir” que limpie `encounter` y `walkProgress`, o permitir cerrar con atrás; decidir si el encuentro debe sobrevivir al cambio de pestaña.
 
@@ -189,7 +203,7 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 ### DAT-05 · Se guarda en cada toque de la Pokébola
 - **Prioridad:** P1 · **Estado:** Confirmado
 - **Evidencia:** `viewmodel/MainViewModel.kt:96-129`, especialmente `store.save(updated.toSnapshot())` en la línea 126.
-- **Qué pasa:** cada toque, incluso los que solo animan al entrenador o tocan hierba sin cambiar progreso relevante, serializa todo el estado y llama a `SharedPreferences.apply()`.
+- **Qué pasa:** cada toque, incluso los que solo animan al entrenador o llegan con un encuentro abierto sin cambiar progreso relevante, serializa todo el estado y llama a `SharedPreferences.apply()`.
 - **Impacto:** escrituras y serializaciones constantes durante el juego; jank y desgaste innecesario. En un clicker, el ritmo de toques es alto.
 - **Propuesta:** guardar con debounce/coalescing (por ejemplo, cada 1-2 s y al pasar a segundo plano), o solo cuando cambien campos persistibles.
 
@@ -355,11 +369,10 @@ Los problemas más importantes no son de compilación, sino de **flujo de intera
 - **Propuesta:** `FlowRow` o `LazyRow`, contenido desplazable y `BringIntoViewRequester` para el campo de nombre.
 
 ### UX-06 · Descripciones duplicadas y estado de la hierba alta
-- **Prioridad:** P2 · **Estado:** Confirmado
-- **Evidencia:** `ui/MainScreen.kt:192-201` (capas decorativas con `tall_grass_desc`), `ui/MainScreen.kt:212-219` (botón con la misma descripción).
-- **Qué pasa:** las dos capas visuales de hierba y el botón anuncian “Hierba alta”. El botón no indica si entra o sale del modo ni su estado.
-- **Impacto:** el lector de pantalla recorre elementos decorativos y no distingue la acción real.
-- **Propuesta:** `contentDescription = null` en las capas decorativas y una descripción/estado dinámico en el botón (“Entrar en la hierba alta” / “Salir de la hierba alta”).
+- **Prioridad:** — · **Estado:** Resuelto en `feature-69`
+- **Qué pasaba:** las dos capas visuales de hierba y el botón anunciaban “Hierba alta”. El botón no indicaba si entraba o salía del modo ni su estado.
+- **Impacto:** el lector de pantalla recorría elementos decorativos y no distinguía la acción real.
+- **Resolución:** el modo hierba alta se retiró por completo (botón, capas y `tall_grass_desc`), así que la descripción duplicada ya no existe.
 
 ### UX-07 · Texto blanco sobre imagen sin fondo en el gimnasio
 - **Prioridad:** P2 · **Estado:** Riesgo

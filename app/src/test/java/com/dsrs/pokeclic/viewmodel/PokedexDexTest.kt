@@ -105,9 +105,9 @@ class PokedexDexTest {
         catalog: PokedexCatalog = dexCatalog(),
         loadFailed: Boolean = false,
         store: FakeStore = FakeStore().apply { this.saved = saved }
-    ) = MainViewModel(
-        FakeSprites(),
-        store,
+    ) = testViewModel(
+        sprites = FakeSprites(),
+        store = store,
         zones = zones,
         random = random,
         nowMs = nowMs,
@@ -165,7 +165,6 @@ class PokedexDexTest {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-        vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
         advanceUntilEncounter(vm)
         assertNotNull(vm.uiState.value.encounter)
@@ -229,7 +228,6 @@ class PokedexDexTest {
         val vm = viewModel()
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-        vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK)
         // Ritmo real de toques: dos tandas de 500 ms con re-toque (la ventana
         // de actividad es de 1000 ms). El progreso avanza (~1/3 en 1 s).
@@ -416,7 +414,6 @@ class PokedexDexTest {
         val vm = viewModel(random = DartosAlRielRandom())
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-        vm.onTallGrassToggle()
 
         // Primera captura de la run.
         vm.onPokeBallTouch(Direction.BACK)
@@ -425,7 +422,7 @@ class PokedexDexTest {
         assertTrue("pidgey" !in vm.uiState.value.caughtSpecies)
 
         val coinsBefore = vm.uiState.value.coins
-        val expectedCoins = SpeciesCatalog.require("pidgey").coinReward.toLong()
+        val expectedCoins = SpeciesCatalog.require("pidgey").coinReward
         vm.onCatchingResultContinue()
 
         with(vm.uiState.value) {
@@ -473,7 +470,6 @@ class PokedexDexTest {
         val vm = viewModel(random = DartosAlRielRandom(), store = store)
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-        vm.onTallGrassToggle()
 
         // Captura de pidgey: +5 monedas (primera vez), en posesión.
         vm.onPokeBallTouch(Direction.BACK)
@@ -512,8 +508,7 @@ class PokedexDexTest {
         }
 
         // Recaptura de pidgey: vuelve a CAUGHT y las monedas no se repiten.
-        // (El reset baja la hierba alta: hay que volver a activarla.)
-        vm.onTallGrassToggle()
+        // (El reset conserva la historia: basta con volver a caminar.)
         vm.onPokeBallTouch(Direction.BACK)
         playToCaptured(vm)
         vm.onCatchingResultContinue()

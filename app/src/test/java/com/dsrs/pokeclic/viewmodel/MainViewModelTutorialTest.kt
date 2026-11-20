@@ -62,11 +62,12 @@ class MainViewModelTutorialTest {
         saved: GameSnapshot? = null,
         store: GameStateStore = storeWith(saved),
         zones: List<Zone> = testZones
-    ) = MainViewModel(
+    ) = testViewModel(
         sprites = FakeSprites(),
         store = store,
         zones = zones,
-        random = Random(42)
+        random = Random(42),
+        nowMs = { System.nanoTime() / 1_000_000L }
     )
 
     /** Toques sobre la Pokéball como clics de zona. */
@@ -569,7 +570,6 @@ class MainViewModelTutorialTest {
         val vm = viewModel(store = store)
 
         vm.onSelectTab(AppTab.Map)
-        vm.onTallGrassToggle()
         vm.onOpenOptions()
         vm.onOpenLead()
         vm.onSelectLead("charmander")
@@ -582,7 +582,6 @@ class MainViewModelTutorialTest {
         val state = vm.uiState.value
         assertEquals(TutorialPhase.DEPLOY_POKEBALL, state.tutorialPhase)
         assertEquals(AppTab.Home, state.contentTab)
-        assertFalse(state.isTallGrass)
         assertFalse(state.isOptionsOpen)
         assertFalse(state.isLeadOpen)
         assertNull(state.gymIntro)
@@ -663,14 +662,6 @@ class MainViewModelTutorialTest {
     }
 
     @Test
-    fun guidedSteps_blockTheTallGrassToggle() {
-        val vm = vmAtDeployStep()   // mensaje del paso visible
-
-        vm.onTallGrassToggle()
-        assertFalse(vm.uiState.value.isTallGrass)
-    }
-
-    @Test
     fun advanceNotice_blocksAdvanceUntilTheMessageIsClosed() {
         val vm = vmUpToFarewell().apply {
             onTutorialAction(TutorialAction.FAREWELL_DISMISSED)
@@ -714,14 +705,12 @@ class MainViewModelTutorialTest {
     @Test
     fun visibleMessage_blocksAllGameplay_includingQuestionsAndNotice() {
         // Regla principal de QA: con cualquier mensaje visible, nada del juego
-        // responde — ni Pokéball, ni hierba, ni opciones, ni avance, ni reset.
+        // responde — ni Pokéball, ni opciones, ni avance, ni reset.
         val offer = vmAtOffer()   // OFFER
         tapZone(offer, 1)
-        offer.onTallGrassToggle()
         offer.onOpenOptions()
         offer.onReset()
         assertEquals(0L, offer.uiState.value.zoneClicks)
-        assertFalse(offer.uiState.value.isTallGrass)
         assertFalse(offer.uiState.value.isOptionsOpen)
         assertEquals(TutorialPhase.OFFER, offer.uiState.value.tutorialPhase)
 
@@ -731,12 +720,10 @@ class MainViewModelTutorialTest {
             tapZone(this, 2)   // barra llena → EXP_NOTICE
         }
         tapZone(notice, 1)
-        notice.onTallGrassToggle()
         notice.onAdvanceZone()
         // La barra ya está al tope (capada en el umbral) y el toque extra no
-        // generó nada nuevo: ni experiencia, ni hierba, ni avance.
+        // generó nada nuevo: ni experiencia ni avance.
         assertEquals(2L, notice.uiState.value.zoneClicks)
-        assertFalse(notice.uiState.value.isTallGrass)
         assertEquals(0, notice.uiState.value.zoneIndex)
         assertEquals(TutorialPhase.EXP_NOTICE, notice.uiState.value.tutorialPhase)
 
@@ -766,9 +753,6 @@ class MainViewModelTutorialTest {
         }
 
         // Jugabilidad completa mientras se espera la barra y el primer avance.
-        vm.onTallGrassToggle()
-        assertTrue(vm.uiState.value.isTallGrass)
-        vm.onTallGrassToggle()
         vm.onOpenOptions()
         assertTrue(vm.uiState.value.isOptionsOpen)
         vm.onCloseOptions()

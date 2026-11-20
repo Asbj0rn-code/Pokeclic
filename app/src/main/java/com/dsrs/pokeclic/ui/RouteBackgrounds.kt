@@ -25,13 +25,17 @@ import com.dsrs.pokeclic.model.Direction
  * @param imageRes drawable que se repite. Debe medir, idealmente, un ancho de
  *   pantalla: las columnas horizontales se calculan a partir de su ancho.
  * @param motion clics y direcciones de la zona ([RouteLeg]).
- * @param seamCutRow **0 para el arte normal**: los fondos son patrones continuos,
- *   así que el borde inferior del dibujo coincide con el superior y se repiten sin
- *   costura. Solo el arte antiguo, dibujado como un tramo suelto, necesita aquí la
- *   fila por la que debe cortar el bucle (ver [RouteScrollDefaults.SEAM_CUT_ROW]).
- * @param startAnchor fracción de la altura de la pantalla donde cae el **borde
- *   inferior del arte** al entrar en la zona (`0,5` = el centro, donde está el
- *   entrenador). `null` arranca por el principio del arte.
+ * @param seamCutRow **0 cuando el arte es continuo en vertical**: el borde
+ *   inferior del dibujo coincide con el superior y se repite sin costura. Si no
+ *   coincide, aquí va la fila por la que debe cortar el bucle: el renderer enrolla
+ *   el tile para que la unión caiga entre dos filas que sí encajan. Lo usan el
+ *   arte antiguo de ruta ([RouteScrollDefaults.SEAM_CUT_ROW]) y Ciudad Carmín
+ *   (`1`), cuyo borde inferior no encaja con el superior.
+ * @param startAnchor fracción de la **altura de cámara** donde cae el **borde
+ *   inferior del arte** al entrar en la zona (`0,5` = el centro del arte, que es
+ *   la altura del entrenador). `null` arranca por el principio del arte. Al medirse
+ *   en alturas de cámara y no de pantalla, el encuadre es el mismo en cualquier
+ *   móvil: lo único que cambia es cuánto arte se ve arriba y abajo.
  * @param startOffset posición lateral del personaje al entrar, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
  *   positivo = personaje a la derecha (la imagen se ve corrida a la izquierda).
@@ -43,11 +47,20 @@ import com.dsrs.pokeclic.model.Direction
  *   que `-1` y `+1` son el mismo sitio.
  */
 internal data class ZoneBackground(
-    @DrawableRes val imageRes: Int,
+    @param:DrawableRes val imageRes: Int,
     val motion: RouteBackgroundMotion = RouteScrollDefaults.MOTION,
     val seamCutRow: Int = 0,
     val startAnchor: Float? = null,
-    val startOffset: Float = 0f
+    val startOffset: Float = 0f,
+    /**
+     * Cuánto está ampliado el PNG respecto al arte autorado (1 = tamaño nativo).
+     *
+     * Los ocho fondos verificados son identidad exacta al reducirlos 4× con
+     * nearest-neighbor, así que se decodifican a 1/4 y se dibujan escalados por
+     * este factor: mismo arte, 16 veces menos memoria. El arte antiguo de ruta
+     * (`DEFAULT`) **no** está ampliado y debe quedarse en 1.
+     */
+    val artScale: Int = 1
 )
 
 /**
@@ -106,8 +119,10 @@ internal object RouteBackgrounds {
     val DEFAULT = ZoneBackground(
         imageRes = R.drawable.background_ruta,
         motion = RouteScrollDefaults.MOTION,
-        // Única excepción: este PNG es el arte antiguo, no continuo. Todo arte
-        // nuevo se omite (patrón continuo, sin fila de corte).
+        // Este PNG es el arte antiguo, no continuo en vertical: se enrolla por la
+        // pareja de filas que mejor encaja. El resto del arte nuevo se omite
+        // (`0`) salvo que su borde inferior no coincida con el superior, como el de
+        // Ciudad Carmín.
         seamCutRow = RouteScrollDefaults.SEAM_CUT_ROW
     )
 
@@ -123,6 +138,7 @@ internal object RouteBackgrounds {
         // (9 a cada lado), así que el personaje vuelve a la línea central.
         "pueblo_paleta" to ZoneBackground(
             imageRes = R.drawable.background_pallet_town,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 3f),
@@ -135,8 +151,9 @@ internal object RouteBackgrounds {
                 )
             ),
             // El borde inferior del arte cae un poco por debajo del centro de la
-            // pantalla, así que se empieza viendo la parte baja de la escena.
-            startAnchor = 0.6f
+            // escena, así que se empieza viendo la parte baja. En alturas de cámara
+            // (antes, 0,6 del alto de pantalla en el emulador de 1080×2400).
+            startAnchor = 0.6333333f
         ),
         // Bosque Verde: arte y trayectoria propios. Los clics y las direcciones
         // salen de esta lista, en orden y contados en clics:
@@ -149,6 +166,7 @@ internal object RouteBackgrounds {
         // aleja hasta 0,20 alturas de baldosa del centro.
         "bosque_verde" to ZoneBackground(
             imageRes = R.drawable.background_bosque_verde,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 2f),
@@ -177,6 +195,7 @@ internal object RouteBackgrounds {
         // tramo bajo de la ciudad y camina hacia arriba por él.
         "ciudad_verde" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_verde,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 4f),
@@ -213,6 +232,7 @@ internal object RouteBackgrounds {
         // arrancaría en el cuarto izquierdo y con `0f` en el centro.
         "ruta3" to ZoneBackground(
             imageRes = R.drawable.background_ruta3,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 2f),
@@ -235,10 +255,10 @@ internal object RouteBackgrounds {
             ),
             startOffset = -0.5f,
             // Deja el **eje central horizontal del arte** a la altura del
-            // entrenador: el borde inferior del arte cae al 5,7 % de la pantalla,
-            // detrás del HUD. Calibrado en 1080×2400; en una pantalla más baja el
-            // eje del arte cae por debajo del entrenador.
-            startAnchor = 0.057f
+            // entrenador. Antes eran 0,057 del alto de pantalla, calibrado en
+            // 1080×2400: en cualquier otro móvil el eje del arte se iba por debajo
+            // del entrenador. En alturas de cámara cae siempre en el mismo sitio.
+            startAnchor = -0.0906667f
         ),
         // Ciudad Plateada: arte propio de 4608×3840, cuatro anchos de cámara por
         // dos altos. Al ser vertical, lo que cierra el bucle es **la altura**:
@@ -256,6 +276,7 @@ internal object RouteBackgrounds {
         // ciudad lo decide el corrimiento lateral que van dejando los tramos.
         "ciudad_plateada" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_plateada,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 8f),
@@ -287,6 +308,7 @@ internal object RouteBackgrounds {
         // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja.
         "mt_moon" to ZoneBackground(
             imageRes = R.drawable.background_mt_moon,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 3f),                              // recto
@@ -317,9 +339,10 @@ internal object RouteBackgrounds {
             // se enrolla módulo el ancho del arte, así que -1 y +1 dan lo mismo;
             // -0,5 dejaría al entrenador en el 25% del dibujo y 0 en su centro.
             startOffset = -1f,
-            // Misma calibración que Ruta 3: pone el eje central horizontal del arte a
-            // la altura del entrenador. El alto del arte es el mismo (1920 px).
-            startAnchor = 0.057f
+            // Misma calibración que Ruta 3 —el alto del arte es el mismo (1920 px)—,
+            // expresada en alturas de cámara: pone el eje central horizontal del
+            // arte a la altura del entrenador.
+            startAnchor = -0.0906667f
         ),
         // Ciudad Celeste: tercer fondo **horizontal**, con el arte más grande del
         // catálogo (4608×3840: cuatro anchos de cámara por dos altos). La cámara
@@ -338,6 +361,7 @@ internal object RouteBackgrounds {
         // laterales sumando lo mismo.
         "ciudad_celeste" to ZoneBackground(
             imageRes = R.drawable.background_ciudad_celeste,
+            artScale = 4,
             motion = RouteBackgroundMotion(
                 legs = listOf(
                     RouteLeg(clicks = 14f),                             // recto
@@ -355,12 +379,64 @@ internal object RouteBackgrounds {
             // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro). La
             // vuelta arranca en el borde izquierdo de la ciudad y la cruza entera.
             startOffset = -2f,
-            // 1,15 deja el borde inferior del arte un 15 % de pantalla por debajo
-            // del borde inferior: sube el encuadre respecto a `1f` (que lo dejaba
-            // justo al pie) y se ve desde el borde del río hasta la calle de los
-            // edificios. El renderer enrolla el valor módulo el alto del arte, así
-            // que por encima de ~1,5 vuelve a empezar por arriba.
-            startAnchor = 1.15f
+            // Deja el borde inferior del arte por debajo del encuadre: se ve desde
+            // el borde del río hasta la calle de los edificios. Antes era 1,15 del
+            // alto de pantalla; ahora se mide en alturas de cámara. El renderer
+            // envuelve el valor módulo el alto del arte, así que por encima de una
+            // baldosa vuelve a empezar por arriba.
+            startAnchor = 1.3666667f
+        ),
+        // Ciudad Carmín: cuarto fondo **horizontal**, con el mismo tamaño de arte
+        // que Ciudad Celeste (4608×3840: cuatro anchos de cámara por dos altos).
+        // La cámara enseña 1152 px de ancho, así que por pantalla se ve un cuarto
+        // del dibujo y una vuelta completa tarda cuatro pantallas.
+        //
+        // La cuenta del bucle es la de siempre, con el ancho de este arte:
+        //   clics rectos por ancho de arte = 4608 / 76,8 = 60
+        // Los rectos de aquí suman 60 y los laterales se compensan (14 hacia
+        // abajo, 14 hacia arriba): el personaje vuelve a la misma altura en cada
+        // vuelta.
+        // Lo comprueba `horizontalZones_closeTheirLoopAgainstTheRealArtwork`.
+        //
+        // Para reajustar la trayectoria solo hay que tocar esta lista: en el marco
+        // horizontal `BACK` camina a la derecha, `LEFT` sube y `RIGHT` baja. Si
+        // cambias los clics, deja los rectos en múltiplos de 60 y los dos sentidos
+        // laterales sumando lo mismo.
+        "ciudad_carmin" to ZoneBackground(
+            imageRes = R.drawable.background_ciudad_carmin,
+            artScale = 4,
+            motion = RouteBackgroundMotion(
+                legs = listOf(
+                    RouteLeg(clicks = 8f),                                  // recto
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT),       // sube
+                    RouteLeg(clicks = 14f),                                 // recto
+                    RouteLeg(clicks = 10f, direction = Direction.RIGHT),     // baja
+                    RouteLeg(clicks = 25f),                                 // recto
+                    RouteLeg(clicks = 4f, direction = Direction.RIGHT),      // baja
+                    RouteLeg(clicks = 6f),                                  // recto
+                    RouteLeg(clicks = 6f, direction = Direction.LEFT),       // sube
+                    RouteLeg(clicks = 7f),                                  // recto
+                    RouteLeg(clicks = 4f, direction = Direction.LEFT)        // sube
+                ),
+                axis = RouteScrollAxis.HORIZONTAL
+            ),
+            // El arte mide cuatro pantallas de ancho, así que poner al entrenador
+            // sobre su **marco izquierdo** pide dos pantallas enteras: -2f lo deja
+            // en el 0 % del dibujo (-1f caería en el 25 % y 0 en el centro).
+            startOffset = -2f,
+            // El arte es continuo en horizontal, pero **no** en vertical: la unión
+            // row 3839 → row 0 difiere 30,9 por canal y solo 8 de las 3840 uniones
+            // internas del dibujo son peores, así que se vería una línea al
+            // repetirse. La pareja row 0 → row 1 coincide exactamente, así que se
+            // enrolla por ahí: el bucle vertical queda sin costura a cualquier
+            // altura y el encuadre solo se corre una fila de arte.
+            seamCutRow = 1,
+            // Deja la calle principal del dibujo a la altura del entrenador: en el
+            // emulador de referencia se pisa la acera de los edificios y el agua
+            // queda por debajo del encuadre. Es un valor de ajuste manual: el
+            // renderer lo envuelve módulo el alto del arte (dos alturas de cámara),
+            // así que sumar o restar 2f da el mismo encuadre.
+            startAnchor = 1.6066667f
         ),
         // Añadir aquí cada zona que tenga arte o trayectoria propia, por ejemplo:
         // "ruta2" to ZoneBackground(

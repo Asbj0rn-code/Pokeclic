@@ -329,47 +329,32 @@ internal fun routeColumnStart(column: Int, left0: Float, shiftH: Float, tileW: F
 
 /**
  * Desplazamiento vertical inicial, en px de baldosa, que deja el **borde
- * inferior del arte** a la altura [anchor] de la pantalla cuando el recorrido
- * está a cero.
+ * inferior del arte** en la coordenada de pantalla [artBottomY] cuando el
+ * recorrido está a cero.
  *
  * Sirve para que una zona arranque por el final de su arte en vez de por el
- * principio: con `anchor = 0.5f` el final del dibujo cae en el centro de la
- * pantalla, que es donde está el entrenador, así que empieza pisando el borde
- * inferior del escenario y camina hacia arriba por él.
+ * principio. La coordenada la calcula el llamador con el marco del mundo
+ * ([WorldFrame.screenY]) a partir del ancla de la zona, que se expresa en
+ * **alturas de cámara**: así el encuadre no depende del alto de pantalla.
+ *
+ * Envuelve el resultado en una baldosa: por encima de una repetición el patrón
+ * se repite igual, y el bucle ya dibuja la baldosa hacia arriba.
  *
  * @param tileH alto de una repetición del arte, ya escalado a la pantalla.
- * @param screenH alto de la pantalla.
- * @param anchor fracción de la altura de la pantalla (0 = arriba, 0,5 = centro,
- *   1 = abajo); `null` deja el arte empezando por arriba, como siempre.
+ * @param artBottomY `y` de pantalla donde debe caer el borde inferior del arte.
  */
-internal fun routeStartShift(tileH: Float, screenH: Float, anchor: Float?): Float {
-    if (anchor == null || tileH <= 0f) return 0f
-    val raw = tileH - anchor * screenH
-    val wrapped = raw % tileH
+internal fun routeStartShift(tileH: Float, artBottomY: Float): Float {
+    if (tileH <= 0f) return 0f
+    val wrapped = (tileH - artBottomY) % tileH
     return if (wrapped < 0f) wrapped + tileH else wrapped
 }
 
 /**
- * Escala que hace que la **cámara** ([RouteScrollDefaults.CAMERA_WIDTH] ×
- * [RouteScrollDefaults.CAMERA_HEIGHT] píxeles de arte) entre entera en la
- * pantalla sin deformarse.
- *
- * Es `min` y no `max` a propósito: con `max` la cámara se recortaría y el ancho
- * visible dependería de la pantalla. Con `min` el ancho cámara (1152 px de arte)
- * se ve siempre completo, y en pantallas más altas que 1152:1920 se ve arte de
- * más por arriba y por abajo, que el bucle rellena.
- *
- * No recibe el tamaño del drawable **a propósito**: la escala de la cámara no
- * depende del arte. Un PNG de 1152 px y otro de 2176 se dibujan a la misma
- * escala, así que el segundo se ve más grande y más recortado.
+ * La escala de la cámara ya no se calcula aquí: vive en [worldFrame], que la
+ * deriva **solo del ancho** para que el mundo no dependa del alto de pantalla ni
+ * de la densidad. Un PNG de 1152 px y otro de 2176 se dibujan a la misma escala,
+ * así que el segundo se ve más grande y más recortado.
  */
-internal fun routeCameraScale(screenWidth: Float, screenHeight: Float): Float {
-    if (screenWidth <= 0f || screenHeight <= 0f) return 0f
-    return minOf(
-        screenWidth / RouteScrollDefaults.CAMERA_WIDTH,
-        screenHeight / RouteScrollDefaults.CAMERA_HEIGHT
-    )
-}
 
 /**
  * Convierte clics en recorrido **sin inercia**: un clic pide un paso y el paso se
@@ -585,9 +570,9 @@ internal object RouteScrollDefaults {
  * 1. **Escala**: la cámara mide siempre [RouteScrollDefaults.CAMERA_WIDTH] ×
  *    [RouteScrollDefaults.CAMERA_HEIGHT] píxeles de arte, sea cual sea el tamaño
  *    del drawable. El arte no se estira ni se encoge para llenar el ancho: un PNG
- *    de 2176 px se ve más grande (y más recortado) que uno de 1152. La escala es
- *    `min(ancho/1152, alto/1920)`, así que la cámara entra siempre entera, sin
- *    deformación y sin franjas.
+ *    de 2176 px se ve más grande (y más recortado) que uno de 1152. La escala sale
+ *    del **ancho de pantalla** ([worldFrame]): la cámara ocupa el ancho completo y
+ *    se centra en vertical, sin deformación y sin franjas.
  * 2. **Bucle vertical sin costura**: el arte es un patrón continuo, así que la
  *    fila inferior y la superior coinciden y la repetición no se nota. Solo si el
  *    drawable no cumple eso (el arte antiguo de ruta) se enrolla cíclicamente por
@@ -611,9 +596,11 @@ internal object RouteScrollDefaults {
  *   **Los fondos son patrones continuos, así que el valor normal es `0`** (no
  *   enrollar). Solo el arte antiguo, dibujado como un tramo suelto, necesita un
  *   valor aquí.
- * @param startAnchor fracción de la altura de la pantalla donde debe caer el
+ * @param startAnchor fracción de la **altura de cámara** donde debe caer el
  *   **borde inferior del arte** al arrancar la zona con cero clics (`0,5` = el
- *   centro, donde está el entrenador). `null` arranca por el principio del arte.
+ *   centro del arte). `null` arranca por el principio del arte. Al medirse en
+ *   alturas de cámara y no de pantalla, el encuadre cae siempre en el mismo punto
+ *   del arte respecto al resto del mundo, mida lo que mida el móvil.
  *   Solo cambia el punto de partida: la trayectoria y la dirección no se tocan.
  * @param startOffset corrimiento lateral con el que arranca la zona, en anchos de
  *   pantalla y con el mismo signo que [RouteBackgroundMotion.lateralDistanceAt]:
@@ -628,15 +615,27 @@ internal fun RouteScrollingBackground(
     @DrawableRes imageRes: Int = R.drawable.background_ruta,
     seamCutRow: Int = 0,
     startAnchor: Float? = null,
-    startOffset: Float = 0f
+    startOffset: Float = 0f,
+    /**
+     * Factor de ampliación del PNG respecto al arte autorado (1 = nativo).
+     * Ver [ZoneBackground.artScale]: la decodificación se reduce por este factor
+     * y el dibujo se escala por el mismo, así que el mundo no cambia de tamaño.
+     */
+    artScale: Int = 1
 ) {
     val context = LocalContext.current
-    // `drawable-nodpi` evita el reescalado por densidad: siempre se carga a
-    // tamaño nativo y el escalado lo controla el dibujo. Con arte continuo basta
-    // con usarlo tal cual; solo el arte antiguo de ruta se enrolla por
-    // `seamCutRow` para que la unión del bucle no se vea.
-    val bitmap = remember(context, imageRes, seamCutRow) {
-        val source = BitmapFactory.decodeResource(context.resources, imageRes)
+    // `drawable-nodpi` evita el reescalado por densidad. Los fondos nuevos son
+    // PNG ampliados 4× con nearest-neighbor, así que decodificar a 1/artScale
+    // devuelve el arte autorado **sin pérdida** y ocupa 16× menos memoria.
+    // El arte antiguo de ruta (`artScale = 1`) se enrolla por `seamCutRow`.
+    val decodeOptions = remember(artScale) {
+        BitmapFactory.Options().apply {
+            inSampleSize = artScale.coerceAtLeast(1)
+            inScaled = false
+        }
+    }
+    val bitmap = remember(context, imageRes, seamCutRow, artScale) {
+        val source = BitmapFactory.decodeResource(context.resources, imageRes, decodeOptions)
             ?: return@remember null
         if (seamCutRow <= 0) return@remember source.asImageBitmap()
 
@@ -674,7 +673,9 @@ internal fun RouteScrollingBackground(
 
     // Alto del arte en px: la cámara se mide en **alturas de arte**, así que el
     // paso de un clic tiene que traducirse con esta proporción.
-    val artHeight = bitmap?.height ?: 0
+    // Las medidas de mundo se expresan en píxeles de arte: el bitmap puede venir
+    // muestreado, así que se compensa con `artScale`.
+    val artHeight = (bitmap?.height ?: 0) * artScale
 
     LaunchedEffect(motion, artHeight) {
         if (artHeight <= 0) return@LaunchedEffect
@@ -709,31 +710,50 @@ internal fun RouteScrollingBackground(
                 val srcW = bmp.width
                 val srcH = bmp.height
                 if (srcW <= 0 || srcH <= 0) return@drawBehind
+                // El bitmap puede venir muestreado: todo se razona en arte.
+                val artW = srcW * artScale
+                val artH = srcH * artScale
 
-                // La cámara mide siempre lo mismo en píxeles de arte ([CAMERA_WIDTH]
-                // × [CAMERA_HEIGHT]), así que la escala NO depende del drawable: con
-                // un PNG más grande se ve más grande, no más "world" per pantalla.
-                // `min` deja la cámara entera dentro de la pantalla sin deformar; en
-                // pantallas más altas que 1152:1920 se ve arte de más por arriba y
-                // por abajo, que es lo que tapa el bucle.
-                val scale = routeCameraScale(size.width, size.height)
+                // El mundo se dibuja con **una sola escala derivada del ancho**
+                // ([worldFrame]): la cámara ocupa el ancho completo y se centra en
+                // vertical, así que el encuadre horizontal no depende del alto ni de
+                // la densidad. Lo que cambia con el aspecto es cuánto arte se ve
+                // arriba y abajo, que el bucle rellena.
+                val frame = worldFrame(size.width, size.height)
+                val scale = frame.scale
                 if (scale <= 0f) return@drawBehind
-                val tileW = srcW * scale
-                val tileH = srcH * scale
+                val tileW = artW * scale
+                val tileH = artH * scale
                 if (tileH <= 1f || tileW <= 1f) return@drawBehind
 
-                val filter = if (scale >= 1f) FilterQuality.None else FilterQuality.Medium
+                // La nitidez se decide por la escala **efectiva** del bitmap: con
+                // el arte muestreado a 1/artScale, el renderer amplía por
+                // `scale * artScale`. Si esa ampliación ya es ≥1, el filtrado
+                // bilineal emborrona el pixel art; `None` conserva los bordes.
+                val filter = if (scale * artScale >= 1f) {
+                    FilterQuality.None
+                } else {
+                    FilterQuality.Medium
+                }
                 // El punto de partida de la zona se suma a la fase: `phaseV` sigue
                 // midiendo el recorrido (y por tanto la trayectoria), y el ancla
-                // solo decide por dónde se empieza a ver el arte.
+                // solo decide por dónde se empieza a ver el arte. El ancla se mide
+                // en **alturas de cámara** y se proyecta con el mismo marco que el
+                // resto del mundo, así que cae siempre en el mismo punto del arte
+                // respecto al entrenador. Sin ancla, el arte arranca por su principio.
+                val artBottomY = if (startAnchor == null) {
+                    tileH
+                } else {
+                    frame.screenY(startAnchor * RouteScrollDefaults.CAMERA_HEIGHT)
+                }
                 val shiftV = (phaseV.floatValue * tileH +
-                    routeStartShift(tileH, size.height, startAnchor)) % tileH
+                    routeStartShift(tileH, artBottomY)) % tileH
                 // El lateral se mide en alturas de baldosa, así que se pasa a
                 // píxeles de **cámara** (no de arte): un clic de lado recorre los
                 // mismos píxeles que un clic recto aunque el dibujo no sea cuadrado
                 // y aunque el drawable mida más o menos que la cámara. `startOffset`
                 // viene en anchos de pantalla y se convierte aparte.
-                val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / srcH
+                val cameraPerArt = RouteScrollDefaults.CAMERA_HEIGHT / artH
                 val left0 = (size.width - tileW) / 2f
                 // El patrón horizontal se repite **como un tile**: a la derecha de
                 // una columna vuelve a empezar el borde izquierdo del arte, sin
@@ -758,7 +778,7 @@ internal fun RouteScrollingBackground(
                     while (top < size.height && rowsDrawn < RouteScrollDefaults.MAX_REPEATS) {
                         withTransform({
                             translate(startX, top)
-                            scale(scale, scale, Offset.Zero)
+                            scale(scale * artScale, scale * artScale, Offset.Zero)
                         }) {
                             drawImage(image = bmp, filterQuality = filter)
                         }

@@ -1,5 +1,6 @@
 package com.dsrs.pokeclic.viewmodel
 
+import androidx.compose.runtime.Immutable
 import com.dsrs.pokeclic.model.AppTab
 import com.dsrs.pokeclic.model.Encounter
 import com.dsrs.pokeclic.model.CatchingState
@@ -28,10 +29,18 @@ import com.dsrs.pokeclic.model.TrainerState
  * - **run** (se pierde al resetear): [ownedSpecies], [leadSpeciesId],
  *   [gymClearedRun], [zoneIndex], [zoneClicks].
  * - **tutorial** (persistido a su manera, véase [tutorialPhase]).
- * - **transitorio/UI**: [isTallGrass], [walkProgress], [encounter], [catching],
- *   [gym], [trainer] y los campos de navegación.
+ * - **transitorio/UI**: [walkProgress], [encounter], [catching], [gym], [trainer]
+ *   y los campos de navegación.
  * - **derivados**: los rellena `MainViewModel.derive()` en cada cambio.
+ *
+ * Se marca `@Immutable` a propósito: es una promesa, no una decoración. Compose
+ * no puede demostrar que un `List` no muta, así que sin la anotación trata todo
+ * `GameUiState` como inestable y **no puede saltarse** la recomposición de los
+ * ocho composables que lo reciben, ni siquiera cuando el valor es igual. La
+ * promesa se cumple en todo el proyecto: los campos se reemplazan con `copy`,
+ * nunca se mutan en sitio.
  */
+@Immutable
 data class GameUiState(
     // --- meta permanente ---
     val playerName: String? = null,
@@ -58,8 +67,8 @@ data class GameUiState(
     val zoneIndex: Int = 0,
     val zoneClicks: Long = 0L,
 
-    // --- hierba alta / encuentros ---
-    val isTallGrass: Boolean = false,
+    // --- encuentros ---
+    /** Progreso 0f..1f del temporizador de caminata que abre el próximo salvaje. */
     val walkProgress: Float = 0f,
     val encounter: Encounter? = null,
 
@@ -129,13 +138,8 @@ data class GameUiState(
      * gimnasio, gimnasio ganado durante la run. Siempre `false` en la última zona.
      */
     val canAdvanceZone: Boolean = false,
-    /** La zona tiene hierba alta con fauna; en ciudades la hierba no se ofrece. */
+    /** La zona tiene fauna salvaje; en ciudades la lista de especies está vacía. */
     val hasWilds: Boolean = true,
-    /**
-     * La zona es una cueva: tiene salvajes al avanzar **sin** modo hierba alta.
-     * El botón de hierba se oculta y no hay sprite bajo el entrenador.
-     */
-    val alwaysWilds: Boolean = false,
     val needsStarter: Boolean = false,
     val leadOptions: List<LeadOption> = emptyList(),
     val starterOptions: List<StarterOption> = emptyList(),

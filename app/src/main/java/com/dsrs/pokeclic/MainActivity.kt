@@ -17,10 +17,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.dsrs.pokeclic.data.PokedexCatalogLoader
 import com.dsrs.pokeclic.data.SharedPreferencesGameStateStore
+import com.dsrs.pokeclic.data.loadKantoMapData
 import com.dsrs.pokeclic.model.DefaultSpriteRepository
 import com.dsrs.pokeclic.ui.AppRoot
 import com.dsrs.pokeclic.ui.PokeBallSplash
+import com.dsrs.pokeclic.ui.RetroTypography
 import com.dsrs.pokeclic.viewmodel.MainViewModel
+import com.dsrs.pokeclic.viewmodel.MapViewModel
 
 /**
  * Única Activity de la aplicación. Solo hospeda la UI (Compose) y crea el
@@ -52,12 +55,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * ViewModel propio de la pestaña Mapa: es el único que lee el mapeo de
+     * Kanto y resuelve la zona tocada, de modo que `MapScreen` no conoce la
+     * capa de datos ni calcula hit-testing. Se crea en el borde de la app,
+     * igual que [mainViewModel].
+     */
+    private val mapViewModel: MapViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                MapViewModel(loadMap = { loadKantoMapData(applicationContext) })
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme {
+            MaterialTheme(typography = RetroTypography) {
                 val state by mainViewModel.uiState.collectAsStateWithLifecycle()
+                val mapState by mapViewModel.uiState.collectAsStateWithLifecycle()
 
                 // La cortinilla se muestra solo en un arranque en frío: se recuerda
                 // con `rememberSaveable`, así que una rotación no la repite.
@@ -71,7 +89,6 @@ class MainActivity : AppCompatActivity() {
                         // cortinilla consume los toques.
                         isSplashShowing = showSplash,
                         onPokeBallTouch = mainViewModel::onPokeBallTouch,
-                        onTallGrassToggle = mainViewModel::onTallGrassToggle,
                         onReset = mainViewModel::onReset,
                         onWipeGame = mainViewModel::onWipeGame,
                         onDebugJumpToZone = mainViewModel::onDebugJumpToZone,
@@ -102,7 +119,10 @@ class MainActivity : AppCompatActivity() {
                         onCloseDex = mainViewModel::onCloseDex,
                         onPokeBallExpanded = mainViewModel::onPokeBallExpanded,
                         onTutorialAction = mainViewModel::onTutorialAction,
-                        onTutorialMessageTap = mainViewModel::onTutorialMessageTap
+                        onTutorialMessageTap = mainViewModel::onTutorialMessageTap,
+                        mapState = mapState,
+                        onMapOpened = mapViewModel::onScreenShown,
+                        onMapTap = mapViewModel::onTap
                     )
 
                     if (showSplash) {

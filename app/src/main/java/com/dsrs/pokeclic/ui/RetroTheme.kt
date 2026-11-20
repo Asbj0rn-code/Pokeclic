@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,8 +27,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.dsrs.pokeclic.model.PokemonType
 
 /**
  * Tokens del "skinning" retro: chasis Pokédex, cajas de diálogo GBA/NDS,
@@ -37,7 +43,6 @@ internal object RetroColors {
     // Chasis / hardware
     val PokedexRed = Color(0xFFDC0A2D)
     val PokedexDarkRed = Color(0xFF8B001D)
-    val HeaderBurgundy = Color(0xFF430D18)
     val SteelPanel = Color(0xFF303840)
     val SteelEdge = Color(0xFF14181D)
     val SteelBevel = Color(0xFF55636F)
@@ -77,6 +82,136 @@ internal val PanelShape = CutCornerShape(10.dp)
 internal val PlateShape = CutCornerShape(6.dp)
 internal val CellShape = CutCornerShape(4.dp)
 internal val ButtonShape = CutCornerShape(6.dp)
+
+/**
+ * Color de cada tipo elemental, en un solo sitio.
+ *
+ * Usa la **paleta clásica** de la era GBA, la misma que ya gastaba la Pokédex.
+ * La otra tabla del proyecto (la de los gimnasios) tenía las variantes modernas
+ * y discrepaba en ocho de quince colores; se descartó para que el arte del juego
+ * y sus colores hablen del mismo momento.
+ *
+ * Dos accesos porque la Pokédex lleva el nombre visible (`String?`, tal como
+ * viene del catálogo) y los gimnasios el enum.
+ */
+internal object RetroTypeColors {
+
+    private val byType: Map<PokemonType, Color> = mapOf(
+        PokemonType.NORMAL to Color(0xFFA8A878),
+        PokemonType.FIRE to Color(0xFFF08030),
+        PokemonType.WATER to Color(0xFF6890F0),
+        PokemonType.GRASS to Color(0xFF78C850),
+        PokemonType.ELECTRIC to Color(0xFFF8D030),
+        PokemonType.ROCK to Color(0xFFB8A038),
+        PokemonType.FLYING to Color(0xFFA890F0),
+        PokemonType.POISON to Color(0xFFA040A0),
+        PokemonType.BUG to Color(0xFFA8B820),
+        PokemonType.GROUND to Color(0xFFE0C068),
+        PokemonType.FIGHTING to Color(0xFFC03028),
+        PokemonType.PSYCHIC to Color(0xFFF85888),
+        PokemonType.ICE to Color(0xFF98D8D8),
+        PokemonType.GHOST to Color(0xFF705898),
+        PokemonType.DRAGON to Color(0xFF7038F8)
+    )
+
+    /** Nombre visible del tipo tal como lo entrega el catálogo de la Pokédex. */
+    private val byDisplayName: Map<String, PokemonType> = mapOf(
+        "Normal" to PokemonType.NORMAL,
+        "Fuego" to PokemonType.FIRE,
+        "Agua" to PokemonType.WATER,
+        "Planta" to PokemonType.GRASS,
+        "Eléctrico" to PokemonType.ELECTRIC,
+        "Roca" to PokemonType.ROCK,
+        "Volador" to PokemonType.FLYING,
+        "Veneno" to PokemonType.POISON,
+        "Bicho" to PokemonType.BUG,
+        "Tierra" to PokemonType.GROUND,
+        "Lucha" to PokemonType.FIGHTING,
+        "Psíquico" to PokemonType.PSYCHIC,
+        "Hielo" to PokemonType.ICE,
+        "Fantasma" to PokemonType.GHOST,
+        "Dragón" to PokemonType.DRAGON
+    )
+
+    /** Color de respaldo para un tipo fuera de la paleta o desconocido. */
+    private val fallback = Color(0xFF9DA0A4)
+
+    fun of(type: PokemonType?): Color = byType[type] ?: fallback
+
+    fun ofName(typeName: String?): Color = byType[byDisplayName[typeName]] ?: fallback
+}
+
+/**
+ * Tipografía del chasis.
+ *
+ * **Monoespaciada a propósito, como sustituta provisional.** Se probó una fuente
+ * pixelada (`pokemon_pixel_font.ttf`) y se descartó por dos motivos medidos: no
+ * tiene glifos para `á é í ó ú ü ñ ¿ ¡`, así que cada acento caía al fallback del
+ * sistema y una misma frase salía en dos tipografías; y su espacio mide 0,125 em,
+ * la mitad de lo normal, lo que pegaba las palabras («SoyelProfesor Oak»).
+ *
+ * La monoespaciada cubre todo el español y ya elimina Roboto, que es lo que el
+ * proyecto documentaba como fuera de lugar. Para sustituirla, la fuente nueva
+ * debe cubrir Latin-1 completo y tener un espacio de 0,2 em o más; después basta
+ * con envolverla en un `FontFamily` y apuntar estos estilos a él.
+ *
+ * Los tamaños reproducen la escala de M3 para no mover el layout.
+ */
+internal val RetroTypography = Typography(
+    headlineSmall = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 24.sp,
+        lineHeight = 32.sp,
+        letterSpacing = 0.sp
+    ),
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp
+    ),
+    titleMedium = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.sp
+    ),
+    titleSmall = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.sp
+    ),
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.sp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.sp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
+    )
+)
 
 /**
  * Marco biselado reutilizable: doble borde (exterior oscuro + filete claro),

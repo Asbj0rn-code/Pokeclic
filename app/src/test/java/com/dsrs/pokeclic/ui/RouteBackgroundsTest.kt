@@ -8,9 +8,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlin.random.Random
 
 /**
  * Arte real (`drawable-nodpi`) de cada fondo horizontal, por `Zone.id`. El
@@ -19,13 +21,64 @@ import kotlin.math.abs
 private val HORIZONTAL_ARTWORK = mapOf(
     "ruta3" to "background_ruta3.png",
     "mt_moon" to "background_mt_moon.png",
-    "ciudad_celeste" to "background_ciudad_celeste.png"
+    "ciudad_celeste" to "background_ciudad_celeste.png",
+    "ciudad_carmin" to "background_ciudad_carmin.png"
 )
 
 /**
  * Ancho del PNG en píxeles de arte. El working dir de los tests es el módulo
  * `app`, con respaldo para invocaciones desde la raíz.
  */
+/** Ficheros de arte por `Zone.id`; el catálogo solo guarda el id del recurso. */
+private val ARTWORK_FILE_BY_ZONE = mapOf(
+    "pueblo_paleta" to "background_pallet_town.png",
+    "bosque_verde" to "background_bosque_verde.png",
+    "ciudad_verde" to "background_ciudad_verde.png",
+    "ruta3" to "background_ruta3.png",
+    "ciudad_plateada" to "background_ciudad_plateada.png",
+    "mt_moon" to "background_mt_moon.png",
+    "ciudad_celeste" to "background_ciudad_celeste.png",
+    "ciudad_carmin" to "background_ciudad_carmin.png",
+    "zona_sin_arte" to "background_ruta.png"
+)
+
+/** Id que no existe en el catálogo: resuelve al fondo `DEFAULT`. */
+private const val NO_ARTWORK_ZONE = "zona_sin_arte"
+
+/**
+ * ¿El PNG es una ampliación por nearest-neighbor de [factor]×?
+ *
+ * Muestrea bloques deterministas (semilla fija): comprobar los 17 millones de
+ * píxeles de Carmín no aporta nada frente a miles de bloques repartidos, y el
+ * test tarda milisegundos en vez de segundos.
+ */
+private fun isNearestNeighbourUpscaled(image: BufferedImage, factor: Int): Boolean {
+    val width = image.width
+    val height = image.height
+    if (factor < 2 || width % factor != 0 || height % factor != 0) return false
+    val columns = width / factor
+    val rows = height / factor
+    val random = Random(7)
+    repeat(minOf(4_000, columns * rows)) {
+        val x = random.nextInt(columns) * factor
+        val y = random.nextInt(rows) * factor
+        val reference = image.getRGB(x, y)
+        for (dy in 0 until factor) {
+            for (dx in 0 until factor) {
+                if (image.getRGB(x + dx, y + dy) != reference) return false
+            }
+        }
+    }
+    return true
+}
+
+private fun artworkImage(fileName: String): BufferedImage = ImageIO.read(
+    listOf(
+        File("src/main/res/drawable-nodpi/$fileName"),
+        File("app/src/main/res/drawable-nodpi/$fileName")
+    ).firstOrNull { it.exists() } ?: error("No se encontró el arte $fileName")
+)
+
 private fun artworkWidth(fileName: String): Int {
     val candidates = listOf(
         File("src/main/res/drawable-nodpi/$fileName"),
@@ -104,13 +157,13 @@ class RouteBackgroundsTest {
             val background = RouteBackgrounds.forZone(zone.id)
             background.startAnchor?.let { anchor ->
                 assertTrue(
-                    "${zone.id}: startAnchor $anchor deja el arte fuera de la pantalla",
-                    // Fracción de pantalla donde cae el borde inferior del arte.
-                    // Por encima del alto del arte medido en pantallas (~1,5 en un
-                    // móvil) la cuenta enrolla y el encuadre vuelve a empezar, así
-                    // que el tope es solo de cordura: cada zona clava su encuadre
-                    // real en su propio test.
-                    anchor in 0f..2f
+                    "${zone.id}: startAnchor $anchor deja el arte fuera de la escena",
+                    // Alturas de cámara donde cae el borde inferior del arte
+                    // respecto al encuadre centrado: por debajo de -0,5 el arte
+                    // empieza ya fuera por arriba, y por encima de ~1,5 la vuelta
+                    // del patrón hace que el encuadre vuelva a empezar. El tope es
+                    // solo de cordura: cada zona clava su encuadre real en su test.
+                    anchor in -0.5f..2f
                 )
             }
             assertTrue(
@@ -164,6 +217,7 @@ class RouteBackgroundsTest {
         assertTrue(RouteBackgrounds.hasOwnArtwork("bosque_verde"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ruta3"))
         assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_celeste"))
+        assertTrue(RouteBackgrounds.hasOwnArtwork("ciudad_carmin"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("ruta1"))
         assertFalse(RouteBackgrounds.hasOwnArtwork("zona_inexistente"))
     }
@@ -191,7 +245,52 @@ class RouteBackgroundsTest {
         // arte; el ancla deja el **eje central horizontal** del arte a su altura.
         val background = RouteBackgrounds.forZone("ruta3")
         assertEquals(-0.5f, background.startOffset, 1e-6f)
-        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+        assertEquals(-0.0906667f, background.startAnchor!!, 1e-6f)
+    }
+
+    @Test
+    fun everyZone_declaresTheSamplingItsArtworkSupports() {
+        // El muestreo al decodificar solo es gratis si el PNG está ampliado con
+        // nearest-neighbor: cada bloque `artScale × artScale` debe ser uniforme.
+        // Se comprueba contra el fichero real, no contra una constante.
+        (RouteBackgrounds.configuredZoneIds + NO_ARTWORK_ZONE).forEach { zoneId ->
+            val background = RouteBackgrounds.forZone(zoneId)
+            val fileName = ARTWORK_FILE_BY_ZONE[zoneId]
+                ?: error("Falta el fichero de arte de \"$zoneId\" en la tabla del test")
+            val image = artworkImage(fileName)
+            if (background.artScale > 1) {
+                assertTrue(
+                    "$zoneId: artScale=${background.artScale} exige un PNG ampliado " +
+                        "${background.artScale}× con nearest-neighbor",
+                    isNearestNeighbourUpscaled(image, background.artScale)
+                )
+            } else {
+                assertFalse(
+                    "$zoneId: artScale=1 pero el PNG es reducible 2× sin pérdida; " +
+                        "declara artScale en RouteBackgrounds para no decodificarlo entero",
+                    isNearestNeighbourUpscaled(image, 2)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun unknownZone_fallsBackToNativeArtwork() {
+        assertEquals(1, RouteBackgrounds.forZone(NO_ARTWORK_ZONE).artScale)
+    }
+
+    @Test
+    fun everyZone_declaresAPowerOfTwoSampling() {
+        // `BitmapFactory.inSampleSize` se redondea a la potencia de 2 menor. Un
+        // artScale de 3 decodificaría a 1/2 mientras el dibujo escala por 3, y el
+        // arte saldría al doble de tamaño. Solo 1, 2, 4 y 8 son válidos.
+        (RouteBackgrounds.configuredZoneIds + NO_ARTWORK_ZONE).forEach { zoneId ->
+            val scale = RouteBackgrounds.forZone(zoneId).artScale
+            assertTrue(
+                "$zoneId: artScale=$scale no es potencia de 2",
+                scale > 0 && (scale and (scale - 1)) == 0
+            )
+        }
     }
 
     @Test
@@ -267,7 +366,7 @@ class RouteBackgroundsTest {
 
     @Test
     fun ciudadPlateada_startsAtTheBottomOfItsArtwork() {
-        // El borde inferior del arte cae en el centro de la pantalla, donde está el
+        // El borde inferior del arte cae en el centro de la cámara, donde está el
         // entrenador: la ciudad se recorre desde su parte baja hacia arriba.
         assertEquals(0.5f, RouteBackgrounds.forZone("ciudad_plateada").startAnchor!!, 0f)
     }
@@ -350,7 +449,7 @@ class RouteBackgroundsTest {
         // horizontal del arte a la altura del entrenador.
         val background = RouteBackgrounds.forZone("mt_moon")
         assertEquals(-1f, background.startOffset, 1e-6f)
-        assertEquals(0.057f, background.startAnchor!!, 1e-6f)
+        assertEquals(-0.0906667f, background.startAnchor!!, 1e-6f)
     }
 
     @Test
@@ -378,6 +477,46 @@ class RouteBackgroundsTest {
         // vertical (`startAnchor`) es un valor de ajuste manual y no se clava aquí:
         // solo lo vigila el rango sano de `everyZone_hasASaneStart`.
         val background = RouteBackgrounds.forZone("ciudad_celeste")
+        assertEquals(-2f, background.startOffset, 1e-6f)
+    }
+
+    @Test
+    fun ciudadCarmin_usesItsOwnArtwork() {
+        assertEquals(
+            R.drawable.background_ciudad_carmin,
+            RouteBackgrounds.forZone("ciudad_carmin").imageRes
+        )
+    }
+
+    @Test
+    fun ciudadCarmin_scrollsSideways() {
+        // Cuarto fondo horizontal. Su arte mide 4608×3840, como el de Ciudad
+        // Celeste: cuatro anchos de cámara por dos altos.
+        assertEquals(
+            RouteScrollAxis.HORIZONTAL,
+            RouteBackgrounds.forZone("ciudad_carmin").motion.axis
+        )
+    }
+
+    @Test
+    fun ciudadCarmin_rollsItsVerticalSeamOntoAMatchingRowPair() {
+        // El arte de Ciudad Carmín es continuo en horizontal pero **no** en
+        // vertical: la unión row 3839 → row 0 difiere 30,9 por canal, el 99,8 %
+        // de las uniones internas del dibujo son menores, así que en la repetición
+        // vertical se vería una línea. La pareja row 0 → row 1 sí coincide
+        // exactamente, así que `seamCutRow = 1` enrolla el tile por ahí y la unión
+        // desaparece a cualquier altura. Sin esto, la costura entra en pantalla en
+        // cuanto el encuadre o los laterales la suben al marco visible.
+        assertEquals(1, RouteBackgrounds.forZone("ciudad_carmin").seamCutRow)
+    }
+
+    @Test
+    fun ciudadCarmin_startsOnTheLeftFrameOfItsArtwork() {
+        // Con cuatro pantallas de ancho, dejar al entrenador sobre el marco
+        // izquierdo del dibujo pide dos pantallas enteras (-2). El encuadre
+        // vertical (`startAnchor`) es de ajuste manual y solo lo vigila el rango
+        // sano de `everyZone_hasASaneStart`.
+        val background = RouteBackgrounds.forZone("ciudad_carmin")
         assertEquals(-2f, background.startOffset, 1e-6f)
     }
 

@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Azul del borde del logo: relleno del icono adaptativo detrás del arte. -->
+    <color name="launcher_background">#FF1B4B75</color>
 </resources>

@@ -30,6 +30,7 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -47,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -92,6 +94,9 @@ import com.dsrs.pokeclic.model.GymOutcome
 import com.dsrs.pokeclic.model.GymPhase
 import com.dsrs.pokeclic.model.GymState
 import com.dsrs.pokeclic.model.PokemonType
+import com.dsrs.pokeclic.model.GymCombat
+import com.dsrs.pokeclic.model.ProjectileLaneGeometry
+import com.dsrs.pokeclic.model.RingFeedback
 import com.dsrs.pokeclic.model.RingOutcome
 import com.dsrs.pokeclic.model.Voltorb
 import com.dsrs.pokeclic.model.VoltorbFeedback
@@ -302,7 +307,6 @@ private fun GymScene(
             clock.longValue = nowMs()
         }
     }
-    val now = clock.longValue
     val currentState by rememberUpdatedState(state)
 
     // Bitmap aparte (no `painterResource`) porque solo el overload de
@@ -357,16 +361,22 @@ private fun GymScene(
         val rockSize = projectileSizeFor(cellWidth)
 
         state.projectiles.forEach { projectile ->
-            val progress = projectile.progressAt(now)
-            val x = laneLeft + cellWidth * (projectile.column + 0.5f) - rockSize / 2
-            val y = spawnY + (impactY - spawnY) * progress - rockSize / 2
+            // La caída depende del reloj: la posición se resuelve en la fase de
+            // dibujo (`graphicsLayer`) en vez de en composición, que obligaba a
+            // recomponer y rehacer el layout de cada roca por frame.
             Image(
                 bitmap = rockBitmap,
                 contentDescription = null,
                 filterQuality = FilterQuality.None,
                 modifier = Modifier
-                    .offset(x = x, y = y)
                     .size(rockSize)
+                    .graphicsLayer {
+                        val progress = projectile.progressAt(clock.longValue)
+                        translationX =
+                            (laneLeft + cellWidth * (projectile.column + 0.5f) - rockSize / 2).toPx()
+                        translationY =
+                            (spawnY + (impactY - spawnY) * progress - rockSize / 2).toPx()
+                    }
             )
         }
 
@@ -463,26 +473,34 @@ private fun GymScene(
                             if (onEnemy) {
                                 onEnemyHit()
                             } else {
-                                val hit = currentState.projectiles
-                                    .map { projectile ->
-                                        val cx = laneLeftPx + cellPx * (projectile.column + 0.5f)
-                                        val cy = spawnPx + (impactPx - spawnPx) * projectile.progressAt(tapTime)
-                                        val dx = tapAt.x - cx
-                                        val dy = tapAt.y - cy
-                                        Triple(projectile, dx * dx + dy * dy, Offset(cx, cy))
-                                    }
-                                    // La más cercana dentro del radio, para que dos
-                                    // columnas contiguas no se acierten de más.
-                                    .filter { it.second <= hitRadius * hitRadius }
-                                    .minByOrNull { it.second }
+                                // La regla de acierto vive en el modelo: la UI solo
+                                // mide la geometría de sus carriles y le pasa el
+                                // toque en píxeles.
+                                val hit = GymCombat.hitProjectile(
+                                    state = currentState,
+                                    tapX = tapAt.x,
+                                    tapY = tapAt.y,
+                                    lanes = ProjectileLaneGeometry(
+                                        laneLeft = laneLeftPx,
+                                        cellWidth = cellPx,
+                                        spawnY = spawnPx,
+                                        impactY = impactPx,
+                                        hitRadius = hitRadius
+                                    ),
+                                    nowMs = tapTime
+                                )
                                 if (hit == null) {
                                     // Toque al aire: resta postura, igual que un
                                     // fallo en las otras mecánicas.
                                     onMiss()
                                 } else {
                                     attackNonce++
-                                    bursts += RockBurst(nextBurstId++, hit.third, rockSize)
-                                    onProjectileHit(hit.first.id)
+                                    bursts += RockBurst(
+                                        nextBurstId++,
+                                        Offset(hit.centerX, hit.centerY),
+                                        rockSize
+                                    )
+                                    onProjectileHit(hit.projectile.id)
                                 }
                             }
                         }
@@ -522,7 +540,6 @@ private fun RingGymScene(
             clock.longValue = nowMs()
         }
     }
-    val now = clock.longValue
     val currentState by rememberUpdatedState(state)
     val context = LocalContext.current
 
@@ -552,14 +569,6 @@ private fun RingGymScene(
         RingOutcome.MISS -> MISS_RED
         null -> null
     }
-    val tintAge = now - fxStartMs
-    val tintMix = if (resultTint != null && tintAge in 0 until RING_TINT_MS) {
-        val u = tintAge / RING_TINT_MS.toFloat()
-        // Aguanta encendido un tercio del tiempo y luego se apaga.
-        if (u < 0.35f) 1f else (1f - (u - 0.35f) / 0.65f).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
 
     // Latido del enemigo mientras está expuesto.
     val pulse = rememberInfiniteTransition(label = "ringExposed")
@@ -572,6 +581,18 @@ private fun RingGymScene(
 
     BoxWithConstraints(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // El reloj se lee **en la fase de dibujo**: solo invalida el repintado.
+            // Leerlo en el cuerpo del composable recompone la escena entera por
+            // frame, que es lo que hacía antes.
+            val now = clock.longValue
+            val tintAge = now - fxStartMs
+            val tintMix = if (resultTint != null && tintAge in 0 until RING_TINT_MS) {
+                val u = tintAge / RING_TINT_MS.toFloat()
+                // Aguanta encendido un tercio del tiempo y luego se apaga.
+                if (u < 0.35f) 1f else (1f - (u - 0.35f) / 0.65f).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
             val center = Offset(
                 x = size.width / 2f,
                 y = size.height - layout.playerBottom.toPx() - layout.playerHeight.toPx() / 2f
@@ -794,54 +815,82 @@ private fun RingGymScene(
         // Efecto del resultado, por encima de los sprites: el acierto salpica y el
         // fallo cierra el anillo sobre el Pokémon y estalla en el centro. Arranca
         // en el radio que tenía el anillo al resolverse, no en el del jugador.
+        // El efecto y el cartel deciden **visibilidad por tiempo**, así que viven
+        // en su propio composable: solo esa hoja se recompone por frame, no la
+        // escena completa (que es lo que pasaba leyendo el reloj acá).
         feedback?.let { result ->
-            val spec = WaterRingSheet.forOutcome(result.outcome)
-            val elapsed = now - fxStartMs
-            if (elapsed >= 0L && elapsed < spec.durationMs) {
-                val sheet = if (result.outcome == RingOutcome.HIT) burstSheet else implodeSheet
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val targetRadius = RING_TARGET_RADIUS.toPx()
-                    val startRadius = RING_START_RADIUS.toPx()
-                    val radius = startRadius + (targetRadius - startRadius) * result.ringProgress
-                    drawWaterRingFx(
-                        sheet = sheet,
-                        spec = spec,
-                        frame = spec.frameAt(elapsed),
-                        center = Offset(
-                            x = size.width / 2f,
-                            y = size.height - layout.playerBottom.toPx() -
-                                layout.playerHeight.toPx() / 2f
-                        ),
-                        radiusPx = radius
-                    )
-                }
-            }
-        }
-
-        // Cartel del resultado, portado de `ui/combo-counter` de pixelfx: entra
-        // coleteando, golpea y se va barrido. Verde para aciertos, rojo para fallos.
-        feedback?.let { result ->
-            val hit = result.outcome == RingOutcome.HIT
-            val label = when {
-                hit && result.combo >= 2 -> stringResource(R.string.gym_ring_combo, result.combo)
-                hit -> stringResource(R.string.gym_ring_hit)
-                result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
-                else -> stringResource(R.string.gym_ring_miss)
-            }
-            val seconds = (now - fxStartMs) / 1000f
-            if (seconds >= 0f && seconds < BANNER_LIFE_S) {
-                RingResultBanner(
-                    text = label,
-                    color = if (hit) HIT_GREEN else MISS_RED,
-                    combo = if (hit) result.combo else 0,
-                    seconds = seconds,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
+            RingOutcomeLayer(
+                clock = clock,
+                result = result,
+                fxStartMs = fxStartMs,
+                burstSheet = burstSheet,
+                implodeSheet = implodeSheet,
+                layout = layout,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
     }
 }
+
+/**
+ * Capa del resultado del anillo: estallido de agua y cartel.
+ *
+ * Es la **única** parte de la escena que se recompone con el reloj. Aislarla
+ * mantiene el coste en una hoja pequeña y efímera en lugar de rehacer los tres
+ * `Canvas` de la escena sesenta veces por segundo.
+ */
+@Composable
+private fun BoxScope.RingOutcomeLayer(
+    clock: State<Long>,
+    result: RingFeedback,
+    fxStartMs: Long,
+    burstSheet: ImageBitmap,
+    implodeSheet: ImageBitmap,
+    layout: GymSceneLayout,
+    modifier: Modifier = Modifier
+) {
+    val elapsed = clock.value - fxStartMs
+    val spec = WaterRingSheet.forOutcome(result.outcome)
+
+    val hit = result.outcome == RingOutcome.HIT
+    val seconds = elapsed / 1000f
+    if (seconds >= 0f && seconds < BANNER_LIFE_S) {
+        RingResultBanner(
+            text = when {
+                hit && result.combo >= 2 -> stringResource(R.string.gym_ring_combo, result.combo)
+                hit -> stringResource(R.string.gym_ring_hit)
+                result.count > 1 -> stringResource(R.string.gym_ring_miss_multi, result.count)
+                else -> stringResource(R.string.gym_ring_miss)
+            },
+            color = if (hit) HIT_GREEN else MISS_RED,
+            combo = if (hit) result.combo else 0,
+            seconds = seconds,
+            modifier = Modifier.align(Alignment.Center)
+        )
+    }
+
+    if (elapsed >= 0L && elapsed < spec.durationMs) {
+        val sheet = if (hit) burstSheet else implodeSheet
+        Canvas(modifier = modifier) {
+            val targetRadius = RING_TARGET_RADIUS.toPx()
+            val startRadius = RING_START_RADIUS.toPx()
+            val radius = startRadius + (targetRadius - startRadius) * result.ringProgress
+            drawWaterRingFx(
+                sheet = sheet,
+                spec = spec,
+                frame = spec.frameAt(elapsed),
+                center = Offset(
+                    x = size.width / 2f,
+                    y = size.height - layout.playerBottom.toPx() -
+                        layout.playerHeight.toPx() / 2f
+                ),
+                radiusPx = radius
+            )
+        }
+    }
+}
+
 
 /**
  * Cartel del resultado del anillo.
@@ -1128,9 +1177,6 @@ private const val BANNER_STRETCH_OUT = 1.12f
 /** Cuánto crecen las letras en el pico del latido. */
 private const val BANNER_PULSE_SCALE = 0.12f
 
-/** Interpolación lineal suelta, para no arrastrar otra dependencia. */
-private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
-
 /** Curva de salida rápida y frenada, la que usan el confeti y el golpe. */
 private fun easeOutCubic(t: Float): Float {
     val u = 1f - t.coerceIn(0f, 1f)
@@ -1175,7 +1221,6 @@ private fun VoltorbGridScene(
             clock.longValue = nowMs()
         }
     }
-    val now = clock.longValue
 
     // Apagado, explosión o descarga: el ViewModel publica el resultado y aquí se
     // convierte en un destello sobre esa celda.
@@ -1264,6 +1309,8 @@ private fun VoltorbGridScene(
         val playerTop = gridTop + gridHeight + VOLTORB_PLAYER_GAP
 
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // Reloj leído en la fase de dibujo: no recompone la escena.
+            val now = clock.longValue
             val side = cellSide.toPx()
             val gapPx = VOLTORB_GAP.toPx()
             val left = gridLeft.toPx()
@@ -2206,24 +2253,7 @@ fun backGifFor(speciesId: String?): Int? = when (speciesId) {
 }
 
 /** Color representativo del tipo, para el placeholder y el destello de ataque. */
-fun typeColor(type: PokemonType?): Color = when (type) {
-    PokemonType.NORMAL -> Color(0xFFA8A77A)
-    PokemonType.FIRE -> Color(0xFFEE8130)
-    PokemonType.WATER -> Color(0xFF6390F0)
-    PokemonType.GRASS -> Color(0xFF7AC74C)
-    PokemonType.ELECTRIC -> Color(0xFFF7D02C)
-    PokemonType.ROCK -> Color(0xFFB6A136)
-    PokemonType.FLYING -> Color(0xFFA98FF3)
-    PokemonType.POISON -> Color(0xFFA33EA1)
-    PokemonType.BUG -> Color(0xFFA8B820)
-    PokemonType.GROUND -> Color(0xFFE0C068)
-    PokemonType.FIGHTING -> Color(0xFFC03028)
-    PokemonType.PSYCHIC -> Color(0xFFF85888)
-    PokemonType.ICE -> Color(0xFF98D8D8)
-    PokemonType.GHOST -> Color(0xFF705898)
-    PokemonType.DRAGON -> Color(0xFF7038F8)
-    null -> Color(0xFF9E9E9E)
-}
+fun typeColor(type: PokemonType?): Color = RetroTypeColors.of(type)
 
 /**
  * Sustituto del sprite cuando no hay arte: un disco del color del tipo con el

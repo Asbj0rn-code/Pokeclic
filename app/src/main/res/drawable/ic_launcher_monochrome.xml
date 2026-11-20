@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Capa monocroma (iconos temáticos de Android 13+): silueta de la Pokébola
+    con el aro exterior, la banda y el botón central. El sistema la tiñe; el
+    color de relleno solo aporta la forma.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Aro exterior: circunferencia de radio 31 con hueco de radio 26. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M23,54a31,31 0 1,0 62,0a31,31 0 1,0 -62,0M28,54a26,26 0 1,1 52,0a26,26 0 1,1 -52,0" />
+    <!-- Banda horizontal. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M23,51h62v6h-62z" />
+    <!-- Botón central (disco macizo: tapa la banda en el centro). -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M43,54a11,11 0 1,0 22,0a11,11 0 1,0 -22,0" />
+</vector>

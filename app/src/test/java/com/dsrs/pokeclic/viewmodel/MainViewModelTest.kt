@@ -26,6 +26,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -64,9 +65,9 @@ class MainViewModelTest {
         zones: List<Zone> = testZones,
         sprites: SpriteRepository = FakeSprites(),
         random: Random = Random.Default
-    ) = MainViewModel(
-        sprites,
-        FakeStore().apply { this.saved = saved },
+    ) = testViewModel(
+        sprites = sprites,
+        store = FakeStore().apply { this.saved = saved },
         zones = zones,
         random = random,
         nowMs = nowMs
@@ -89,12 +90,23 @@ class MainViewModelTest {
     )
 
     /**
-     * Cueva (Mt.Moon): salvajes sin modo hierba alta. Los clics avanzan la barra
-     * y, a la vez, alimentan el temporizador de encuentros.
+     * Cueva (Mt.Moon): una zona con fauna como cualquier otra. Los clics avanzan
+     * la barra y, a la vez, alimentan el temporizador de encuentros.
      */
     private val caveZones = listOf(
-        Zone("z_cueva", "Cueva", 100L, listOf("zubat"), alwaysWilds = true)
+        Zone("z_cueva", "Cueva", 100L, listOf("zubat"))
     )
+
+    /**
+     * Toca la Pokébola y deja correr el temporizador de caminar hasta que la zona
+     * con fauna abre un salvaje. Requiere juego libre (sin mensaje del tutorial).
+     */
+    private fun spawnEncounter(vm: MainViewModel) {
+        vm.onPokeBallTouch(Direction.BACK)
+        testScope.advanceTimeBy(4_000L)
+        testScope.runCurrent()
+        assertNotNull("caminar debe abrir un encuentro salvaje", vm.uiState.value.encounter)
+    }
 
     /** Mismo recorrido corto, pero con el gimnasio de Misty en la zona central. */
     private val mistyZones = listOf(
@@ -196,20 +208,21 @@ class MainViewModelTest {
     }
 
     /**
-     * Avanzar estando en modo captura (hierba alta abierta): la zona nueva se
-     * estrena fuera del modo, sin búsqueda ni encuentro arrastrados.
+     * Avanzar con un encuentro abierto: la zona nueva se estrena sin encuentro
+     * ni temporizador de caminar arrastrados.
      */
     @Test
-    fun onAdvanceZone_fromTallGrass_leavesCaptureMode() {
+    fun onAdvanceZone_withAnOpenEncounter_clearsIt() {
         val vm = viewModel()
         tapZone(vm, times = 2) // llena la barra de z1 (umbral 2)
-        vm.onTallGrassToggle()
+        assertTrue(vm.uiState.value.canAdvanceZone)
+        spawnEncounter(vm)
+        assertNotNull(vm.uiState.value.encounter)
 
         vm.onAdvanceZone()
 
         val state = vm.uiState.value
         assertEquals(1, state.zoneIndex)
-        assertFalse(state.isTallGrass)
         assertEquals(0f, state.walkProgress)
         assertNull(state.encounter)
         assertNull(state.catching)
@@ -985,9 +998,8 @@ class MainViewModelTest {
 
     /**
      * Zonas sin fauna (Pueblo Paleta, Ciudad Verde, Ciudad Plateada): caminar en
-     * hierba alta no abre encuentros (sin crash de `random()` sobre una lista
-     * vacía), y el bucle de caminar sigue vivo en la zona siguiente, donde la
-     * hierba sí genera encuentros.
+     * ellas no abre encuentros (sin crash de `random()` sobre una lista vacía), y
+     * el bucle de caminar sigue vivo en la zona siguiente, que sí tiene fauna.
      */
     @Test
     fun zoneWithoutWilds_neverSpawnsEncounter() {
@@ -998,7 +1010,6 @@ class MainViewModelTest {
 
         // 1 · Ciudad: no aparece nada aunque el temporizador de caminar cruce
         //     el umbral del encuentro.
-        vm.onTallGrassToggle()
         vm.onPokeBallTouch(Direction.BACK) // activa el temporizador de caminar
 
         testScope.advanceTimeBy(4_000L)
@@ -1010,19 +1021,13 @@ class MainViewModelTest {
             assertEquals(0, zoneIndex)
         }
 
-        // 2 · Prado: con el avance manual, llena la barra y pulsa **Avanzar**;
-        //     la hierba vuelve a funcionar en la zona de prado.
-        vm.onTallGrassToggle() // sale de la hierba (resetea el caminar)
+        // 2 · Prado: con el avance manual, llena la barra y pulsa **Avanzar**.
         tapZone(vm, 100) // llena la barra de avance de la ciudad
         assertTrue(vm.uiState.value.canAdvanceZone)
         vm.onAdvanceZone() // botón Avanzar: cruza a la zona siguiente
         assertEquals(1, vm.uiState.value.zoneIndex)
 
-        vm.onTallGrassToggle()
-        vm.onPokeBallTouch(Direction.BACK)
-
-        testScope.advanceTimeBy(4_000L)
-        testScope.runCurrent()
+        spawnEncounter(vm)
 
         val afterMeadow = vm.uiState.value
         assertNotNull(afterMeadow.encounter)
@@ -1030,19 +1035,18 @@ class MainViewModelTest {
     }
 
     /**
-     * Cueva (Mt.Moon): los clics suman a la barra **y** alimentan el temporizador
-     * de encuentros, así que aparecen salvajes sin activar la hierba alta.
+     * En cualquier zona con fauna, los clics suman a la barra **y** alimentan el
+     * temporizador de encuentros: el salvaje aparece caminando, sin botón previo.
      */
     @Test
-    fun caveZone_countsClicksAndSpawnsEncountersWhileAdvancing() {
+    fun wildZone_countsClicksAndSpawnsEncountersWhileAdvancing() {
         val vm = viewModel(nowMs = { 0L }, zones = caveZones)
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
 
         tapZone(vm, 2)
         with(vm.uiState.value) {
-            assertFalse(isTallGrass)
-            assertTrue("la cueva debe sumar clics a la barra", zoneClicks > 0L)
+            assertTrue("la zona debe sumar clics a la barra", zoneClicks > 0L)
             assertNull(encounter)
         }
 
@@ -1051,56 +1055,20 @@ class MainViewModelTest {
         testScope.runCurrent()
 
         with(vm.uiState.value) {
-            assertNotNull("la cueva genera salvajes al avanzar", encounter)
+            assertNotNull("la zona con fauna genera salvajes al avanzar", encounter)
             assertNotNull(catching)
-            assertFalse("sin hierba alta no hay sprite ni modo", isTallGrass)
-        }
-    }
-
-    /** En una cueva el botón de hierba no existe: pulsarlo no cambia nada. */
-    @Test
-    fun caveZone_ignoresTheTallGrassToggle() {
-        val vm = viewModel(zones = caveZones)
-        vm.onFinishIntro("Ash", "charmander")
-        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-
-        vm.onTallGrassToggle()
-
-        assertFalse(vm.uiState.value.isTallGrass)
-    }
-
-    /** Al cruzar de una ruta con hierba a la cueva, el modo hierba se cierra. */
-    @Test
-    fun caveZone_enteredFromTallGrass_clearsTheGrassMode() {
-        val route = Zone("z_ruta", "Ruta", 2L, listOf("pidgey"))
-        val vm = viewModel(zones = listOf(route, caveZones.single()))
-        vm.onFinishIntro("Ash", "charmander")
-        vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-
-        tapZone(vm, 2)
-        vm.onTallGrassToggle()
-        assertTrue(vm.uiState.value.isTallGrass)
-
-        vm.onAdvanceZone()
-
-        with(vm.uiState.value) {
-            assertEquals(1, zoneIndex)
-            assertFalse(isTallGrass)
-            assertTrue(alwaysWilds)
         }
     }
 
     /** Con el minijuego abierto no se acumulan clics ni aparece otro salvaje. */
     @Test
-    fun caveZone_pausesWhileAnEncounterIsOpen() {
+    fun wildZone_pausesWhileAnEncounterIsOpen() {
         val vm = viewModel(nowMs = { 0L }, zones = caveZones)
         vm.onFinishIntro("Ash", "charmander")
         vm.onTutorialAction(TutorialAction.DECLINE_OFFER)   // omite el tutorial: juego libre
-        vm.onPokeBallTouch(Direction.BACK)
-        testScope.advanceTimeBy(4_000L)
-        testScope.runCurrent()
+        spawnEncounter(vm)
 
-        val encounter = vm.uiState.value.encounter ?: error("la cueva no abrió encuentro")
+        val encounter = vm.uiState.value.encounter ?: error("la zona no abrió encuentro")
         val clicks = vm.uiState.value.zoneClicks
 
         repeat(5) { vm.onPokeBallTouch(Direction.BACK) }
@@ -1112,38 +1080,19 @@ class MainViewModelTest {
     }
 
     /**
-     * Modo captura: con la hierba alta abierta, los toques de la Pokébola
-     * alimentan el temporizador de caminar pero no cuentan para el avance
-     * de la zona.
-     */
-    @Test
-    fun pokeBallTaps_inTallGrass_doNotCountForZoneProgress() {
-        val vm = viewModel()
-        vm.onTallGrassToggle()
-
-        tapZone(vm, 3)
-
-        assertEquals(0L, vm.uiState.value.zoneClicks)
-    }
-
-    /**
-     * Modo captura: con el encuentro (partida de captura) en pantalla, un
-     * toque que alcanzara la Pokébola tampoco cuenta para el avance.
+     * Con el encuentro (partida de captura) en pantalla, un toque que alcanzara
+     * la Pokébola no cuenta para el avance de la zona.
      */
     @Test
     fun pokeBallTaps_duringAnEncounter_doNotCountForZoneProgress() {
         var now = 0L
         val vm = viewModel(nowMs = { now })
-        vm.onTallGrassToggle()
-        vm.onPokeBallTouch(Direction.BACK) // activa el temporizador de caminar
+        spawnEncounter(vm)
 
-        testScope.advanceTimeBy(4_000L)
-        testScope.runCurrent()
-        assertNotNull(vm.uiState.value.encounter)
-
+        val clicks = vm.uiState.value.zoneClicks
         tapZone(vm, 3)
 
-        assertEquals(0L, vm.uiState.value.zoneClicks)
+        assertEquals(clicks, vm.uiState.value.zoneClicks)
     }
 
     // --- Animación del entrenador -----------------------------------------
@@ -1272,6 +1221,86 @@ class MainViewModelTest {
         testScope.advanceTimeBy(200L)
         testScope.runCurrent()
         assertEquals(Direction.FRONT, vm.uiState.value.trainer.currentDirection)
+    }
+
+    // ───────────────────── Reapertura: progreso de zona ─────────────────────
+
+    @Test
+    fun restore_zoneIndexOutOfRange_startsAtTheFirstZoneWithoutProgress() {
+        // Un índice inválido no puede dejar al jugador en la última zona con
+        // progreso completo: se descarta el progreso de run, no la partida.
+        val vm = viewModel(saved = GameSnapshot(zoneIndex = 9, zoneClicks = 2L))
+
+        assertEquals(0, vm.uiState.value.zoneIndex)
+        assertEquals(0L, vm.uiState.value.zoneClicks)
+    }
+
+    @Test
+    fun restore_zoneClicksBeyondRequirement_clampsToTheRequirement() {
+        // z2 exige 3 clics; un guardado con 99 no puede saltarse el umbral.
+        val vm = viewModel(saved = GameSnapshot(zoneIndex = 1, zoneClicks = 99L))
+
+        assertEquals(1, vm.uiState.value.zoneIndex)
+        assertEquals(3L, vm.uiState.value.zoneClicks)
+    }
+
+    @Test
+    fun restore_zoneIndexEqualsSize_resetsToFirstZone() {
+        val state = viewModel(
+            saved = GameSnapshot(zoneIndex = testZones.size, zoneClicks = 2L)
+        ).uiState.value
+
+        assertEquals(0, state.zoneIndex)
+        assertEquals(0L, state.zoneClicks)
+    }
+
+    @Test
+    fun restore_negativeZoneIndex_resetsToFirstZone() {
+        val state = viewModel(
+            saved = GameSnapshot(zoneIndex = -1, zoneClicks = 1L)
+        ).uiState.value
+
+        assertEquals(0, state.zoneIndex)
+        assertEquals(0L, state.zoneClicks)
+    }
+
+    @Test
+    fun restore_zoneClicksExactlyAtRequirement_isKept() {
+        val state = viewModel(saved = GameSnapshot(zoneIndex = 1, zoneClicks = 3L)).uiState.value
+
+        assertEquals(3L, state.zoneClicks)
+    }
+
+    // ───────────────────── Estabilidad del estado derivado ─────────────────────
+
+    @Test
+    fun derive_reusesTheLeadOptionsWhenNothingChanges() {
+        // Contrato de skipping: con la misma posesión, `derive` debe devolver la
+        // **misma** lista. Una lista nueva por tick impide que Compose se salte
+        // los composables que la reciben.
+        val vm = viewModel(
+            saved = GameSnapshot(
+                starterSpeciesId = "bulbasaur",
+                ownedSpecies = setOf("pidgey")
+            )
+        )
+
+        val first = vm.uiState.value.leadOptions
+        assertTrue(first.isNotEmpty())
+        tapZone(vm, 1)
+
+        assertSame(first, vm.uiState.value.leadOptions)
+    }
+
+    @Test
+    fun derive_reusesTheStarterOptionsOnEveryTick() {
+        val vm = viewModel()
+
+        val first = vm.uiState.value.starterOptions
+        assertTrue(first.isNotEmpty())
+        tapZone(vm, 1)
+
+        assertSame(first, vm.uiState.value.starterOptions)
     }
 }
 
