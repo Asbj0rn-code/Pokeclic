@@ -24,3 +24,6 @@ local.properties
 /Pokedex/
 hs_err_pid*.log
 replay_pid*.log
+
+# Caché de sesiones del plugin de Kotlin
+/.kotlin/
