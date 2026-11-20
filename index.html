@@ -1,0 +1,2575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pokeclic — Presentación</title>
+<style>
+  /* ============ Tokens ============ */
+  :root{
+    --ink:#132239;          /* contorno y texto sobre crema */
+    --ink-deep:#0A1626;     /* sombras duras */
+    --paper:#F6E9C6;        /* placas y caja de diálogo */
+    --paper-hi:#FFF7E1;
+    --paper-shade:#E8D6AC;
+    --red:#D63A17;          /* Pokéball / medalla */
+    --red-deep:#A8270A;
+    --gold:#F4B807;
+    --steel:#243142;
+    --steel-hi:#33455C;
+    --lcd:#122A1B;
+    --lcd-ink:#9FE6A8;
+    --body:#1F2E44;
+  }
+
+  *{ box-sizing:border-box; }
+
+  /* Puntero: la Pokéball del juego (punto activo en el centro) */
+  html, body, #stage, #stage *{
+    cursor:url('assets/cursor-pokeball.png') 20 20, auto;
+  }
+
+  html,body{
+    height:100%;
+    margin:0;
+    background:#05080F;
+    color:var(--paper);
+    font-family:"Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    overflow:hidden;
+  }
+
+  /* ============ Escenario 1280×720 ============ */
+  #stage{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:1280px;
+    height:720px;
+    transform:translate(-50%,-50%) scale(var(--s,1));
+    transform-origin:center center;
+    overflow:hidden;
+    background:
+      radial-gradient(85% 75% at 18% 12%, #1A3455 0%, #102338 52%, #081322 100%);
+  }
+  #stage::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    background-image:
+      radial-gradient(rgba(246,233,198,.10) 1px, transparent 1.4px);
+    background-size:26px 26px;
+    opacity:.5;
+  }
+
+  /* Puntero Pokéball propio: es el que rebota al hacer clic */
+  .cursor-ball{
+    position:fixed;
+    left:0;
+    top:0;
+    width:40px;
+    height:40px;
+    z-index:9999;
+    pointer-events:none;
+    opacity:0;
+    transform:translate3d(-100px,-100px,0);
+    transition:opacity .14s linear;
+    will-change:transform;
+  }
+  .cursor-ball img{
+    display:block;
+    width:100%;
+    height:100%;
+    transform-origin:50% 50%;
+    filter:drop-shadow(0 2px 0 rgba(4,9,17,.35));
+  }
+  body.custom-cursor,
+  body.custom-cursor *{ cursor:none !important; }
+
+  /* Pokémon salvajes que pasean por la escena */
+  .spawns{
+    position:absolute;
+    inset:0;
+    z-index:11;
+    pointer-events:none;
+  }
+  .spawn{
+    position:absolute;
+    pointer-events:auto;
+    image-rendering:pixelated;
+    user-select:none;
+    -webkit-user-drag:none;
+    will-change:transform,opacity;
+  }
+
+  /* ============ Diapositiva ============ */
+  .slide{
+    position:absolute;
+    inset:0;
+    display:none;
+    z-index:1;
+  }
+  .slide.active{ display:block; z-index:2; }
+
+  .bg{
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:0;
+    width:432px;
+    background-size:cover;
+    background-position:center;
+    filter:saturate(1.04) brightness(.98);
+    border-left:4px solid rgba(6,12,22,.85);
+  }
+  /* Costura suave y aire arriba/abajo dentro del panel del mundo */
+  .bg::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:
+      linear-gradient(90deg, rgba(7,14,24,.62) 0%, rgba(7,14,24,.10) 22%, rgba(7,14,24,0) 45%, rgba(7,14,24,.22) 100%),
+      linear-gradient(180deg, rgba(7,14,24,.40) 0%, rgba(7,14,24,0) 24%, rgba(7,14,24,0) 68%, rgba(7,14,24,.52) 100%);
+    box-shadow:inset 46px 0 60px -46px rgba(0,0,0,.9);
+  }
+
+  /* ============ Barra de progreso (estilo EXP) ============ */
+  .exp{
+    position:absolute;
+    top:0; left:0; right:0;
+    height:6px;
+    display:flex;
+    gap:3px;
+    padding:0 6px;
+    background:rgba(6,12,22,.55);
+    z-index:12;
+  }
+  .exp button{
+    flex:1;
+    height:6px;
+    padding:0;
+    border:0;
+    border-top:2px solid rgba(10,22,38,.9);
+    background:rgba(246,233,198,.22);
+    cursor:pointer;
+  }
+  .exp button:hover{ background:rgba(246,233,198,.42); }
+  .exp button.done{ background:rgba(246,233,198,.55); }
+  .exp button.on{ background:var(--gold); box-shadow:0 0 10px rgba(244,184,7,.55); }
+
+  /* ============ Efecto de absorción (pixelfx) ============ */
+  #fx{
+    position:absolute;
+    inset:0;
+    width:1280px;
+    height:720px;
+    z-index:14;
+    pointer-events:none;
+    image-rendering:pixelated;
+  }
+  .fly-clone{
+    position:absolute;
+    z-index:13;
+    pointer-events:none;
+    image-rendering:pixelated;
+    transform-origin:50% 50%;
+    will-change:transform,opacity;
+  }
+
+  /* ============ Cabecera ============ */
+  .topbar{
+    position:absolute;
+    top:10px; left:0; right:0;
+    height:58px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 30px;
+    z-index:11;
+  }
+  .plate{
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+    background:var(--paper);
+    color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:7px;
+    padding:6px 13px 6px 11px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:12.5px;
+    font-weight:700;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    box-shadow:0 4px 0 rgba(9,17,28,.35);
+  }
+  .plate .dot{
+    width:10px;
+    height:10px;
+    border:2px solid var(--ink);
+    background:var(--red);
+    border-radius:50%;
+  }
+  .plate.count{ letter-spacing:2px; }
+  .plate.count b{ color:var(--red-deep); }
+
+  /* ============ Zona de contenido ============ */
+  .content{
+    position:absolute;
+    top:92px;
+    left:56px;
+    right:95px;
+    bottom:84px;
+    display:grid;
+    grid-template-columns:1fr 242px;
+    gap:44px;
+    align-items:center;
+    z-index:10;
+  }
+  .content.solo{ grid-template-columns:1fr; }
+  .content.solo .dialog{ max-width:776px; }
+
+  /* Caja de diálogo: la pieza que unifica todas las diapositivas */
+  .dialog{
+    position:relative;
+    background:var(--paper);
+    color:var(--body);
+    border:4px solid var(--ink);
+    border-radius:12px;
+    padding:24px 30px 26px;
+    box-shadow:0 12px 0 rgba(9,17,28,.32);
+    max-width:776px;
+  }
+  .dialog::before{
+    content:"";
+    position:absolute;
+    inset:5px;
+    border:2px solid rgba(19,34,57,.16);
+    border-radius:7px;
+    pointer-events:none;
+  }
+  .dialog.tight{ padding:22px 28px 22px; }
+
+  h1,h2{
+    margin:0;
+    font-family:"Arial Black", "Arial Bold", "Segoe UI", sans-serif;
+    font-weight:900;
+    color:var(--ink);
+    letter-spacing:-1.4px;
+    line-height:1.02;
+  }
+  h2{ font-size:41px; margin-bottom:16px; }
+
+  .lead{
+    margin:0 0 16px;
+    font-size:18.5px;
+    line-height:1.5;
+    color:var(--body);
+    max-width:640px;
+  }
+  .lead strong{ color:var(--red-deep); }
+
+  ul.points{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  ul.points li{
+    position:relative;
+    padding-left:26px;
+    font-size:18px;
+    line-height:1.43;
+    color:var(--body);
+  }
+  ul.points li::before{
+    content:"";
+    position:absolute;
+    left:2px;
+    top:6px;
+    width:12px;
+    height:12px;
+    border:2.5px solid var(--ink);
+    border-radius:50%;
+    background:linear-gradient(180deg, var(--red) 0 42%, var(--ink) 42% 58%, #FBF3DD 58% 100%);
+  }
+  ul.points li b{ color:var(--ink); font-weight:800; }
+
+  ol.steps{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:11px;
+  }
+  ol.steps li{
+    display:flex;
+    align-items:flex-start;
+    gap:13px;
+    font-size:17.8px;
+    line-height:1.4;
+    color:var(--body);
+  }
+  ol.steps .num{
+    flex:0 0 auto;
+    width:27px;
+    height:27px;
+    display:grid;
+    place-items:center;
+    background:var(--gold);
+    color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:5px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:14px;
+    font-weight:700;
+    margin-top:1px;
+  }
+
+  .callout{
+    margin-top:18px;
+    padding:11px 15px;
+    background:var(--paper-hi);
+    border:2.5px solid var(--ink);
+    border-left-width:7px;
+    border-left-color:var(--red);
+    border-radius:6px;
+    font-size:15.5px;
+    line-height:1.45;
+    color:#2A3A52;
+  }
+  .callout b{ color:var(--ink); }
+
+  /* Pokédex ilustrada, montada sobre la esquina del recuadro */
+  .dex-art{
+    position:absolute;
+    top:-44px;
+    right:-26px;
+    width:260px;
+    height:auto;
+    z-index:2;
+    pointer-events:none;
+    filter:drop-shadow(0 8px 0 rgba(4,9,17,.28));
+  }
+
+  /* Nota al pie de una diapositiva */
+  .note-line{
+    margin:16px 0 0;
+    padding-top:12px;
+    border-top:2px dashed rgba(19,34,57,.26);
+    font-size:13px;
+    line-height:1.5;
+    color:#4C5C74;
+  }
+
+  .chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin:0;
+  }
+  .chip{
+    padding:5px 9px;
+    background:var(--paper-hi);
+    border:2.5px solid var(--ink);
+    border-radius:5px;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink);
+    line-height:1.2;
+  }
+  .chip.gym{
+    background:var(--red);
+    color:#FFF6E6;
+    border-color:var(--ink);
+  }
+
+  /* Recorrido por tramos */
+  .route{
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+    margin:2px 0 18px;
+  }
+  .route-row{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .route-label{
+    flex:0 0 76px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:#63748D;
+  }
+  .route-sep{
+    color:#8FA0B6;
+    font-weight:900;
+    font-size:12px;
+  }
+
+  /* ============ Pantalla de video ============ */
+  .bezel{
+    position:relative;
+    width:242px;
+    height:506px;
+    background:linear-gradient(160deg, #2B3A4E, #151E2B);
+    border:4px solid #0A1119;
+    border-radius:26px;
+    padding:9px;
+    box-shadow:0 16px 0 rgba(9,17,28,.38), inset 0 0 0 2px rgba(255,247,225,.06);
+    justify-self:center;
+  }
+  .bezel::before{
+    content:"";
+    position:absolute;
+    top:3px; left:50%;
+    transform:translateX(-50%);
+    width:44px; height:4px;
+    border-radius:3px;
+    background:#0A1119;
+  }
+  .screen{
+    position:relative;
+    width:100%;
+    height:100%;
+    border-radius:19px;
+    overflow:hidden;
+    background:#070D15;
+  }
+  .screen video{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    visibility:hidden;
+    background:#000;
+  }
+  .bezel.filled .screen video{ visibility:visible; }
+  .bezel.filled .lcd{ display:none; }
+
+  /* Anotación del hueco: qué video va en cada diapositiva */
+  .bezel::after{
+    content:attr(data-video);
+    position:absolute;
+    left:-8px;
+    top:-12px;
+    padding:4px 9px;
+    background:var(--red);
+    color:#FFF6E6;
+    border:2px solid var(--ink);
+    border-radius:4px;
+    box-shadow:0 3px 0 rgba(0,0,0,.45);
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:9.5px;
+    font-weight:700;
+    letter-spacing:1.7px;
+    line-height:1;
+    text-transform:uppercase;
+    white-space:nowrap;
+    pointer-events:none;
+  }
+
+  /* Hueco vacío con lenguaje de panel LCD del juego */
+  .lcd{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    padding:20px 16px;
+    text-align:center;
+    background:
+      radial-gradient(circle at 50% 30%, #1C3D28 0%, #0E2416 78%),
+      var(--lcd);
+    color:var(--lcd-ink);
+  }
+  .lcd::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px);
+    pointer-events:none;
+  }
+  .lcd .rec{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:2.4px;
+    color:#8FD69A;
+  }
+  .lcd .rec i{
+    width:7px; height:7px;
+    background:#E4543A;
+    border-radius:50%;
+    animation:rec 1.4s steps(1,end) infinite;
+  }
+  @keyframes rec{ 50%{ opacity:.15; } }
+
+  .lcd .ratio{
+    font-family:"Arial Black", "Arial Bold", sans-serif;
+    font-size:38px;
+    line-height:1;
+    letter-spacing:1px;
+    color:#B9F3C0;
+    text-shadow:0 3px 0 rgba(0,0,0,.55);
+  }
+  .lcd .ratio-sub{
+    margin-top:-6px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:9.5px;
+    font-weight:700;
+    letter-spacing:1.6px;
+    color:rgba(159,230,168,.8);
+  }
+  .lcd .empty-title{
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:1.6px;
+    text-transform:uppercase;
+    color:#DDF6E0;
+  }
+  .lcd .empty-file{
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:9.5px;
+    color:#0E2416;
+    background:#9FE6A8;
+    padding:4px 7px;
+    border-radius:3px;
+    word-break:break-all;
+    line-height:1.3;
+  }
+  .lcd .empty-hint{
+    font-size:9px;
+    letter-spacing:1.1px;
+    text-transform:uppercase;
+    color:rgba(159,230,168,.7);
+  }
+
+  /* ============ Portada ============ */
+  .cover-copy{
+    position:relative;
+    max-width:760px;
+    align-self:center;
+  }
+  .cover-copy h1{
+    font-size:104px;
+    color:var(--paper-hi);
+    text-shadow:
+      3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink),
+      6px 8px 0 rgba(5,10,18,.45);
+    margin-bottom:14px;
+  }
+  .cover-copy .sub{
+    margin:0 0 16px;
+    font-size:25px;
+    font-weight:800;
+    letter-spacing:-.3px;
+    color:var(--gold);
+    text-shadow:2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink);
+  }
+  .cover-copy .lead{
+    color:#EAF1FA;
+    font-size:19px;
+    max-width:44ch;
+    text-shadow:0 2px 6px rgba(5,10,18,.7);
+  }
+  .cover-badges{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:22px;
+  }
+
+  /* Rojo, el entrenador: protagonista de la portada */
+  .cover-trainer{
+    position:absolute;
+    right:534px;
+    bottom:129px;
+    height:462px;
+    width:auto;
+    z-index:11;
+    pointer-events:none;
+    filter:drop-shadow(0 10px 0 rgba(4,9,17,.38));
+  }
+  .starter{
+    width:84px;
+    height:84px;
+    image-rendering:pixelated;
+    filter:drop-shadow(0 5px 0 rgba(4,9,17,.6));
+    user-select:none;
+    -webkit-user-drag:none;
+  }
+
+  /* ============ Cierre: bucle ============ */
+  .loop{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:9px;
+    margin-top:2px;
+  }
+  .loop-step{
+    padding:10px 15px;
+    background:var(--paper-hi);
+    border:3px solid var(--ink);
+    border-radius:6px;
+    font-size:16px;
+    font-weight:800;
+    color:var(--ink);
+    text-align:center;
+  }
+  .loop-step i{
+    display:block;
+    font-family:"Consolas", "Courier New", monospace;
+    font-style:normal;
+    font-size:10px;
+    letter-spacing:1.6px;
+    color:var(--red-deep);
+    margin-bottom:2px;
+  }
+  .loop-step.back{
+    background:var(--gold);
+    font-size:12.5px;
+  }
+  .loop-step.back i{ color:var(--ink); }
+  .loop-arrow{
+    font-size:19px;
+    font-weight:900;
+    color:var(--ink);
+    opacity:.45;
+  }
+
+  /* Medallas del cierre de gimnasio */
+  .medals{
+    position:absolute;
+    right:-30px;
+    bottom:-28px;
+    display:flex;
+    gap:4px;
+    pointer-events:none;
+  }
+  .medals img{
+    width:64px;
+    height:64px;
+    image-rendering:pixelated;
+    filter:drop-shadow(0 4px 0 rgba(9,17,28,.45));
+  }
+
+  /* ============ Reparto del gimnasio ============ */
+  .left-col{ width:100%; }
+  /* La Pokéball sobresale de la barra: este bloque se sube para no tocarla */
+  .content.cast-slide .left-col{ transform:translateY(-20px); }
+
+  /* La nota al pie obliga a comprimir este bloque para que entre completo */
+  .content.cast-slide .dialog{ padding:18px 26px 18px; }
+  .content.cast-slide .dialog h2{ margin-bottom:12px; }
+  .content.cast-slide ol.steps{ gap:7px; }
+  .content.cast-slide .note-line{ margin-top:12px; padding-top:10px; }
+  .content.cast-slide .gym-cast{ margin-top:8px; }
+  .content.cast-slide .cast .duo{ height:142px; }
+  .content.cast-slide .cast .face{ height:142px; }
+
+  .gym-cast{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:22px;
+    margin-top:16px;
+    max-width:776px;
+  }
+  .cast{ text-align:center; }
+
+  .cast .duo{
+    position:relative;
+    height:152px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+  }
+  .cast .face{
+    height:152px;
+    width:auto;
+    filter:drop-shadow(0 6px 0 rgba(4,9,17,.45));
+  }
+  .cast .mon{
+    position:absolute;
+    left:50%;
+    margin-left:14px;
+    bottom:0;
+    height:74px;
+    width:auto;
+    max-width:112px;
+    image-rendering:pixelated;
+    filter:drop-shadow(0 4px 0 rgba(4,9,17,.55));
+  }
+
+  .cast .rule{
+    display:block;
+    width:64px;
+    height:3px;
+    margin:10px auto 9px;
+    border-radius:2px;
+    background:#BE8A5F;
+  }
+  .cast.water .rule{ background:#4FA8E8; }
+  .cast.electric .rule{ background:#F2C230; }
+
+  .cast .who{
+    display:inline-block;
+    padding:3px 10px 4px;
+    background:var(--paper);
+    color:var(--ink);
+    border:2px solid var(--ink);
+    border-radius:4px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.7px;
+    text-transform:uppercase;
+  }
+  .cast p{
+    margin:9px 0 0;
+    font-size:12.5px;
+    line-height:1.35;
+    color:#DCE7F5;
+    text-shadow:0 2px 4px rgba(4,9,17,.9);
+  }
+  .cast p b{ color:#FFF3CC; }
+
+  /* ============ Barra inferior ============ */
+  .botbar{
+    position:absolute;
+    left:0; right:0; bottom:0;
+    height:76px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 26px;
+    background:linear-gradient(180deg, var(--steel-hi) 0%, var(--steel) 42%, #1B2634 100%);
+    border-top:4px solid #101A26;
+    box-shadow:0 -6px 18px rgba(5,10,18,.35);
+    z-index:12;
+  }
+  .bar-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    min-width:104px;
+    justify-content:center;
+    padding:8px 16px;
+    background:var(--paper);
+    color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:7px;
+    box-shadow:0 4px 0 #0C1520;
+    font-size:13px;
+    font-weight:800;
+    letter-spacing:.6px;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .bar-btn:hover{ background:var(--paper-hi); }
+  .bar-btn:active{ transform:translateY(3px); box-shadow:0 1px 0 #0C1520; }
+  .bar-btn[disabled]{ opacity:.32; filter:grayscale(1); cursor:default; transform:none; box-shadow:0 4px 0 #0C1520; }
+
+  .bar-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+
+  /* Contador de capturas: aparece con la primera */
+  .catch-plate{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    padding:7px 12px 7px 9px;
+    background:var(--paper);
+    color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:7px;
+    box-shadow:0 4px 0 #0C1520;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:1.1px;
+    opacity:0;
+    transform:translateY(5px) scale(.96);
+    transition:opacity .24s ease, transform .24s ease;
+  }
+  .catch-plate.on{ opacity:1; transform:none; }
+  .catch-plate.on:hover{ background:var(--paper-hi); }
+  .catch-plate img{
+    width:18px;
+    height:18px;
+    image-rendering:pixelated;
+  }
+  .catch-plate b{
+    font-size:15px;
+    letter-spacing:0;
+  }
+  .catch-plate .catch-sep{
+    opacity:.45;
+    margin:0 -2px;
+  }
+  .catch-plate.pop{ animation:catchPop .34s ease-out; }
+  @keyframes catchPop{
+    0%{ transform:scale(1); }
+    40%{ transform:scale(1.14); }
+    100%{ transform:scale(1); }
+  }
+
+  /* ============ Pokédex de capturas ============ */
+  .dex-overlay{
+    position:absolute;
+    inset:0;
+    z-index:30;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background:rgba(5,10,18,.74);
+  }
+  .dex-overlay.open{ display:flex; }
+
+  .dex-panel{
+    width:872px;
+    padding:16px 22px 20px;
+    background:var(--paper);
+    border:4px solid var(--ink);
+    border-radius:14px;
+    box-shadow:0 16px 0 rgba(4,8,16,.55);
+  }
+  .dex-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:12px;
+  }
+  .dex-title{
+    font-family:"Arial Black", "Arial Bold", sans-serif;
+    font-size:26px;
+    letter-spacing:-.6px;
+    color:var(--ink);
+  }
+  .dex-count{
+    padding:5px 10px;
+    background:var(--paper-hi);
+    border:2.5px solid var(--ink);
+    border-radius:5px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:12.5px;
+    font-weight:700;
+    letter-spacing:1.4px;
+    color:var(--ink);
+  }
+  .dex-count b{ font-size:14px; color:var(--red-deep); }
+  .dex-close{
+    margin-left:auto;
+    width:34px;
+    height:34px;
+    display:grid;
+    place-items:center;
+    background:var(--paper-hi);
+    color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:6px;
+    box-shadow:0 3px 0 #0C1520;
+    font-size:15px;
+    font-weight:900;
+    padding:0;
+  }
+  .dex-close:active{ transform:translateY(2px); box-shadow:0 1px 0 #0C1520; }
+
+  .dex-grid{
+    display:grid;
+    grid-template-columns:repeat(16, 48px);
+    gap:3px;
+    justify-content:center;
+  }
+  .dex-slot{
+    position:relative;
+    width:48px;
+    height:48px;
+    display:grid;
+    place-items:center;
+    background:#EDDDBA;
+    border:2px solid rgba(19,34,57,.35);
+    border-radius:4px;
+    overflow:hidden;
+  }
+  .dex-slot .dex-num{
+    position:absolute;
+    left:3px;
+    top:1px;
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:8px;
+    font-weight:700;
+    color:rgba(19,34,57,.5);
+  }
+  .dex-slot .dex-mon{
+    width:34px;
+    height:34px;
+    object-fit:contain;
+    image-rendering:pixelated;
+    opacity:0;
+  }
+  .dex-slot.caught{
+    background:var(--paper-hi);
+    border-color:var(--ink);
+  }
+  .dex-slot.caught .dex-mon{ opacity:1; }
+  .dex-slot.caught .dex-num{ color:rgba(19,34,57,.6); }
+
+  .socket{
+    position:absolute;
+    left:50%;
+    bottom:8px;
+    transform:translateX(-50%);
+    width:100px;
+    height:100px;
+    display:grid;
+    place-items:center;
+    background:none;
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+    padding:0;
+    cursor:pointer;
+  }
+  .socket img{
+    width:94px;
+    height:94px;
+    image-rendering:pixelated;
+    filter:drop-shadow(0 6px 0 rgba(6,12,22,.5));
+    transition:transform .35s cubic-bezier(.2,.8,.3,1.2);
+    pointer-events:none;
+  }
+  .socket:hover img{ filter:drop-shadow(0 6px 0 rgba(6,12,22,.5)) brightness(1.08); }
+  .socket:active img{ transform:scale(.9); }
+
+  /* La misma animación para cualquier forma de avanzar */
+  .socket.play img{ animation:ballTurn .42s cubic-bezier(.22,.9,.3,1.2); }
+  @keyframes ballTurn{
+    0%{ transform:rotate(0deg) scale(1); }
+    30%{ transform:rotate(-24deg) scale(.88); }
+    62%{ transform:rotate(16deg) scale(1.06); }
+    100%{ transform:rotate(0deg) scale(1); }
+  }
+
+  .hint{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-size:11.5px;
+    letter-spacing:1.1px;
+    text-transform:uppercase;
+    color:rgba(246,233,198,.62);
+    min-width:104px;
+    justify-content:flex-end;
+    text-align:right;
+  }
+  .hint kbd{
+    font-family:"Consolas", "Courier New", monospace;
+    font-size:10px;
+    color:#EFE3C4;
+    background:rgba(246,233,198,.12);
+    border:1px solid rgba(246,233,198,.28);
+    border-radius:3px;
+    padding:1px 5px;
+  }
+
+  /* ============ Notas ============ */
+  .notes{
+    display:none;
+    position:absolute;
+    left:56px;
+    right:56px;
+    bottom:88px;
+    z-index:30;
+    max-height:180px;
+    overflow:auto;
+    padding:13px 17px;
+    background:#0A1422;
+    color:#E9F0FA;
+    border:3px solid var(--gold);
+    border-radius:8px;
+    box-shadow:0 10px 0 rgba(0,0,0,.4);
+    font-size:14px;
+    line-height:1.5;
+  }
+  .notes b{
+    display:block;
+    font-size:10px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--gold);
+    margin-bottom:5px;
+  }
+  body.show-notes .slide.active .notes{ display:block; }
+
+  /* ============ Accesibilidad ============ */
+  button:focus-visible{
+    outline:3px solid var(--gold);
+    outline-offset:3px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+
+  /* ============ Impresión ============ */
+  @media print{
+    @page{ size:1280px 720px; margin:0; }
+    html,body{ overflow:visible; background:#fff; }
+    #stage{ position:static; width:auto; height:auto; transform:none; overflow:visible; }
+    .notes, .exp, .topbar, .botbar{ display:none !important; }
+    .cursor-ball{ display:none !important; }
+    .spawns{ display:none !important; }
+    .dex-overlay{ display:none !important; }
+    .dialog{ animation:none !important; opacity:1 !important; transform:none !important; }
+    .slide{
+      position:relative;
+      display:block !important;
+      opacity:1 !important;
+      visibility:visible !important;
+      width:1280px;
+      height:720px;
+      page-break-after:always;
+      break-after:page;
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    .slide:last-child{ page-break-after:auto; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- ====== 01 · Portada ====== -->
+  <section class="slide active" data-section="Presentación">
+    <div class="bg" style="background-image:url('assets/bg-pallet.jpg');background-position:center 32%"></div>
+    <div class="content">
+      <div class="cover-copy">
+        <h1>Pokeclic</h1>
+        <p class="sub">Kanto clic a clic.</p>
+        <p class="lead">Qué es el juego, cómo se juega y cómo se avanza, paso a paso.</p>
+        <div class="cover-badges">
+          <img class="starter" src="assets/pokemon-gen1-gifs/bulbasaur.gif" alt="Bulbasaur" />
+          <img class="starter" src="assets/pokemon-gen1-gifs/charmander.gif" alt="Charmander" />
+          <img class="starter" src="assets/pokemon-gen1-gifs/squirtle.gif" alt="Squirtle" />
+        </div>
+      </div>
+      <div class="bezel" data-video="Video 01">
+        <div class="screen">
+          <video src="videos/01-gameplay.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/01-gameplay.mp4</code>
+            <span class="empty-hint">mp4 · bucle · sin audio</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <img class="cover-trainer" src="assets/red_trainer.webp" alt="Rojo, el entrenador" />
+    <div class="notes"><b>Notas</b>Juego de móvil para Android, basado en la primera generación de Pokémon. Se juega con un dedo: tocas la Pokéball y el mundo responde. La presentación sigue el recorrido real de una partida, de la intro al gimnasio.</div>
+  </section>
+
+  <!-- ====== 02 · De qué va ====== -->
+  <section class="slide" data-section="La idea">
+    <div class="bg" style="background-image:url('assets/bg-ruta.jpg');background-position:center 55%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Un clicker para recorrer Kanto</h2>
+        <ul class="points">
+          <li><b>Tocas la Pokéball y el camino avanza.</b> Cada toque suma progreso a la zona en la que estás.</li>
+          <li>Mientras caminas aparecen Pokémon salvajes: los capturas en un minijuego y sumas equipo.</li>
+          <li>Con más equipo consigues más monedas, más fuerza por toque y más especies en la Pokédex.</li>
+          <li>El objetivo es <b>recorrer las 13 zonas</b> y ganar los gimnasios del camino.</li>
+        </ul>
+        <div class="callout">Cada zona tiene su propio paisaje y su propio umbral de toques.</div>
+      </div>
+      <div class="bezel" data-video="Video 01">
+        <div class="screen">
+          <video src="videos/01-gameplay.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Se reutiliza el video 01</span>
+            <code class="empty-file">videos/01-gameplay.mp4</code>
+            <span class="empty-hint">mp4 · bucle · sin audio</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>La meta final del juego son las 8 medallas y las 151 especies. Hoy hay 13 zonas jugables y 3 gimnasios: Brock, Misty y Lt. Surge.</div>
+  </section>
+
+  <!-- ====== 03 · Arranque ====== -->
+  <section class="slide" data-section="Antes de jugar">
+    <div class="bg" style="background-image:url('assets/bg-pallet.jpg');background-position:center 62%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>El arranque</h2>
+        <ol class="steps">
+          <li><span class="num">1</span><span>Abres la app y aparece la cortinilla de la <b>Pokéball</b>.</span></li>
+          <li><span class="num">2</span><span>El <b>Profesor Oak</b> te recibe y te pide tu nombre.</span></li>
+          <li><span class="num">3</span><span>Eliges tu <b>primer Pokémon</b>: Bulbasaur, Charmander o Squirtle.</span></li>
+          <li><span class="num">4</span><span>El juego ofrece un <b>tutorial de 7 pasos</b>. Puedes hacerlo u omitirlo.</span></li>
+        </ol>
+        <div class="callout">El tutorial enseña lo básico: desplegar la Pokéball, abrir el mapa y entrar en la Pokédex.</div>
+      </div>
+      <div class="bezel" data-video="Video 02">
+        <div class="screen">
+          <video src="videos/02-arranque.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/02-arranque.mp4</code>
+            <span class="empty-hint">splash · Oak · starter</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>La intro no guarda nada hasta el final: si cierras la app a mitad, vuelves a empezarla. El tutorial se puede repetir y también se guarda con la partida.</div>
+  </section>
+
+  <!-- ====== 04 · Pantalla de juego ====== -->
+  <section class="slide" data-section="Dónde se juega">
+    <div class="bg" style="background-image:url('assets/bg-ciudad-verde.jpg');background-position:center 40%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Una sola pantalla para todo</h2>
+        <ul class="points">
+          <li><b>Arriba:</b> el nombre de la zona, tus monedas y la barra de progreso, de 0 a 100%.</li>
+          <li><b>En el centro:</b> el entrenador y el paisaje, que se mueve con cada toque.</li>
+          <li><b>Abajo:</b> el Mapa, la Pokéball en el centro y el menú con la Pokédex y las opciones.</li>
+          <li>Lo demás son capas que se abren encima: intro, captura y gimnasio.</li>
+        </ul>
+      </div>
+      <div class="bezel" data-video="Video 03">
+        <div class="screen">
+          <video src="videos/03-pantalla.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/03-pantalla.mp4</code>
+            <span class="empty-hint">hud · menú · entrenador</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>El menú se esconde cuando hay una pantalla encima: en una captura, en un gimnasio o en la intro. Así la Pokéball no se puede tocar por accidente.</div>
+  </section>
+
+  <!-- ====== 05 · Tocar ====== -->
+  <section class="slide" data-section="El motor del juego">
+    <div class="bg" style="background-image:url('assets/bg-ruta.jpg');background-position:center 80%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Tocar es avanzar</h2>
+        <ul class="points">
+          <li>Cada toque a la Pokéball suma puntos a la <b>barra de la zona</b>.</li>
+          <li>Cuantas más especies tienes, <b>más suma cada toque</b>.</li>
+          <li>Tu primer Pokémon suma un extra por el <b>vínculo</b> que ganas al usarlo.</li>
+          <li>La barra se llena y <b>se detiene en el 100%</b>: no avanza sola, tú decides cuándo seguir.</li>
+        </ul>
+        <div class="chips" style="margin-top:16px">
+          <span class="chip">1 punto base</span>
+          <span class="chip">+5% por especie</span>
+          <span class="chip">+2% por vínculo</span>
+        </div>
+      </div>
+      <div class="bezel" data-video="Video 04">
+        <div class="screen">
+          <video src="videos/04-tocar.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/04-tocar.mp4</code>
+            <span class="empty-hint">toques · pops +n · barra</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Cada toque real muestra un “+N” flotante y mueve el fondo un paso. Con la barra llena el número es 0, porque el progreso ya no puede subir.</div>
+  </section>
+
+  <!-- ====== 06 · Encuentros ====== -->
+  <section class="slide" data-section="Caminar">
+    <div class="bg" style="background-image:url('assets/bg-bosque.jpg');background-position:center 45%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>El camino trae encuentros</h2>
+        <ul class="points">
+          <li>Tocar también <b>hace caminar al entrenador</b>: el paisaje se desplaza.</li>
+          <li>En zonas con vegetación, <b>3 segundos de toques seguidos</b> llenan la barra de encuentro.</li>
+          <li>Aparece un <b>Pokémon salvaje al azar</b> y el resto del juego se pausa.</li>
+          <li>En <b>Mt.Moon</b> aparecen caminando: no hace falta hierba alta.</li>
+        </ul>
+        <div class="callout">Hay fauna en las rutas, en el bosque y en la cueva. Las ciudades no tienen encuentros.</div>
+      </div>
+      <div class="bezel" data-video="Video 05">
+        <div class="screen">
+          <video src="videos/05-encuentro.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/05-encuentro.mp4</code>
+            <span class="empty-hint">hierba · barra · salvaje</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Si dejas de tocar, la barra de encuentro se reinicia. Los toques tienen que ser continuos: es la forma de simular que caminas.</div>
+  </section>
+
+  <!-- ====== 07 · Capturar ====== -->
+  <section class="slide" data-section="Capturar">
+    <div class="bg" style="background-image:url('assets/bg-bosque.jpg');background-position:center 72%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Capturar es un minijuego</h2>
+        <ul class="points">
+          <li>Se lanza la <b>Pokéball</b> y empieza el reto en pantalla completa.</li>
+          <li><b>Mantén pulsado</b> para subir la barra; suelta y cae.</li>
+          <li>Cuando la barra toca al Pokémon, el <b>medidor sube</b>. Si lo pierdes, baja.</li>
+          <li>Llena el medidor <b>antes de que escape</b>.</li>
+        </ul>
+        <div class="callout">Al capturar, la especie entra en tu equipo y en la Pokédex. La <b>primera vez</b> además paga monedas.</div>
+      </div>
+      <div class="bezel" data-video="Video 06">
+        <div class="screen">
+          <video src="videos/06-captura.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/06-captura.mp4</code>
+            <span class="empty-hint">lanzamiento · barra · medidor</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>La dificultad de cada especie cambia cómo se mueve el Pokémon: los difíciles se mueven más rápido y cambian de dirección más seguido. El panel imita la pantalla de captura de la Game Boy Advance.</div>
+  </section>
+
+  <!-- ====== 08 · Avanzar ====== -->
+  <section class="slide" data-section="Avanzar">
+    <div class="bg" style="background-image:url('assets/bg-ciudad-verde.jpg');background-position:center 74%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Cambiar de zona</h2>
+        <ul class="points">
+          <li>Con la barra al 100% aparece el botón <b>Avanzar</b>.</li>
+          <li>Al avanzar <b>cambia el paisaje</b> y aparecen especies nuevas.</li>
+          <li>En las ciudades con gimnasio, Avanzar pide <b>haber ganado ese gimnasio</b> en la partida actual.</li>
+          <li>El recorrido tiene <b>13 paradas</b>: de Pueblo Paleta a Ciudad Carmín.</li>
+        </ul>
+        <div class="callout">Avanzar es siempre una decisión tuya. La barra se queda llena hasta que tocas el botón.</div>
+      </div>
+      <div class="bezel" data-video="Video 07">
+        <div class="screen">
+          <video src="videos/07-avanzar.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/07-avanzar.mp4</code>
+            <span class="empty-hint">barra llena · botón · zona nueva</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Si estás en la última zona no hay botón. En las ciudades con gimnasio el botón Avanzar convive con el botón de retar al líder.</div>
+  </section>
+
+  <!-- ====== 09 · Gimnasio ====== -->
+  <section class="slide" data-section="Gimnasio">
+    <div class="bg" style="background-image:url('assets/bg-plateada.jpg');background-position:center 45%"></div>
+    <div class="content cast-slide">
+      <div class="left-col">
+        <div class="dialog">
+          <h2>El reto del líder</h2>
+          <ol class="steps">
+            <li><span class="num">1</span><span>Tocas <b>«Retar a Brock»</b> y se cierra la cortinilla de la Pokéball.</span></li>
+            <li><span class="num">2</span><span>El líder <b>habla</b> y presenta el reto.</span></li>
+            <li><span class="num">3</span><span>Un <b>tutorial de 3 pasos</b> explica su mecánica. Puedes repetirlo.</span></li>
+            <li><span class="num">4</span><span>Cuenta atrás y empieza el combate.</span></li>
+          </ol>
+        </div>
+        <div class="gym-cast">
+          <article class="cast rock">
+            <div class="duo">
+              <img class="face" src="assets/brock.png" alt="Brock" />
+              <img class="mon" src="assets/golem.gif" alt="Golem" />
+            </div>
+            <span class="rule"></span>
+            <span class="who">Brock</span>
+            <p>Su Golem usa <b>Tumbarrocas</b>.</p>
+          </article>
+          <article class="cast water">
+            <div class="duo">
+              <img class="face" src="assets/misty.png" alt="Misty" />
+              <img class="mon" src="assets/starmie.gif" alt="Starmie" />
+            </div>
+            <span class="rule"></span>
+            <span class="who">Misty</span>
+            <p>Su Starmie usa el <b>Hidropulso</b>.</p>
+          </article>
+          <article class="cast electric">
+            <div class="duo">
+              <img class="face" src="assets/surge.png" alt="Lt. Surge" />
+              <img class="mon" src="assets/raichu.gif" alt="Raichu" />
+            </div>
+            <span class="rule"></span>
+            <span class="who">Lt. Surge</span>
+            <p>Su Raichu sobrecarga con <b>electricidad</b> a sus Voltorb.</p>
+          </article>
+        </div>
+      </div>
+      <div class="bezel" data-video="Video 08">
+        <div class="screen">
+          <video src="videos/08-gimnasio.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/08-gimnasio.mp4</code>
+            <span class="empty-hint">cortinilla · discurso · tutorial</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>El gimnasio ocupa toda la pantalla: no se ve el menú ni el HUD de la zona. Cada líder tiene su Pokémon y su golpe propio: el Golem de Brock usa Tumbarrocas, el Starmie de Misty usa el Hidropulso y el Raichu de Lt. Surge sobrecarga con electricidad a sus Voltorb. La entrada dura lo que dura el discurso, así que el jugador no puede perderse el inicio del combate.</div>
+  </section>
+
+  <!-- ====== 10 · Combate ====== -->
+  <section class="slide" data-section="Combatir">
+    <div class="bg" style="background-image:url('assets/bg-rock-gym.jpg');background-position:center 40%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Atacar, esperar, golpear</h2>
+        <ul class="points">
+          <li><b>Ataque:</b> acierta lo que lanza el líder. Cada acierto llena su postura; cada fallo te quita vida.</li>
+          <li><b>Expuesto:</b> con la postura llena, el líder baja la guardia 2,5 s. Toca su Pokémon para restarle vida.</li>
+          <li><b>Furia:</b> bajo el 25% de vida ataca más rápido y más seguido.</li>
+          <li>El <b>tipo</b> de tu Pokémon principal decide el daño: el doble si es eficaz, la mitad si no.</li>
+        </ul>
+      </div>
+      <div class="bezel" data-video="Video 09">
+        <div class="screen">
+          <video src="videos/09-combate.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/09-combate.mp4</code>
+            <span class="empty-hint">rocas · postura · furia</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>La pelea se juega a dos tiempos: primero aguantas y llenas la postura del líder; después aprovechas los segundos en que queda expuesto para hacer daño. Si no aprovechas la ventana, vuelve a atacar.</div>
+  </section>
+
+  <!-- ====== 11 · Ganar o perder ====== -->
+  <section class="slide" data-section="Resultado">
+    <div class="bg" style="background-image:url('assets/bg-plateada.jpg');background-position:center 78%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Ganar o volver a intentarlo</h2>
+        <ul class="points">
+          <li><b>Victoria:</b> medalla, monedas y vínculo. El líder se despide y la medalla aparece en el centro.</li>
+          <li>La medalla es <b>permanente</b>, pero el gimnasio cuenta para la partida: un reset te obliga a repetirlo.</li>
+          <li><b>Derrota:</b> puedes reintentar sin coste o salir sin penalización.</li>
+          <li>Ganar el gimnasio <b>desbloquea el avance</b> a la siguiente zona.</li>
+        </ul>
+        <div class="medals">
+          <img src="assets/medalla-roca.png" alt="Medalla Roca" />
+          <img src="assets/medalla-cascada.png" alt="Medalla Cascada" />
+          <img src="assets/medalla-trueno.png" alt="Medalla Trueno" />
+        </div>
+      </div>
+      <div class="bezel" data-video="Video 10">
+        <div class="screen">
+          <video src="videos/10-victoria.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/10-victoria.mp4</code>
+            <span class="empty-hint">medalla · derrota · reintentar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Perder no cuesta nada: no se pierden monedas ni Pokémon. La única pérdida es el tiempo del intento.</div>
+  </section>
+
+  <!-- ====== 12 · Recorrido ====== -->
+  <section class="slide" data-section="Cómo ir avanzando">
+    <div class="bg" style="background-image:url('assets/bg-ruta3.jpg');background-position:center 60%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>El recorrido de Kanto</h2>
+        <div class="route">
+          <div class="route-row">
+            <span class="route-label">Tramo 1</span>
+            <span class="chip">Pueblo Paleta</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 1</span><span class="route-sep">›</span>
+            <span class="chip">Ciudad Verde</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 2</span><span class="route-sep">›</span>
+            <span class="chip">Bosque Verde</span>
+          </div>
+          <div class="route-row">
+            <span class="route-label">Tramo 2</span>
+            <span class="chip gym">Ciudad Plateada · Brock</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 3</span><span class="route-sep">›</span>
+            <span class="chip">Mt.Moon</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 4</span>
+          </div>
+          <div class="route-row">
+            <span class="route-label">Tramo 3</span>
+            <span class="chip gym">Ciudad Celeste · Misty</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 5</span><span class="route-sep">›</span>
+            <span class="chip">Ruta 6</span><span class="route-sep">›</span>
+            <span class="chip gym">Ciudad Carmín · Surge</span>
+          </div>
+        </div>
+        <ul class="points" style="margin-top:16px">
+          <li>Regla simple: <b>llena la barra, captura lo que aparezca y gana el gimnasio</b> antes de avanzar.</li>
+          <li>El <b>Mapa</b> te ubica en Kanto; la <b>Pokédex</b> te dice qué especies te faltan.</li>
+        </ul>
+      </div>
+      <div class="bezel" data-video="Video 11">
+        <div class="screen">
+          <video src="videos/11-mapa.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/11-mapa.mp4</code>
+            <span class="empty-hint">mapa · zoom · zonas</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>El orden es el del recorrido real de Kanto, de abajo hacia arriba. Las tres ciudades con gimnasio están marcadas en rojo: Ciudad Plateada, Ciudad Celeste y Ciudad Carmín.</div>
+  </section>
+
+  <!-- ====== 13 · Pokédex ====== -->
+  <section class="slide" data-section="Lo que se queda">
+    <div class="bg" style="background-image:url('assets/bg-celeste.jpg');background-position:center 52%"></div>
+    <div class="content">
+      <div class="dialog">
+        <h2>Progreso y Pokédex</h2>
+        <img class="dex-art" src="assets/pokedex.webp" alt="Pokédex" />
+        <ul class="points">
+          <li>La Pokédex tiene <b>tres estados</b>: desconocida, avistada y capturada.</li>
+          <li>Los contadores de <b>avistados</b> y <b>capturados</b> no bajan nunca.</li>
+          <li><b>Reset:</b> empieza una partida nueva y conserva monedas, capturas, medallas, primer Pokémon y vínculo.</li>
+          <li><b>Borrar partida:</b> elimina todo y vuelve a la introducción.</li>
+        </ul>
+        <div class="callout">La Pokédex es la memoria del juego: aunque reinicies, lo que ya viste y capturaste sigue ahí.</div>
+      </div>
+      <div class="bezel" data-video="Video 12">
+        <div class="screen">
+          <video src="videos/12-pokedex.mp4" muted loop playsinline preload="metadata"
+                 onloadeddata="this.closest('.bezel').classList.add('filled')"
+                 onerror="this.closest('.bezel').classList.remove('filled')"></video>
+          <div class="lcd">
+            <span class="rec"><i></i>Grabación pendiente</span>
+            <span class="ratio">9:20</span>
+            <span class="ratio-sub">1080 × 2400</span>
+            <span class="empty-title">Va tu video acá</span>
+            <code class="empty-file">videos/12-pokedex.mp4</code>
+            <span class="empty-hint">dex · estados · contadores</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Distinguir reset de borrado es importante: el reset reinicia la aventura pero respeta la colección; borrar es empezar de cero absoluto y vuelve a la intro de Oak.</div>
+  </section>
+
+  <!-- ====== 14 · Cierre ====== -->
+  <section class="slide" data-section="Resumen">
+    <div class="bg" style="background-image:url('assets/bg-pallet.jpg');background-position:center 78%"></div>
+    <div class="content solo">
+      <div class="dialog">
+        <h2>El bucle, en cinco pasos</h2>
+        <div class="loop">
+          <div class="loop-step"><i>Paso 1</i>Toca</div>
+          <span class="loop-arrow">→</span>
+          <div class="loop-step"><i>Paso 2</i>Camina</div>
+          <span class="loop-arrow">→</span>
+          <div class="loop-step"><i>Paso 3</i>Captura</div>
+          <span class="loop-arrow">→</span>
+          <div class="loop-step"><i>Paso 4</i>Gana</div>
+          <span class="loop-arrow">→</span>
+          <div class="loop-step"><i>Paso 5</i>Avanza</div>
+          <span class="loop-arrow">→</span>
+          <div class="loop-step back"><i>Y vuelve</i>Al paso 1</div>
+        </div>
+        <p class="lead" style="margin-top:18px">Tocas para abrir camino, capturas para crecer y ganas el gimnasio para poder seguir. Después, la siguiente zona repite el mismo bucle, un poco más lejos.</p>
+        <div class="callout">Regla de oro: <b>nunca avanzas sin haber ganado el gimnasio de esa ciudad</b>.</div>
+      </div>
+    </div>
+    <div class="notes"><b>Notas</b>Cierre: el juego no tiene pantalla de “fin”. El bucle se repite zona a zona hasta completar Kanto.</div>
+  </section>
+
+  <!-- Efectos de absorción: hoja generada con pixelfx (MIT, © Hugo Duprez) -->
+  <canvas id="fx" width="1280" height="720" aria-hidden="true"></canvas>
+
+  <!-- Pokémon salvajes que pasean por la escena -->
+  <div class="spawns" id="spawns" aria-hidden="true"></div>
+
+  <!-- ====== Cabecera fija ====== -->
+  <div class="topbar">
+    <span class="plate"><span class="dot"></span><span id="sectionName">Presentación</span></span>
+    <span class="plate count"><b id="pageNow">01</b> / <span id="pageTotal">14</span></span>
+  </div>
+
+  <!-- ====== Barra de progreso ====== -->
+  <div class="exp" id="exp" role="tablist" aria-label="Diapositivas"></div>
+
+  <!-- ====== Barra inferior: menú del juego ====== -->
+  <div class="botbar">
+    <div class="bar-left">
+      <button class="bar-btn" id="prev" type="button">◀ Atrás</button>
+      <button class="catch-plate" id="catchPlate" type="button" disabled title="Ver Pokémon capturados">
+        <img src="assets/pokeball.png" alt="" />
+        <b id="catchCount">0</b><span class="catch-sep">/</span><span>151</span>
+      </button>
+    </div>
+    <button class="socket" id="ball" type="button" aria-label="Siguiente diapositiva" title="Siguiente">
+      <img src="assets/pokeball.png" alt="" />
+    </button>
+    <div class="hint">Rueda del ratón o <kbd>←</kbd> <kbd>→</kbd></div>
+  </div>
+
+  <!-- Pokédex de capturas -->
+  <div class="dex-overlay" id="dexOverlay" aria-hidden="true">
+    <div class="dex-panel" role="dialog" aria-modal="true" aria-label="Pokémon capturados">
+      <div class="dex-head">
+        <span class="dex-title">Pokédex</span>
+        <span class="dex-count"><b id="dexCount">0</b> / 151</span>
+        <button class="dex-close" id="dexClose" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="dex-grid" id="dexGrid"></div>
+    </div>
+  </div>
+
+
+</div>
+
+<!-- Puntero Pokéball: lo mueve el script y rebota al hacer clic -->
+<div class="cursor-ball" id="cursorBall" aria-hidden="true">
+  <img src="assets/cursor-pokeball.png" alt="" />
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var stage = document.getElementById("stage");
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var exp = document.getElementById("exp");
+  var prevBtn = document.getElementById("prev");
+  var ballBtn = document.getElementById("ball");
+  var sectionName = document.getElementById("sectionName");
+  var pageNow = document.getElementById("pageNow");
+  var pageTotal = document.getElementById("pageTotal");
+  var index = 0;
+  var booted = false;
+
+  function playBall() {
+    ballBtn.classList.remove("play");
+    void ballBtn.offsetWidth; /* reinicia la animación */
+    ballBtn.classList.add("play");
+  }
+
+  /* ---------- Escalado ---------- */
+  function fit() {
+    stage.style.setProperty(
+      "--s",
+      Math.min(window.innerWidth / 1280, window.innerHeight / 720)
+    );
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  /* ---------- Progreso segmentado ---------- */
+  slides.forEach(function (slide, i) {
+    var seg = document.createElement("button");
+    seg.type = "button";
+    seg.setAttribute("aria-label", "Ir a la diapositiva " + (i + 1));
+    seg.addEventListener("click", function () { go(i); });
+    exp.appendChild(seg);
+  });
+  var segs = Array.prototype.slice.call(exp.children);
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+  function go(n) {
+    if (n >= slides.length) { n = 0; }   /* de la última vuelve a la primera */
+    if (n < 0) { return; }
+    index = n;
+
+    slides.forEach(function (slide, i) {
+      var on = i === index;
+      slide.classList.toggle("active", on);
+      slide.setAttribute("aria-hidden", on ? "false" : "true");
+      if (!on) {
+        slide.querySelectorAll("video").forEach(function (v) { v.pause(); });
+      }
+    });
+
+    sectionName.textContent = slides[index].getAttribute("data-section") || "";
+    pageNow.textContent = pad(index + 1);
+    pageTotal.textContent = pad(slides.length);
+
+    segs.forEach(function (seg, i) {
+      seg.classList.toggle("on", i === index);
+      seg.classList.toggle("done", i < index);
+      seg.setAttribute("aria-selected", i === index ? "true" : "false");
+    });
+
+    slides[index].querySelectorAll("video").forEach(function (v) {
+      var p = v.play();
+      if (p && typeof p.catch === "function") { p.catch(function () {}); }
+    });
+
+    prevBtn.disabled = index === 0;
+
+    try {
+      if (history.replaceState) {
+        history.replaceState(null, "", "#" + (index + 1));
+      }
+    } catch (err) { /* file:// puede bloquear replaceState */ }
+
+    if (booted) playBall();
+  }
+
+  /* ---------- Flechas, atajos ---------- */
+  document.addEventListener("keydown", function (e) {
+    var key = e.key;
+
+    if (isDexOpen()) {
+      if (key === "Escape") { closeDex(); }
+      return;
+    }
+
+    // Si el foco está en un botón, Enter/Espacio ya disparan su click.
+    if ((key === "Enter" || key === " ") && e.target && e.target.tagName === "BUTTON") return;
+
+    if (key === "ArrowRight" || key === "PageDown" || key === " " || key === "Enter") {
+      e.preventDefault();
+      go(index + 1);
+    } else if (key === "ArrowLeft" || key === "PageUp") {
+      e.preventDefault();
+      go(index - 1);
+    } else if (key === "Home") {
+      e.preventDefault();
+      go(0);
+    } else if (key === "End") {
+      e.preventDefault();
+      go(slides.length - 1);
+    } else if (key === "f" || key === "F") {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function () {});
+      } else {
+        document.exitFullscreen().catch(function () {});
+      }
+    } else if (key === "n" || key === "N") {
+      document.body.classList.toggle("show-notes");
+    }
+  });
+
+  /* ---------- Rueda del ratón ---------- */
+  var wheelAcc = 0;
+  var wheelLock = 0;
+  var wheelReset = 0;
+
+  window.addEventListener("wheel", function (e) {
+    if (document.body.classList.contains("show-notes")) return;
+    if (isDexOpen()) return;
+
+    var now = Date.now();
+    if (now < wheelLock) return;
+
+    var d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (e.deltaMode === 1) { d *= 18; }
+    else if (e.deltaMode === 2) { d *= 400; }
+    if (Math.abs(d) < 4) return;
+
+    if (wheelAcc !== 0 && (d > 0) !== (wheelAcc > 0)) { wheelAcc = 0; }
+    wheelAcc += d;
+
+    window.clearTimeout(wheelReset);
+    wheelReset = window.setTimeout(function () { wheelAcc = 0; }, 220);
+
+    if (Math.abs(wheelAcc) >= 60) {
+      go(index + (wheelAcc > 0 ? 1 : -1));
+      wheelAcc = 0;
+      wheelLock = now + 430;
+    }
+  }, { passive: true });
+
+  /* ---------- Deslizar ---------- */
+  var startX = null, startY = null;
+  stage.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  stage.addEventListener("touchend", function (e) {
+    if (isDexOpen()) { return; }
+    if (startX === null) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - startX;
+    var dy = t.clientY - startY;
+    startX = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      go(index + (dx < 0 ? 1 : -1));
+    }
+  }, { passive: true });
+
+  /* ---------- Botones ---------- */
+  prevBtn.addEventListener("click", function () { go(index - 1); });
+  ballBtn.addEventListener("click", function () { go(index + 1); });
+
+  /* ---------- Puntero Pokéball que rebota ---------- */
+  var cursorBall = document.getElementById("cursorBall");
+  var cursorArt = cursorBall ? cursorBall.querySelector("img") : null;
+  var finePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  if (cursorBall && cursorArt && finePointer) {
+    var cursorShown = false;
+    document.body.classList.add("custom-cursor");
+
+    document.addEventListener("mousemove", function (e) {
+      cursorBall.style.transform =
+        "translate3d(" + (e.clientX - 20) + "px," + (e.clientY - 20) + "px,0)";
+      if (!cursorShown) {
+        cursorShown = true;
+        cursorBall.style.opacity = "1";
+      }
+    }, { passive: true });
+
+    document.addEventListener("mouseleave", function () {
+      cursorShown = false;
+      cursorBall.style.opacity = "0";
+    });
+
+    document.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) { return; }
+
+      var t = e.target;
+      var onSprite = !!(t && t.closest && t.closest(".starter, .cover-trainer, .dex-art, .cast img, .spawn"));
+
+      if (cursorArt.animate) {
+        cursorArt.animate(
+          [
+            { transform: "scale(1)", offset: 0, easing: "ease-in" },
+            { transform: "scale(.5)", offset: 0.45, easing: "ease-out" },
+            { transform: "scale(1)", offset: 1 }
+          ],
+          { duration: 560 }
+        );
+      }
+
+      /* El polvo sale justo cuando la bola llega al mínimo */
+      if (!onSprite) {
+        var p = stagePoint(e.clientX, e.clientY);
+        window.setTimeout(function () { dustAt(p.x, p.y); }, 250);
+      }
+    });
+
+    cursorArt.addEventListener("error", function () {
+      document.body.classList.remove("custom-cursor");
+      cursorBall.style.display = "none";
+    });
+  }
+
+  /* ---------- Absorción de los starters (pixelfx) ---------- */
+  var fxCanvas = document.getElementById("fx");
+  var fxCtx = fxCanvas.getContext("2d");
+  var fxSheet = new Image();
+  var fxReady = false;
+  var fxStars = [];
+  var fxBursts = [];
+  var fxDusts = [];
+  var fxDustSheet = new Image();
+  var fxDustReady = false;
+  var fxFlyers = [];
+  var fxRaf = 0;
+  var fxLast = 0;
+  var pointer = { x: 640, y: 360 };
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* Hoja de polvo: 7 columnas, 49 fotogramas de 112x92.
+     El fogonazo inicial (fotograma 0) tiene su centro en (56,62): el dibujo se
+     ancla ahí para que el polvo quede centrado en la Pokéball del cursor. */
+  var DUST = { cols: 7, fw: 112, fh: 92, frames: 49, fps: 30, px: 56, py: 62 };
+
+  /* Hoja: 7 columnas, 42 fotogramas de 112x108, pivote en el pie (56,94) y el
+     estallido 30 px por encima. Reconstruir con:
+     node tools/render.mjs pickups/collect-burst --opts '{"palette":[dorados],"seed":7}' --sheet */
+  var SHEET = { cols: 7, fw: 112, fh: 108, frames: 42, fps: 30, px: 56, py: 64 };
+
+  fxSheet.onload = function () { fxReady = true; };
+  fxSheet.src = "assets/fx-collect-burst.png";
+
+  fxDustSheet.onload = function () { fxDustReady = true; };
+  fxDustSheet.src = "assets/fx-dust.png";
+
+  function stagePoint(clientX, clientY) {
+    var r = stage.getBoundingClientRect();
+    var k = r.width / 1280;
+    return {
+      x: (clientX - r.left) / k,
+      y: (clientY - r.top) / k,
+      k: k,
+      left: r.left,
+      top: r.top
+    };
+  }
+
+  document.addEventListener("mousemove", function (e) {
+    var p = stagePoint(e.clientX, e.clientY);
+    pointer.x = p.x;
+    pointer.y = p.y;
+  }, { passive: true });
+
+  function drawGlint(ctx, cx, cy, big, alpha) {
+    var u = 2;
+    var ox = Math.round(cx) - 5;
+    var oy = Math.round(cy) - 5;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+    function p(i, j, c) {
+      ctx.fillStyle = c;
+      ctx.fillRect(ox + i * u, oy + j * u, u, u);
+    }
+
+    p(2, 1, "#F2B807");
+    p(2, 3, "#F2B807");
+    p(1, 2, "#F2B807");
+    p(3, 2, "#F2B807");
+    p(2, 2, "#FFF6DA");
+    if (big) {
+      p(2, 0, "#FFD95E");
+      p(2, 4, "#FFD95E");
+      p(0, 2, "#FFD95E");
+      p(4, 2, "#FFD95E");
+      p(1, 1, "#FFD95E");
+      p(3, 1, "#FFD95E");
+      p(1, 3, "#FFD95E");
+      p(3, 3, "#FFD95E");
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSheetFx(ctx, list, sheet, cfg, ready, now) {
+    var alive = false;
+    for (var k = list.length - 1; k >= 0; k--) {
+      var item = list[k];
+      var frame = Math.floor((now - item.start) / (1000 / cfg.fps));
+      if (!ready || frame >= cfg.frames) {
+        list.splice(k, 1);
+        continue;
+      }
+      ctx.drawImage(
+        sheet,
+        (frame % cfg.cols) * cfg.fw,
+        Math.floor(frame / cfg.cols) * cfg.fh,
+        cfg.fw, cfg.fh,
+        Math.round(item.x - cfg.px),
+        Math.round(item.y - cfg.py),
+        cfg.fw, cfg.fh
+      );
+      alive = true;
+    }
+    return alive;
+  }
+
+  function fxLoop(now) {
+    if (!fxLast) { fxLast = now; }
+    var dt = Math.min(48, now - fxLast);
+    fxLast = now;
+    var ctx = fxCtx;
+    var alive = false;
+    var i, j;
+
+    ctx.clearRect(0, 0, 1280, 720);
+
+    /* sprites absorbidos hacia el puntero */
+    for (i = fxFlyers.length - 1; i >= 0; i--) {
+      var f = fxFlyers[i];
+      var u = Math.min(1, (now - f.start) / f.dur);
+      var e = u * u;
+      var x = f.x0 + (pointer.x - f.x0) * e;
+      var y = f.y0 + (pointer.y - f.y0) * e - Math.sin(u * Math.PI) * 16;
+      var s = 1 - 0.95 * e;
+      f.el.style.transform =
+        "translate(" + (x - f.x0) + "px," + (y - f.y0) + "px) scale(" + s.toFixed(3) + ")";
+      f.el.style.opacity = u < 0.72 ? "1" : String(Math.max(0, 1 - (u - 0.72) / 0.28));
+      if (u >= 1) {
+        f.el.remove();
+        fxFlyers.splice(i, 1);
+        fxBursts.push({ x: pointer.x, y: pointer.y, start: now });
+      }
+      alive = true;
+    }
+
+    /* estrellitas que convergen al puntero */
+    for (j = fxStars.length - 1; j >= 0; j--) {
+      var st = fxStars[j];
+      st.elapsed += dt;
+      if (st.elapsed < 0) { alive = true; continue; }
+      var t = Math.min(1, st.elapsed / st.life);
+      var g = t * t;
+      var gx = (1 - g) * (1 - g) * st.x0 + 2 * (1 - g) * g * st.cx + g * g * pointer.x;
+      var gy = (1 - g) * (1 - g) * st.y0 + 2 * (1 - g) * g * st.cy + g * g * pointer.y;
+      if (t < 1) {
+        drawGlint(ctx, gx, gy, st.big, 1 - t * 0.7);
+        alive = true;
+      } else {
+        fxStars.splice(j, 1);
+      }
+    }
+
+    /* estallido de pixelfx en el punto de recogida y polvo del clic */
+    if (drawSheetFx(ctx, fxBursts, fxSheet, SHEET, fxReady, now)) { alive = true; }
+    if (drawSheetFx(ctx, fxDusts, fxDustSheet, DUST, fxDustReady, now)) { alive = true; }
+
+    if (alive) {
+      fxRaf = requestAnimationFrame(fxLoop);
+    } else {
+      fxRaf = 0;
+      fxLast = 0;
+      ctx.clearRect(0, 0, 1280, 720);
+    }
+  }
+
+  function fxKick() {
+    if (!fxRaf) {
+      fxLast = 0;
+      fxRaf = requestAnimationFrame(fxLoop);
+    }
+  }
+
+  function dustAt(x, y) {
+    fxDusts.push({ x: x, y: y, start: performance.now() });
+    fxKick();
+  }
+
+  function absorbStarter(img, clientX, clientY, removeAfter) {
+    if (img.dataset.busy) { return; }
+    img.dataset.busy = "1";
+
+    var p = stagePoint(clientX, clientY);
+    pointer.x = p.x;
+    pointer.y = p.y;
+
+    var ir = img.getBoundingClientRect();
+    var w = ir.width / p.k;
+    var h = ir.height / p.k;
+    var x0 = (ir.left - p.left) / p.k + w / 2;
+    var y0 = (ir.top - p.top) / p.k + h / 2;
+
+    var clone = img.cloneNode(false);
+    clone.className = "fly-clone";
+    clone.removeAttribute("alt");
+    clone.style.left = (x0 - w / 2) + "px";
+    clone.style.top = (y0 - h / 2) + "px";
+    clone.style.width = w + "px";
+    clone.style.height = h + "px";
+    stage.appendChild(clone);
+
+    img.style.visibility = "hidden";
+
+    var i, a, rad, sx, sy, mx, my;
+    if (!reduceMotion.matches) {
+      for (i = 0; i < 14; i++) {
+        a = (i / 14) * Math.PI * 2 + Math.random() * 0.6;
+        rad = 6 + Math.random() * 30;
+        sx = x0 + Math.cos(a) * rad * 0.7;
+        sy = y0 + Math.sin(a) * rad;
+        mx = (sx + pointer.x) / 2 + (Math.random() - 0.5) * 70;
+        my = (sy + pointer.y) / 2 + (Math.random() - 0.5) * 70 - 24;
+        fxStars.push({
+          x0: sx, y0: sy, cx: mx, cy: my,
+          life: 430 + Math.random() * 170,
+          big: Math.random() < 0.3,
+          elapsed: -Math.random() * 120
+        });
+      }
+    }
+
+    if (reduceMotion.matches) {
+      clone.remove();
+      fxBursts.push({ x: p.x, y: p.y, start: performance.now() });
+    } else {
+      fxFlyers.push({ el: clone, x0: x0, y0: y0, start: performance.now(), dur: 560 });
+    }
+    fxKick();
+
+    if (removeAfter) {
+      window.setTimeout(function () { img.remove(); }, 600);
+      return;
+    }
+
+    window.setTimeout(function () {
+      img.style.visibility = "";
+      var back = img.animate(
+        [
+          { opacity: 0, transform: "scale(.6)" },
+          { opacity: 1, transform: "scale(1.1)", offset: 0.7 },
+          { opacity: 1, transform: "scale(1)" }
+        ],
+        { duration: 380, easing: "ease-out" }
+      );
+      if (back.finished && back.finished.then) {
+        back.finished.then(function () { img.removeAttribute("data-busy"); });
+      } else {
+        img.removeAttribute("data-busy");
+      }
+    }, 1500);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".starter"), function (img) {
+    img.addEventListener("click", function (e) {
+      absorbStarter(img, e.clientX, e.clientY);
+      registerCatch(img.src.split("/").pop());
+    });
+  });
+
+  /* ---------- Pokémon salvajes que aparecen solos ---------- */
+  /* Orden estricto de la Pokédex (1..151) */
+  var DEX_ORDER = [
+    "bulbasaur.gif",
+    "ivysaur.gif",
+    "venusaur.gif",
+    "charmander.gif",
+    "charmeleon.gif",
+    "charizard.gif",
+    "squirtle.gif",
+    "wartortle.gif",
+    "blastoise.gif",
+    "caterpie.gif",
+    "metapod.gif",
+    "butterfree.gif",
+    "weedle.gif",
+    "kakuna.gif",
+    "beedrill.gif",
+    "pidgey.gif",
+    "pidgeotto.gif",
+    "pidgeot.gif",
+    "rattata.gif",
+    "raticate.gif",
+    "spearow.gif",
+    "fearow.gif",
+    "ekans.gif",
+    "arbok.gif",
+    "pikachu.gif",
+    "raichu.gif",
+    "sandshrew.gif",
+    "sandslash.gif",
+    "nidoran-f.gif",
+    "nidorina.gif",
+    "nidoqueen.gif",
+    "nidoran-m.gif",
+    "nidorino.gif",
+    "nidoking.gif",
+    "clefairy.gif",
+    "clefable.gif",
+    "vulpix.gif",
+    "ninetales.gif",
+    "jigglypuff.gif",
+    "wigglytuff.gif",
+    "zubat.gif",
+    "golbat.gif",
+    "oddish.gif",
+    "gloom.gif",
+    "vileplume.gif",
+    "paras.gif",
+    "parasect.gif",
+    "venonat.gif",
+    "venomoth.gif",
+    "diglett.gif",
+    "dugtrio.gif",
+    "meowth.gif",
+    "persian.gif",
+    "psyduck.gif",
+    "golduck.gif",
+    "mankey.gif",
+    "primeape.gif",
+    "growlithe.gif",
+    "arcanine.gif",
+    "poliwag.gif",
+    "poliwhirl.gif",
+    "poliwrath.gif",
+    "abra.gif",
+    "kadabra.gif",
+    "alakazam.gif",
+    "machop.gif",
+    "machoke.gif",
+    "machamp.gif",
+    "bellsprout.gif",
+    "weepinbell.gif",
+    "victreebel.gif",
+    "tentacool.gif",
+    "tentacruel.gif",
+    "geodude.gif",
+    "graveler.gif",
+    "golem.gif",
+    "ponyta.gif",
+    "rapidash.gif",
+    "slowpoke.gif",
+    "slowbro.gif",
+    "magnemite.gif",
+    "magneton.gif",
+    "farfetchd.gif",
+    "doduo.gif",
+    "dodrio.gif",
+    "seel.gif",
+    "dewgong.gif",
+    "grimer.gif",
+    "muk.gif",
+    "shellder.gif",
+    "cloyster.gif",
+    "gastly.gif",
+    "haunter.gif",
+    "gengar.gif",
+    "onix.gif",
+    "drowzee.gif",
+    "hypno.gif",
+    "krabby.gif",
+    "kingler.gif",
+    "voltorb.gif",
+    "electrode.gif",
+    "exeggcute.gif",
+    "exeggutor.gif",
+    "cubone.gif",
+    "marowak.gif",
+    "hitmonlee.gif",
+    "hitmonchan.gif",
+    "lickitung.gif",
+    "koffing.gif",
+    "weezing.gif",
+    "rhyhorn.gif",
+    "rhydon.gif",
+    "chansey.gif",
+    "tangela.gif",
+    "kangaskhan.gif",
+    "horsea.gif",
+    "seadra.gif",
+    "goldeen.gif",
+    "seaking.gif",
+    "staryu.gif",
+    "starmie.gif",
+    "mr-mime.gif",
+    "scyther.gif",
+    "jynx.gif",
+    "electabuzz.gif",
+    "magmar.gif",
+    "pinsir.gif",
+    "tauros.gif",
+    "magikarp.gif",
+    "gyarados.gif",
+    "lapras.gif",
+    "ditto.gif",
+    "eevee.gif",
+    "vaporeon.gif",
+    "jolteon.gif",
+    "flareon.gif",
+    "porygon.gif",
+    "omanyte.gif",
+    "omastar.gif",
+    "kabuto.gif",
+    "kabutops.gif",
+    "aerodactyl.gif",
+    "snorlax.gif",
+    "articuno.gif",
+    "zapdos.gif",
+    "moltres.gif",
+    "dratini.gif",
+    "dragonair.gif",
+    "dragonite.gif",
+    "mewtwo.gif",
+    "mew.gif"
+  ];
+
+  var SPAWN_GIFS = [
+    "abra.gif",
+    "aerodactyl.gif",
+    "alakazam.gif",
+    "arbok.gif",
+    "arcanine.gif",
+    "articuno.gif",
+    "beedrill.gif",
+    "bellsprout.gif",
+    "blastoise.gif",
+    "bulbasaur.gif",
+    "butterfree.gif",
+    "caterpie.gif",
+    "chansey.gif",
+    "charizard.gif",
+    "charmander.gif",
+    "charmeleon.gif",
+    "clefable.gif",
+    "clefairy.gif",
+    "cloyster.gif",
+    "cubone.gif",
+    "dewgong.gif",
+    "diglett.gif",
+    "ditto.gif",
+    "dodrio.gif",
+    "doduo.gif",
+    "dragonair.gif",
+    "dragonite.gif",
+    "dratini.gif",
+    "drowzee.gif",
+    "dugtrio.gif",
+    "eevee.gif",
+    "ekans.gif",
+    "electabuzz.gif",
+    "electrode.gif",
+    "exeggcute.gif",
+    "exeggutor.gif",
+    "farfetchd.gif",
+    "fearow.gif",
+    "flareon.gif",
+    "gastly.gif",
+    "gengar.gif",
+    "geodude.gif",
+    "gloom.gif",
+    "golbat.gif",
+    "goldeen.gif",
+    "golduck.gif",
+    "golem.gif",
+    "graveler.gif",
+    "grimer.gif",
+    "growlithe.gif",
+    "gyarados.gif",
+    "haunter.gif",
+    "hitmonchan.gif",
+    "hitmonlee.gif",
+    "horsea.gif",
+    "hypno.gif",
+    "ivysaur.gif",
+    "jigglypuff.gif",
+    "jolteon.gif",
+    "jynx.gif",
+    "kabuto.gif",
+    "kabutops.gif",
+    "kadabra.gif",
+    "kakuna.gif",
+    "kangaskhan.gif",
+    "kingler.gif",
+    "koffing.gif",
+    "krabby.gif",
+    "lapras.gif",
+    "lickitung.gif",
+    "machamp.gif",
+    "machoke.gif",
+    "machop.gif",
+    "magikarp.gif",
+    "magmar.gif",
+    "magnemite.gif",
+    "magneton.gif",
+    "mankey.gif",
+    "marowak.gif",
+    "meowth.gif",
+    "metapod.gif",
+    "mew.gif",
+    "mewtwo.gif",
+    "moltres.gif",
+    "mr-mime.gif",
+    "muk.gif",
+    "nidoking.gif",
+    "nidoqueen.gif",
+    "nidoran-f.gif",
+    "nidoran-m.gif",
+    "nidorina.gif",
+    "nidorino.gif",
+    "ninetales.gif",
+    "oddish.gif",
+    "omanyte.gif",
+    "omastar.gif",
+    "onix.gif",
+    "paras.gif",
+    "parasect.gif",
+    "persian.gif",
+    "pidgeot.gif",
+    "pidgeotto.gif",
+    "pidgey.gif",
+    "pikachu.gif",
+    "pinsir.gif",
+    "poliwag.gif",
+    "poliwhirl.gif",
+    "poliwrath.gif",
+    "ponyta.gif",
+    "porygon.gif",
+    "primeape.gif",
+    "psyduck.gif",
+    "raichu.gif",
+    "rapidash.gif",
+    "raticate.gif",
+    "rattata.gif",
+    "rhydon.gif",
+    "rhyhorn.gif",
+    "sandshrew.gif",
+    "sandslash.gif",
+    "scyther.gif",
+    "seadra.gif",
+    "seaking.gif",
+    "seel.gif",
+    "shellder.gif",
+    "slowbro.gif",
+    "slowpoke.gif",
+    "snorlax.gif",
+    "spearow.gif",
+    "squirtle.gif",
+    "starmie.gif",
+    "staryu.gif",
+    "tangela.gif",
+    "tauros.gif",
+    "tentacool.gif",
+    "tentacruel.gif",
+    "vaporeon.gif",
+    "venomoth.gif",
+    "venonat.gif",
+    "venusaur.gif",
+    "victreebel.gif",
+    "vileplume.gif",
+    "voltorb.gif",
+    "vulpix.gif",
+    "wartortle.gif",
+    "weedle.gif",
+    "weepinbell.gif",
+    "weezing.gif",
+    "wigglytuff.gif",
+    "zapdos.gif",
+    "zubat.gif"
+  ];
+  var spawnLayer = document.getElementById("spawns");
+  var activeSpawns = [];
+  var spawnTimer = 0;
+
+  /* Contador de capturas: solo especies nuevas, se reinicia al recargar */
+  var catchPlate = document.getElementById("catchPlate");
+  var catchCountEl = document.getElementById("catchCount");
+  var caughtSpecies = {};
+  var caughtTotal = 0;
+
+  function registerCatch(file) {
+    if (caughtSpecies[file]) { return; }
+    caughtSpecies[file] = true;
+    caughtTotal += 1;
+    catchCountEl.textContent = String(caughtTotal);
+
+    if (!catchPlate.classList.contains("on")) {
+      catchPlate.classList.add("on");
+      catchPlate.disabled = false;
+    } else {
+      catchPlate.classList.remove("pop");
+      void catchPlate.offsetWidth;
+      catchPlate.classList.add("pop");
+    }
+  }
+
+  function spawnPokemon() {
+    if (!spawnLayer || activeSpawns.length >= 3) { return; }
+
+    var file = SPAWN_GIFS[Math.floor(Math.random() * SPAWN_GIFS.length)];
+    var size = 56 + Math.floor(Math.random() * 4) * 8;
+    var life = 4200 + Math.random() * 2000;
+
+    var el = document.createElement("img");
+    el.className = "spawn";
+    el.src = "assets/pokemon-gen1-gifs/" + file;
+    el.alt = "";
+    el.draggable = false;
+    el.style.width = size + "px";
+    el.style.left = Math.round(50 + Math.random() * (1180 - size)) + "px";
+    el.style.top = Math.round(90 + Math.random() * (520 - size)) + "px";
+    spawnLayer.appendChild(el);
+
+    var angle = Math.random() * Math.PI * 2;
+    var dist = 30 + Math.random() * 60;
+    var dx = Math.cos(angle) * dist;
+    var dy = Math.sin(angle) * dist;
+
+    var anim = el.animate(
+      [
+        { opacity: 0, transform: "translate(0,0) scale(.85)", offset: 0, easing: "ease-out" },
+        { opacity: 1, transform: "translate(" + (dx * 0.15) + "px," + (dy * 0.15) + "px) scale(1)", offset: 0.14, easing: "linear" },
+        { opacity: 1, transform: "translate(" + (dx * 0.85) + "px," + (dy * 0.85) + "px) scale(1)", offset: 0.86, easing: "ease-in" },
+        { opacity: 0, transform: "translate(" + dx + "px," + dy + "px) scale(.92)", offset: 1 }
+      ],
+      { duration: life, fill: "forwards" }
+    );
+
+    var entry = { el: el, anim: anim };
+    activeSpawns.push(entry);
+
+    anim.finished.then(function () {
+      var i = activeSpawns.indexOf(entry);
+      if (i >= 0) { activeSpawns.splice(i, 1); }
+      el.remove();
+    }, function () { /* cancelada al absorberlo */ });
+
+    el.addEventListener("click", function (e) {
+      if (el.dataset.absorbed) { return; }
+      el.dataset.absorbed = "1";
+      e.stopPropagation();
+      try { anim.cancel(); } catch (err) {}
+      var i = activeSpawns.indexOf(entry);
+      if (i >= 0) { activeSpawns.splice(i, 1); }
+      absorbStarter(el, e.clientX, e.clientY, true);
+      registerCatch(file);
+    });
+  }
+
+  function scheduleSpawn() {
+    window.clearTimeout(spawnTimer);
+    spawnTimer = window.setTimeout(function () {
+      if (!reduceMotion.matches) { spawnPokemon(); }
+      scheduleSpawn();
+    }, 6500 + Math.random() * 4000);
+  }
+
+  scheduleSpawn();
+
+  /* ---------- Pokédex de capturas ---------- */
+  var dexOverlay = document.getElementById("dexOverlay");
+  var dexGrid = document.getElementById("dexGrid");
+  var dexCountEl = document.getElementById("dexCount");
+  var dexCloseBtn = document.getElementById("dexClose");
+  var dexSlots = [];
+
+  (function buildDex() {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < DEX_ORDER.length; i++) {
+      var tile = document.createElement("div");
+      tile.className = "dex-slot";
+
+      var num = document.createElement("span");
+      num.className = "dex-num";
+      num.textContent = String(i + 1);
+
+      var mon = document.createElement("img");
+      mon.className = "dex-mon";
+      mon.alt = "";
+
+      tile.appendChild(num);
+      tile.appendChild(mon);
+      frag.appendChild(tile);
+      dexSlots.push({ tile: tile, img: mon, file: DEX_ORDER[i] });
+    }
+    dexGrid.appendChild(frag);
+  })();
+
+  function openDex() {
+    var n = 0;
+    for (var i = 0; i < dexSlots.length; i++) {
+      var slot = dexSlots[i];
+      if (caughtSpecies[slot.file]) {
+        if (!slot.img.getAttribute("src")) {
+          slot.img.src = "assets/pokemon-gen1-gifs/" + slot.file;
+        }
+        slot.tile.classList.add("caught");
+        n++;
+      } else {
+        slot.tile.classList.remove("caught");
+      }
+    }
+    dexCountEl.textContent = String(n);
+    dexOverlay.classList.add("open");
+    dexOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDex() {
+    dexOverlay.classList.remove("open");
+    dexOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function isDexOpen() {
+    return dexOverlay.classList.contains("open");
+  }
+
+  catchPlate.addEventListener("click", openDex);
+  dexCloseBtn.addEventListener("click", closeDex);
+  dexOverlay.addEventListener("click", function (e) {
+    if (e.target === dexOverlay) { closeDex(); }
+  });
+
+
+  /* ---------- Arranque ---------- */
+  var fromHash = parseInt((location.hash || "").replace("#", ""), 10);
+  go(isNaN(fromHash) ? 0 : Math.min(Math.max(fromHash - 1, 0), slides.length - 1));
+  booted = true;
+})();
+</script>
+</body>
+</html>
